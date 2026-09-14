@@ -35,7 +35,7 @@ describe('swagger setup', () => {
 			expect(response.body.info).toEqual({
 				contact: {},
 				description: 'This is v3 of Schulcloud-Verbund-Software Server. Checkout /docs for v1.',
-				title: 'Schulcloud-Verbund-Software Server API',
+				title: 'Schulcloud-Verbund-Software Server API (featuremaxxing)',
 				// care about api changes when version changes
 				version: '3.0',
 			});
