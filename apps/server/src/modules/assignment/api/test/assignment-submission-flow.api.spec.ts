@@ -342,9 +342,7 @@ describe('assignment submission flow (api)', () => {
 			await studentClient.patch(`submissions/${submissionId}/submit`, { comment: 'v2 - überarbeitet' });
 
 			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
-			expect((ownList.body as AssignmentSubmissionListResponse).submissions[0].comment).toEqual(
-				'v2 - überarbeitet'
-			);
+			expect((ownList.body as AssignmentSubmissionListResponse).submissions[0].comment).toEqual('v2 - überarbeitet');
 		});
 
 		it('should accept submitting without a comment', async () => {
