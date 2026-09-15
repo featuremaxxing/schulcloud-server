@@ -16,7 +16,7 @@ import { ApiValidationError } from '@shared/common/error';
 import { CardUc, ElementUc } from '../uc';
 import {
 	AnyContentElementResponse,
-	AssignmentContentBody,
+	AssignmentElementContentBody,
 	AssignmentElementResponse,
 	ContentElementUrlParams,
 	DrawingElementContentBody,
@@ -106,7 +106,7 @@ export class ElementController {
 		VideoConferenceElementContentBody,
 		FileFolderElementContentBody,
 		H5pElementContentBody,
-		AssignmentContentBody
+		AssignmentElementContentBody
 	)
 	@ApiResponse({
 		status: 200,
