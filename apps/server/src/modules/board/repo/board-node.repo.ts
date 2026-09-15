@@ -2,7 +2,15 @@ import { FilterQuery, Utils } from '@mikro-orm/core';
 import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
 import { Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
-import { AnyBoardNode, BoardExternalReference, getBoardNodeType } from '../domain';
+import {
+	AnyBoardNode,
+	AssignmentElement,
+	AssignmentSubmission,
+	BoardExternalReference,
+	BoardExternalReferenceType,
+	BoardNodeType,
+	getBoardNodeType,
+} from '../domain';
 import { pathOfChildren } from '../domain/path-utils';
 import { BoardNodeEntity } from './entity/board-node.entity';
 import { TreeBuilder } from './tree-builder';
@@ -84,6 +92,56 @@ export class BoardNodeRepo {
 
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.persist(boardNode).flush();
+	}
+
+	// Light-weight overview query for the assignment list: instead of loading entire
+	// board trees per room (findByExternalReference), it only loads the room's board
+	// roots and the assignment elements below them. Child nodes (e.g. submissions) do
+	// not carry a context of their own - the room link is only on the root board.
+	public async findAssignmentElementsByRoomIds(roomIds: EntityId[]): Promise<AssignmentElement[]> {
+		if (roomIds.length === 0) {
+			return [];
+		}
+
+		const boards = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.COLUMN_BOARD,
+			context: {
+				_contextId: { $in: roomIds.map((roomId) => new ObjectId(roomId)) },
+				_contextType: BoardExternalReferenceType.Room,
+			} as FilterQuery<BoardExternalReference>,
+		});
+
+		if (boards.length === 0) {
+			return [];
+		}
+
+		// An element's path starts with its board's id: ',<boardId>,<columnId>,...' (ROOT_PATH=',').
+		const boardIds = boards.map((board) => board.id);
+		const elements = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.ASSIGNMENT_ELEMENT,
+			path: { $re: `^,(${boardIds.join('|')}),` },
+		});
+
+		return elements.map((entity) => new TreeBuilder().build(entity)) as AssignmentElement[];
+	}
+
+	// Direct children of the given assignment elements. Matches paths ending in
+	// ',<elementId>,' - only submissions can be direct children of an assignment element.
+	public async findAssignmentSubmissionsByParentIds(
+		parentIds: EntityId[],
+		userId?: EntityId
+	): Promise<AssignmentSubmission[]> {
+		if (parentIds.length === 0) {
+			return [];
+		}
+
+		const submissions = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.ASSIGNMENT_SUBMISSION,
+			path: { $re: `,(${parentIds.join('|')}),$` },
+			...(userId ? { userId } : {}),
+		});
+
+		return submissions.map((entity) => new TreeBuilder().build(entity)) as AssignmentSubmission[];
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

@@ -12,6 +12,7 @@ import {
 	isAssignmentElement,
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
+import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
 import {
 	ConflictException,
 	ForbiddenException,
@@ -21,6 +22,7 @@ import {
 	UnprocessableEntityException,
 } from '@nestjs/common';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
+import { Permission } from '@shared/domain/interface';
 import { EntityId } from '@shared/domain/types';
 
 export interface AssignmentSubmissionEntry {
@@ -42,6 +44,15 @@ export interface AssignmentSubmissionResult {
 	file?: FileDto;
 }
 
+export interface AssignmentListEntry {
+	element: AssignmentElement;
+	roomId: EntityId;
+	boardId: EntityId;
+	isTeacher: boolean;
+	// teacher: all submissions below the element; student: only the caller's own
+	submissions: AssignmentSubmission[];
+}
+
 @Injectable()
 export class AssignmentUc {
 	constructor(
@@ -51,8 +62,59 @@ export class AssignmentUc {
 		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly boardNodeRule: BoardNodeRule,
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
+		private readonly roomMembershipService: RoomMembershipService,
 		@Inject(BOARD_PUBLIC_API_CONFIG_TOKEN) private readonly boardConfig: BoardPublicApiConfig
 	) {}
+
+	// Overview for the assignments list page and the room dashboard: every assignment
+	// element in the caller's rooms, with submission counts (teacher) or the caller's
+	// own submission status (student). Authorisation is room-based (see isRoomEditor) -
+	// a user can only ever be a reader or editor of rooms they are a member of, and
+	// elements cannot exist outside a room board, so no per-element check is needed.
+	public async listAssignments(userId: EntityId, roomId?: EntityId): Promise<AssignmentListEntry[]> {
+		this.checkFeatureEnabled();
+
+		const rooms = await this.roomMembershipService.getRoomAuthorizablesByUserId(userId);
+		const relevantRooms = roomId ? rooms.filter((room) => room.roomId === roomId) : rooms;
+
+		const entries: AssignmentListEntry[] = [];
+		for (const room of relevantRooms) {
+			const elements = await this.boardNodeService.findAssignmentElementsByRoomIds([room.roomId]);
+			if (elements.length === 0) {
+				continue;
+			}
+
+			const isTeacher = this.isRoomEditor(room, userId);
+			for (const element of elements) {
+				entries.push({
+					element,
+					roomId: room.roomId,
+					boardId: this.boardIdOf(element),
+					isTeacher,
+					submissions: [],
+				});
+			}
+		}
+
+		const elementIds = entries.map((entry) => entry.element.id);
+		const submissions = await this.boardNodeService.findAssignmentSubmissionsByParentIds(elementIds);
+		for (const submission of submissions) {
+			const entry = entries.find((candidate) => submission.path.endsWith(`,${candidate.element.id},`));
+			if (!entry) {
+				continue;
+			}
+			if (entry.isTeacher || submission.userId === userId) {
+				entry.submissions.push(submission);
+			}
+		}
+
+		return entries;
+	}
+
+	// The element's path starts with its board's id: ',<boardId>,<columnId>,...'
+	private boardIdOf(element: AssignmentElement): EntityId {
+		return element.path.split(',').filter(Boolean)[0];
+	}
 
 	public async listSubmissions(userId: EntityId, elementId: EntityId): Promise<AssignmentSubmissionsListResult> {
 		this.checkFeatureEnabled();
@@ -269,6 +331,14 @@ export class AssignmentUc {
 		if (!element.isSubmittable(now)) {
 			throw new ForbiddenException('This assignment is not accepting submissions anymore.');
 		}
+	}
+
+	// Teacher/student split for the assignment list, derived from the caller's room role.
+	// This mirrors how board roles are derived from room roles (ROOM_EDIT_CONTENT ->
+	// editor -> BOARD_EDIT), so it matches what boardNodeRule would decide per element.
+	private isRoomEditor(room: RoomAuthorizable, userId: EntityId): boolean {
+		const role = room.getRoleOfUser(userId);
+		return !!role?.permissions?.includes(Permission.ROOM_EDIT_CONTENT);
 	}
 }
 

@@ -23,7 +23,11 @@ import { type INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { TestApiClientBuilder } from '@testing/test-api-client-builder';
-import { type AssignmentSubmissionResponse, type AssignmentSubmissionListResponse } from '../dto';
+import {
+	type AssignmentListResponse,
+	type AssignmentSubmissionResponse,
+	type AssignmentSubmissionListResponse,
+} from '../dto';
 
 const baseRouteName = '/assignments';
 
@@ -294,6 +298,90 @@ describe('assignment submission flow (api)', () => {
 			const response = await studentClient.post(`${assignmentElementNode.id}/submissions`);
 
 			expect(response.status).toEqual(403);
+		});
+	});
+
+	describe('the assignments list', () => {
+		it('should list the room assignment for the teacher with submission counts', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode, columnBoardNode, room } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			await studentClient.post(`${assignmentElementNode.id}/submissions`);
+
+			const response = await teacherClient.get('');
+
+			expect(response.status).toEqual(200);
+			const list = response.body as AssignmentListResponse;
+			expect(list.assignments).toHaveLength(1);
+			const item = list.assignments[0];
+			expect(item.id).toEqual(assignmentElementNode.id);
+			expect(item.roomId).toEqual(room.id);
+			expect(item.boardId).toEqual(columnBoardNode.id);
+			expect(item.title).toEqual(assignmentElementNode.title);
+			expect(item.isStarted).toBe(true);
+			expect(item.isSubmittable).toBe(true);
+			expect(item.submissionsTotal).toEqual(1);
+			expect(item.submissionsSubmitted).toEqual(0);
+		});
+
+		it('should count handed-in submissions for the teacher', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildFileDto(submissionId)]);
+			await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			const response = await teacherClient.get('');
+
+			const item = (response.body as AssignmentListResponse).assignments[0];
+			expect(item.submissionsTotal).toEqual(1);
+			expect(item.submissionsSubmitted).toEqual(1);
+		});
+
+		it('should show students their own submission status, but no counts', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			await studentClient.post(`${assignmentElementNode.id}/submissions`);
+
+			const response = await studentClient.get('');
+
+			expect(response.status).toEqual(200);
+			const item = (response.body as AssignmentListResponse).assignments[0];
+			expect(item.ownSubmissionStatus).toEqual('open');
+			expect(item.ownSubmissionIsLate).toBe(false);
+			expect(item.submissionsTotal).toBeNull();
+			expect(item.submissionsSubmitted).toBeNull();
+		});
+
+		it('should return an empty list for users without rooms', async () => {
+			const school = schoolEntityFactory.buildWithId();
+			const lonelyUser = userFactory.buildWithId({ school });
+			const lonelyAccount = accountFactory.withUser(lonelyUser).build();
+			await em.persist([school, lonelyUser, lonelyAccount]).flush();
+			em.clear();
+
+			const client = await new TestApiClientBuilder(app, baseRouteName).build(lonelyAccount);
+			const response = await client.get('');
+
+			expect(response.status).toEqual(200);
+			expect((response.body as AssignmentListResponse).assignments).toHaveLength(0);
+		});
+
+		it('should return nothing when filtering by a room the user is not in', async () => {
+			const { teacherAccount } = await setup();
+
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+			const response = await teacherClient.get('?roomId=000000000000000000000002');
+
+			expect(response.status).toEqual(200);
+			expect((response.body as AssignmentListResponse).assignments).toHaveLength(0);
 		});
 	});
 });

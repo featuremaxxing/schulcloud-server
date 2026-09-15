@@ -10,24 +10,43 @@ import {
 	Param,
 	Patch,
 	Post,
+	Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiValidationError } from '@shared/common/error';
 import { AssignmentUc } from './assignment.uc';
 import {
 	AssignmentElementUrlParams,
+	AssignmentListQueryParams,
+	AssignmentListResponse,
 	AssignmentSubmissionListResponse,
 	AssignmentSubmissionResponse,
 	AssignmentSubmissionUrlParams,
 	GradeSubmissionBodyParams,
 } from './dto';
-import { AssignmentSubmissionResponseMapper } from './mapper';
+import { AssignmentListResponseMapper, AssignmentSubmissionResponseMapper } from './mapper';
 
 @ApiTags('Assignment')
 @JwtAuthentication()
 @Controller('assignments')
 export class AssignmentController {
 	constructor(private readonly assignmentUc: AssignmentUc) {}
+
+	@ApiOperation({
+		summary:
+			"List the assignment elements in the caller's rooms (teacher: submission counts, student: own submission status).",
+	})
+	@ApiResponse({ status: 200, type: AssignmentListResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@Get()
+	public async listAssignments(
+		@Query() queryParams: AssignmentListQueryParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<AssignmentListResponse> {
+		const result = await this.assignmentUc.listAssignments(currentUser.userId, queryParams.roomId);
+
+		return AssignmentListResponseMapper.mapList(result);
+	}
 
 	@ApiOperation({ summary: "List an assignment's submissions (teacher: all students, student: own only)." })
 	@ApiResponse({ status: 200, type: AssignmentSubmissionListResponse })

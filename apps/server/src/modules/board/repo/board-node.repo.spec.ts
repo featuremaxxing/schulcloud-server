@@ -3,8 +3,14 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { BaseEntityWithTimestamps } from '@shared/domain/entity';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { MongoMemoryDatabaseModule } from '@testing/database';
-import { ColumnBoard } from '../domain';
-import { cardFactory, columnBoardFactory, columnFactory } from '../testing';
+import { BoardExternalReferenceType, ColumnBoard } from '../domain';
+import {
+	assignmentElementFactory,
+	assignmentSubmissionFactory,
+	cardFactory,
+	columnBoardFactory,
+	columnFactory,
+} from '../testing';
 import { BoardNodeRepo } from './board-node.repo';
 import { BoardNodeEntity } from './entity/board-node.entity';
 
@@ -169,6 +175,91 @@ describe('BoardNodeRepo', () => {
 	// 		expect(result.id).toEqual(board.id);
 	// 	});
 	// });
+
+	describe('findAssignmentElementsByRoomIds', () => {
+		const ROOM_ID = '000000000000000000000001';
+		const OTHER_ROOM_ID = '000000000000000000000002';
+
+		const setupBoard = async (roomId: string) => {
+			const element = assignmentElementFactory.build();
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.Room, id: roomId },
+				children: [columnFactory.build({ children: [cardFactory.build({ children: [element] })] })],
+			});
+			await repo.save(board);
+			em.clear();
+
+			return { board, element };
+		};
+
+		it('should find assignment elements of the given rooms', async () => {
+			const { element } = await setupBoard(ROOM_ID);
+
+			const result = await repo.findAssignmentElementsByRoomIds([ROOM_ID]);
+
+			expect(result).toHaveLength(1);
+			expect(result[0].id).toEqual(element.id);
+		});
+
+		it('should return nothing for rooms without boards', async () => {
+			await setupBoard(ROOM_ID);
+
+			const result = await repo.findAssignmentElementsByRoomIds([OTHER_ROOM_ID]);
+
+			expect(result).toHaveLength(0);
+		});
+
+		it('should return nothing for an empty room list', async () => {
+			await setupBoard(ROOM_ID);
+
+			const result = await repo.findAssignmentElementsByRoomIds([]);
+
+			expect(result).toHaveLength(0);
+		});
+	});
+
+	describe('findAssignmentSubmissionsByParentIds', () => {
+		const setupElementWithSubmissions = async () => {
+			const submissionOfUser1 = assignmentSubmissionFactory.build({ userId: '0000000000000000000000a1' });
+			const submissionOfUser2 = assignmentSubmissionFactory.build({ userId: '0000000000000000000000a2' });
+			const element = assignmentElementFactory.build({ children: [submissionOfUser1, submissionOfUser2] });
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.Room, id: '000000000000000000000001' },
+				children: [columnFactory.build({ children: [cardFactory.build({ children: [element] })] })],
+			});
+			await repo.save(board);
+			em.clear();
+
+			return { element, submissionOfUser1, submissionOfUser2 };
+		};
+
+		it('should find all submissions of the given elements', async () => {
+			const { element, submissionOfUser1, submissionOfUser2 } = await setupElementWithSubmissions();
+
+			const result = await repo.findAssignmentSubmissionsByParentIds([element.id]);
+
+			expect(result).toHaveLength(2);
+			expect(result.map((s) => s.id).sort()).toEqual([submissionOfUser1.id, submissionOfUser2.id].sort());
+		});
+
+		it('should filter submissions by userId', async () => {
+			const { element, submissionOfUser1 } = await setupElementWithSubmissions();
+
+			const result = await repo.findAssignmentSubmissionsByParentIds([element.id], '0000000000000000000000a1');
+
+			expect(result).toHaveLength(1);
+			expect(result[0].id).toEqual(submissionOfUser1.id);
+		});
+
+		it('should not find submissions of other elements', async () => {
+			await setupElementWithSubmissions();
+			const otherElement = assignmentElementFactory.build();
+
+			const result = await repo.findAssignmentSubmissionsByParentIds([otherElement.id]);
+
+			expect(result).toHaveLength(0);
+		});
+	});
 
 	describe('delete', () => {
 		const setup = async () => {

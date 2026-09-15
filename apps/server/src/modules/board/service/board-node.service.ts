@@ -6,6 +6,8 @@ import {
 	AnyBoardNode,
 	AnyContentElement,
 	AnyMediaElement,
+	AssignmentElement,
+	AssignmentSubmission,
 	BoardExternalReferenceType,
 	ColumnBoard,
 	isAnyMediaElement,
@@ -44,6 +46,17 @@ export class BoardNodeService {
 		parent.addChild(child, position);
 
 		await this.boardNodeRepo.save(parent);
+	}
+
+	public findAssignmentElementsByRoomIds(roomIds: EntityId[]): Promise<AssignmentElement[]> {
+		return this.boardNodeRepo.findAssignmentElementsByRoomIds(roomIds);
+	}
+
+	public findAssignmentSubmissionsByParentIds(
+		parentIds: EntityId[],
+		userId?: EntityId
+	): Promise<AssignmentSubmission[]> {
+		return this.boardNodeRepo.findAssignmentSubmissionsByParentIds(parentIds, userId);
 	}
 
 	public async updateTitle<T extends WithTitle<AnyBoardNode>>(node: T, title: T['title']): Promise<void> {
