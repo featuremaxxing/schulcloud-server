@@ -78,6 +78,25 @@ export interface H5pElementProps extends BoardNodeProps {
 	contentId?: string;
 }
 
+export interface AssignmentElementProps extends BoardNodeProps {
+	title: string;
+	text: string;
+	inputFormat: InputFormat;
+	dueDate?: Date;
+	graceMinutes?: number;
+	maxPoints?: number;
+}
+
+export interface AssignmentSubmissionProps extends BoardNodeProps {
+	userId: EntityId;
+	submittedAt?: Date;
+	isLate?: boolean;
+	points?: number;
+	feedbackComment?: string;
+	returnedAt?: Date;
+	gradedBy?: EntityId;
+}
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -99,6 +118,8 @@ export interface MediaLineProps extends BoardNodeProps {
 type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | MediaLineProps;
 
 export type AnyBoardNodeProps =
+	| AssignmentElementProps
+	| AssignmentSubmissionProps
 	| CardProps
 	| CollaborativeTextEditorElementProps
 	| ColumnBoardProps

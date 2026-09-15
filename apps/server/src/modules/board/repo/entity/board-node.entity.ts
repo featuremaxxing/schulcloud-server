@@ -111,4 +111,38 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// --------------------------------------------------------------------------
 	@Enum({ type: 'ContentElementType', nullable: true })
 	deletedElementType: ContentElementType | undefined;
+
+	// AssignmentElement
+	// --------------------------------------------------------------------------
+	@Property({ type: 'Date', nullable: true })
+	dueDate: Date | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	graceMinutes: number | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	maxPoints: number | undefined;
+
+	// AssignmentSubmission
+	// --------------------------------------------------------------------------
+	@Property({ type: ObjectIdType, nullable: true })
+	userId: EntityId | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	submittedAt: Date | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	isLate: boolean | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	points: number | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	feedbackComment: string | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	returnedAt: Date | undefined;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	gradedBy: EntityId | undefined;
 }

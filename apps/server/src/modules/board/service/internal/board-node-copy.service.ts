@@ -12,6 +12,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { EntityId } from '@shared/domain/types';
 import {
 	type AnyBoardNode,
+	AssignmentElement,
+	AssignmentSubmission,
 	BoardNodeType,
 	Card,
 	CollaborativeTextEditorElement,
@@ -105,6 +107,12 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.H5P_ELEMENT:
 				result = await this.copyH5pElement(boardNode as H5pElement, context);
+				break;
+			case BoardNodeType.ASSIGNMENT_ELEMENT:
+				result = await this.copyAssignmentElement(boardNode as AssignmentElement, context);
+				break;
+			case BoardNodeType.ASSIGNMENT_SUBMISSION:
+				result = this.copyAssignmentSubmission(boardNode as AssignmentSubmission);
 				break;
 			default:
 				/* istanbul ignore next */
@@ -478,6 +486,40 @@ export class BoardNodeCopyService {
 			type: CopyElementType.H5P_ELEMENT,
 			status: CopyStatusEnum.SUCCESS,
 			elements: [],
+		};
+
+		return result;
+	}
+
+	// Deliberately does NOT call copyChildrenOf: a copied assignment is copied without its
+	// submissions. Carrying student submissions (files, points, feedback) into a copied
+	// room/board would leak personal data of students who never joined the copy's target
+	// context - see copyAssignmentSubmission below for the matching NOT_DOING case.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	public copyAssignmentElement(original: AssignmentElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new AssignmentElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.ASSIGNMENT_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	// A submission never gets copied - see copyAssignmentElement. This case only exists so
+	// the type switch in copy() stays exhaustive; it must never be reached in practice
+	// because copyAssignmentElement skips its children.
+	public copyAssignmentSubmission(original: AssignmentSubmission): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.ASSIGNMENT_SUBMISSION,
+			status: CopyStatusEnum.NOT_DOING,
 		};
 
 		return result;

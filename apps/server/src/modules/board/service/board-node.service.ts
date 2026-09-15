@@ -82,6 +82,13 @@ export class BoardNodeService {
 		await this.contentElementUpdateService.updateContent(element, content);
 	}
 
+	// Generic escape hatch for callers (e.g. the assignment module) that mutate a node's
+	// props directly via its domain object setters instead of going through one of the
+	// typed update* methods above.
+	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
+		await this.boardNodeRepo.save(boardNode);
+	}
+
 	public async replace(oldNode: AnyBoardNode, newNode: AnyBoardNode): Promise<void> {
 		const parent: AnyBoardNode | undefined = await this.findParent(oldNode);
 

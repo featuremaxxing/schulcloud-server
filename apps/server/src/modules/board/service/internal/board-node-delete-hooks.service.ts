@@ -9,12 +9,14 @@ import { ContextExternalToolService } from '@modules/tool/context-external-tool/
 import { Injectable } from '@nestjs/common';
 import {
 	AnyBoardNode,
+	AssignmentSubmission,
 	CollaborativeTextEditorElement,
 	DrawingElement,
 	ExternalToolElement,
 	FileElement,
 	FileFolderElement,
 	H5pElement,
+	isAssignmentSubmission,
 	isCollaborativeTextEditorElement,
 	isDrawingElement,
 	isExternalToolElement,
@@ -60,6 +62,8 @@ export class BoardNodeDeleteHooksService {
 			await this.afterDeleteMediaExternalToolElement(boardNode);
 		} else if (isH5pElement(boardNode)) {
 			await this.afterDeleteH5pElement(boardNode);
+		} else if (isAssignmentSubmission(boardNode)) {
+			this.afterDeleteAssignmentSubmission(boardNode);
 		} else {
 			// noop
 		}
@@ -116,5 +120,11 @@ export class BoardNodeDeleteHooksService {
 		if (element.contentId) {
 			await this.h5pEditorProducer.deleteContent({ contentId: element.contentId });
 		}
+	}
+
+	public afterDeleteAssignmentSubmission(submission: AssignmentSubmission): void {
+		this.filesStorageClientAdapterService.deleteFilesOfParent(submission.id).catch((err: Error) => {
+			this.errorHandler.exec(err);
+		});
 	}
 }
