@@ -90,8 +90,8 @@ export class AssignmentController {
 	@Patch('submissions/:submissionId/submit')
 	public async submit(
 		@Param() urlParams: AssignmentSubmissionUrlParams,
-		@Body() bodyParams: SubmitSubmissionBodyParams,
-		@CurrentUser() currentUser: ICurrentUser
+		@CurrentUser() currentUser: ICurrentUser,
+		@Body() bodyParams?: SubmitSubmissionBodyParams
 	): Promise<AssignmentSubmissionResponse> {
 		const result = await this.assignmentUc.submit(currentUser.userId, urlParams.submissionId, bodyParams?.comment);
 
