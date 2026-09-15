@@ -111,9 +111,7 @@ export class AssignmentUc {
 			return { submission: existing };
 		}
 
-		if (!element.isSubmittable(new Date())) {
-			throw new ForbiddenException('This assignment is not accepting submissions anymore.');
-		}
+		this.assertSubmittable(element, new Date());
 
 		const submission = this.boardNodeFactory.buildAssignmentSubmission(userId);
 		await this.boardNodeService.addToParent(element, submission);
@@ -137,9 +135,7 @@ export class AssignmentUc {
 		}
 
 		const now = new Date();
-		if (!element.isSubmittable(now)) {
-			throw new ForbiddenException('The submission period for this assignment has ended.');
-		}
+		this.assertSubmittable(element, now);
 
 		const files = await this.filesStorageClientAdapterService.listFilesOfParent(submission.id);
 		if (files.length === 0) {
@@ -262,6 +258,16 @@ export class AssignmentUc {
 	private checkFeatureEnabled(): void {
 		if (!this.boardConfig.featureColumnBoardAssignmentEnabled) {
 			throw new ForbiddenException('Assignments are not enabled.');
+		}
+	}
+
+	private assertSubmittable(element: AssignmentElement, now: Date): void {
+		if (!element.isStartedAt(now)) {
+			throw new ForbiddenException('This assignment has not started yet.');
+		}
+
+		if (!element.isSubmittable(now)) {
+			throw new ForbiddenException('This assignment is not accepting submissions anymore.');
 		}
 	}
 }

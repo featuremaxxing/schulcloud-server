@@ -22,6 +22,7 @@ export class AssignmentElementResponseMapper implements BaseResponseMapper {
 				title: element.title,
 				text: element.text,
 				inputFormat: element.inputFormat,
+				startDate: element.startDate?.toISOString() ?? null,
 				dueDate: element.dueDate?.toISOString() ?? null,
 				graceMinutes: element.graceMinutes ?? null,
 				maxPoints: element.maxPoints ?? null,

@@ -115,6 +115,9 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// AssignmentElement
 	// --------------------------------------------------------------------------
 	@Property({ type: 'Date', nullable: true })
+	startDate: Date | undefined;
+
+	@Property({ type: 'Date', nullable: true })
 	dueDate: Date | undefined;
 
 	@Property({ type: 'integer', nullable: true })

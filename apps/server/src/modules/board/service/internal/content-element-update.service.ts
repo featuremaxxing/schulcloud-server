@@ -127,6 +127,7 @@ export class ContentElementUpdateService {
 		element.title = sanitizeRichText(content.title, InputFormat.PLAIN_TEXT);
 		element.text = sanitizeRichText(content.text, content.inputFormat);
 		element.inputFormat = content.inputFormat;
+		element.startDate = content.startDate ? new Date(content.startDate) : undefined;
 		element.dueDate = content.dueDate ? new Date(content.dueDate) : undefined;
 		element.graceMinutes = content.graceMinutes;
 		element.maxPoints = content.maxPoints;

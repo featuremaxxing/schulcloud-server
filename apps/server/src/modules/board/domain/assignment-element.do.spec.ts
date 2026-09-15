@@ -89,6 +89,45 @@ describe(AssignmentElement.name, () => {
 
 			expect(element.isSubmittable(new Date('2026-01-10T11:00:01.000Z'))).toBe(false);
 		});
+
+		it('should be false before the startDate, even without a dueDate', () => {
+			const element = assignmentElementFactory.build({
+				startDate: new Date('2026-01-10T10:00:00.000Z'),
+				dueDate: undefined,
+			});
+
+			expect(element.isSubmittable(new Date('2026-01-10T09:59:59.000Z'))).toBe(false);
+		});
+
+		it('should be true from the startDate onward', () => {
+			const element = assignmentElementFactory.build({
+				startDate: new Date('2026-01-10T10:00:00.000Z'),
+				dueDate: undefined,
+			});
+
+			expect(element.isSubmittable(new Date('2026-01-10T10:00:00.000Z'))).toBe(true);
+		});
+	});
+
+	describe('isStartedAt', () => {
+		it('should be true when there is no startDate at all', () => {
+			const element = assignmentElementFactory.build({ startDate: undefined });
+
+			expect(element.isStartedAt(new Date('2020-01-01T00:00:00.000Z'))).toBe(true);
+		});
+
+		it('should be false before startDate', () => {
+			const element = assignmentElementFactory.build({ startDate: new Date('2026-01-10T10:00:00.000Z') });
+
+			expect(element.isStartedAt(new Date('2026-01-10T09:59:59.000Z'))).toBe(false);
+		});
+
+		it('should be true exactly at and after startDate', () => {
+			const element = assignmentElementFactory.build({ startDate: new Date('2026-01-10T10:00:00.000Z') });
+
+			expect(element.isStartedAt(new Date('2026-01-10T10:00:00.000Z'))).toBe(true);
+			expect(element.isStartedAt(new Date('2026-01-10T10:00:01.000Z'))).toBe(true);
+		});
 	});
 
 	describe('isLateAt', () => {

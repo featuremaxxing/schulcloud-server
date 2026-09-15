@@ -82,6 +82,7 @@ export interface AssignmentElementProps extends BoardNodeProps {
 	title: string;
 	text: string;
 	inputFormat: InputFormat;
+	startDate?: Date;
 	dueDate?: Date;
 	graceMinutes?: number;
 	maxPoints?: number;

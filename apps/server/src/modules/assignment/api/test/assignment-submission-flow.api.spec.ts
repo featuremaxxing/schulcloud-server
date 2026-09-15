@@ -283,4 +283,17 @@ describe('assignment submission flow (api)', () => {
 			expect(response.status).toEqual(403);
 		});
 	});
+
+	describe('when the start date is in the future', () => {
+		it('should reject creating a new submission', async () => {
+			const { studentAccount, assignmentElementNode } = await setup({
+				startDate: new Date('2099-01-01T00:00:00.000Z'),
+			});
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+
+			const response = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+
+			expect(response.status).toEqual(403);
+		});
+	});
 });

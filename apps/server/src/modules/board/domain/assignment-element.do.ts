@@ -28,6 +28,14 @@ export class AssignmentElement extends BoardNode<AssignmentElementProps> {
 		this.props.inputFormat = value;
 	}
 
+	get startDate(): Date | undefined {
+		return this.props.startDate;
+	}
+
+	set startDate(value: Date | undefined) {
+		this.props.startDate = value;
+	}
+
 	get dueDate(): Date | undefined {
 		return this.props.dueDate;
 	}
@@ -64,7 +72,21 @@ export class AssignmentElement extends BoardNode<AssignmentElementProps> {
 		return new Date(this.dueDate.getTime() + graceMs);
 	}
 
+	// Whether the assignment has started yet, per its own startDate. Independent of
+	// isSubmittable, which additionally accounts for the deadline/grace period.
+	public isStartedAt(now: Date): boolean {
+		if (!this.startDate) {
+			return true;
+		}
+
+		return now.getTime() >= this.startDate.getTime();
+	}
+
 	public isSubmittable(now: Date): boolean {
+		if (!this.isStartedAt(now)) {
+			return false;
+		}
+
 		const { lateUntil } = this;
 
 		if (!lateUntil) {

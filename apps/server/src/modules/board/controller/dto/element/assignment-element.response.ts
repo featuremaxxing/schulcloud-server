@@ -14,6 +14,7 @@ export class AssignmentElementContent {
 		this.title = props.title;
 		this.text = props.text;
 		this.inputFormat = props.inputFormat;
+		this.startDate = props.startDate;
 		this.dueDate = props.dueDate;
 		this.graceMinutes = props.graceMinutes;
 		this.maxPoints = props.maxPoints;
@@ -28,6 +29,9 @@ export class AssignmentElementContent {
 
 	@ApiProperty({ enum: InputFormat, enumName: 'InputFormat' })
 	inputFormat: InputFormat;
+
+	@ApiPropertyOptional({ type: String, nullable: true })
+	startDate: string | null;
 
 	@ApiPropertyOptional({ type: String, nullable: true })
 	dueDate: string | null;

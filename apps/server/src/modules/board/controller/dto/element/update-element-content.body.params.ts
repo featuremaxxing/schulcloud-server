@@ -190,6 +190,11 @@ export class AssignmentContentBody {
 	@IsDateString()
 	@IsOptional()
 	@ApiPropertyOptional()
+	startDate?: string;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
 	dueDate?: string;
 
 	@IsInt()
