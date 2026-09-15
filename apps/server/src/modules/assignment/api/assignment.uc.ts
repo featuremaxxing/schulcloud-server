@@ -86,7 +86,14 @@ export class AssignmentUc {
 			}
 
 			const isTeacher = this.isRoomEditor(room, userId);
+			const now = new Date();
 			for (const element of elements) {
+				// assignments that have not started yet are invisible for students -
+				// consistent with how the board element hides itself before the startDate
+				if (!isTeacher && !element.isStartedAt(now)) {
+					continue;
+				}
+
 				entries.push({
 					element,
 					roomId: room.roomId,

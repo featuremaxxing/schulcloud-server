@@ -383,5 +383,24 @@ describe('assignment submission flow (api)', () => {
 			expect(response.status).toEqual(200);
 			expect((response.body as AssignmentListResponse).assignments).toHaveLength(0);
 		});
+
+		it('should hide assignments that have not started yet from students, but show them to teachers', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup({
+				startDate: new Date('2099-01-01T00:00:00.000Z'),
+			});
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const studentResponse = await studentClient.get('');
+			expect(studentResponse.status).toEqual(200);
+			expect((studentResponse.body as AssignmentListResponse).assignments).toHaveLength(0);
+
+			const teacherResponse = await teacherClient.get('');
+			const teacherItems = teacherResponse.body as AssignmentListResponse;
+			expect(teacherItems.assignments).toHaveLength(1);
+			expect(teacherItems.assignments[0].id).toEqual(assignmentElementNode.id);
+			expect(teacherItems.assignments[0].isStarted).toBe(false);
+		});
 	});
 });
