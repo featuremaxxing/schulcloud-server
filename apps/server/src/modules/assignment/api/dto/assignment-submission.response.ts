@@ -33,6 +33,7 @@ export class AssignmentSubmissionResponse {
 		this.points = props.points;
 		this.feedbackComment = props.feedbackComment;
 		this.returnedAt = props.returnedAt;
+		this.comment = props.comment;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -67,4 +68,7 @@ export class AssignmentSubmissionResponse {
 
 	@ApiPropertyOptional({ type: String, nullable: true })
 	returnedAt: string | null;
+
+	@ApiPropertyOptional({ type: String, nullable: true, description: "the submitting student's optional note" })
+	comment?: string | null;
 }

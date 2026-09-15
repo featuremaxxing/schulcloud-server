@@ -301,6 +301,102 @@ describe('assignment submission flow (api)', () => {
 		});
 	});
 
+	describe('the optional student comment', () => {
+		it('should store the comment on submit and show it to student and teacher', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildFileDto(submissionId)]);
+
+			const submitResponse = await studentClient.patch(`submissions/${submissionId}/submit`, {
+				comment: 'Das ist meine erste Version.',
+			});
+			expect(submitResponse.status).toEqual(200);
+			expect((submitResponse.body as AssignmentSubmissionResponse).comment).toEqual('Das ist meine erste Version.');
+
+			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			expect((ownList.body as AssignmentSubmissionListResponse).submissions[0].comment).toEqual(
+				'Das ist meine erste Version.'
+			);
+
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			expect(teacherEntry?.comment).toEqual('Das ist meine erste Version.');
+		});
+
+		it('should update the comment on a resubmit', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildFileDto(submissionId)]);
+
+			await studentClient.patch(`submissions/${submissionId}/submit`, { comment: 'v1' });
+			await studentClient.patch(`submissions/${submissionId}/submit`, { comment: 'v2 - überarbeitet' });
+
+			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			expect((ownList.body as AssignmentSubmissionListResponse).submissions[0].comment).toEqual(
+				'v2 - überarbeitet'
+			);
+		});
+
+		it('should accept submitting without a comment', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildFileDto(submissionId)]);
+
+			const response = await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			expect(response.status).toEqual(200);
+			expect((response.body as AssignmentSubmissionResponse).comment).toBeNull();
+		});
+	});
+
+	describe('when the file storage is broken', () => {
+		it('should still list submissions without the file instead of failing', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			filesStorageClientAdapterService.listFilesOfParent.mockRejectedValue(new Error('storage broken'));
+
+			const studentResponse = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			expect(studentResponse.status).toEqual(200);
+			const ownEntries = (studentResponse.body as AssignmentSubmissionListResponse).submissions;
+			expect(ownEntries).toHaveLength(1);
+			expect(ownEntries[0].file).toBeNull();
+
+			const teacherResponse = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			expect(teacherResponse.status).toEqual(200);
+		});
+
+		it('should reject submitting with a dedicated error when the file cannot be verified', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			filesStorageClientAdapterService.listFilesOfParent.mockRejectedValue(new Error('storage broken'));
+			const response = await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			expect(response.status).toEqual(500);
+			expect((response.body as { message: string }).message).toContain('could not be verified');
+		});
+	});
+
 	describe('the assignments list', () => {
 		it('should list the room assignment for the teacher with submission counts', async () => {
 			const { teacherAccount, studentAccount, assignmentElementNode, columnBoardNode, room } = await setup();

@@ -96,6 +96,7 @@ export interface AssignmentSubmissionProps extends BoardNodeProps {
 	feedbackComment?: string;
 	returnedAt?: Date;
 	gradedBy?: EntityId;
+	comment?: string;
 }
 
 export interface MediaBoardProps extends BoardNodeProps {

@@ -25,6 +25,7 @@ export class AssignmentSubmissionResponseMapper {
 			points: entry.submission?.points ?? null,
 			feedbackComment: entry.submission?.feedbackComment ?? null,
 			returnedAt: entry.submission?.returnedAt?.toISOString() ?? null,
+			comment: entry.submission?.comment ?? null,
 		});
 	}
 
@@ -44,6 +45,7 @@ export class AssignmentSubmissionResponseMapper {
 			points: isReturned ? (entry.submission?.points ?? null) : null,
 			feedbackComment: isReturned ? (entry.submission?.feedbackComment ?? null) : null,
 			returnedAt: entry.submission?.returnedAt?.toISOString() ?? null,
+			comment: entry.submission?.comment ?? null,
 		});
 	}
 

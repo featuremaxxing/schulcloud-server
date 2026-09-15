@@ -32,6 +32,16 @@ export class AssignmentSubmission extends BoardNode<AssignmentSubmissionProps> {
 		this.props.isLate = value;
 	}
 
+	// The submitting student's optional note. Sent along with a (re)submit; the
+	// teacher's answer is the separate feedbackComment.
+	get comment(): string | undefined {
+		return this.props.comment;
+	}
+
+	set comment(value: string | undefined) {
+		this.props.comment = value;
+	}
+
 	get points(): number | undefined {
 		return this.props.points;
 	}

@@ -5,3 +5,4 @@ export * from './assignment-submission-list.response';
 export * from './assignment-submission.response';
 export * from './assignment-submission.url.params';
 export * from './grade-submission.body.params';
+export * from './submit-submission.body.params';

@@ -1,4 +1,5 @@
 import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-amqp-client';
+import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
 	AssignmentSubmission,
@@ -18,12 +19,14 @@ import {
 	ForbiddenException,
 	Inject,
 	Injectable,
+	InternalServerErrorException,
 	NotFoundException,
 	UnprocessableEntityException,
 } from '@nestjs/common';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { Permission } from '@shared/domain/interface';
 import { EntityId } from '@shared/domain/types';
+import { AssignmentFilesStorageErrorLoggable } from './loggable/assignment-files-storage-error.loggable';
 
 export interface AssignmentSubmissionEntry {
 	userId: EntityId;
@@ -64,6 +67,7 @@ export class AssignmentUc {
 		private readonly boardNodeRule: BoardNodeRule,
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
 		private readonly roomMembershipService: RoomMembershipService,
+		private readonly logger: Logger,
 		@Inject(BOARD_PUBLIC_API_CONFIG_TOKEN) private readonly boardConfig: BoardPublicApiConfig
 	) {}
 
@@ -191,7 +195,11 @@ export class AssignmentUc {
 		return { submission };
 	}
 
-	public async submit(userId: EntityId, submissionId: EntityId): Promise<AssignmentSubmissionResult> {
+	public async submit(
+		userId: EntityId,
+		submissionId: EntityId,
+		comment?: string | undefined
+	): Promise<AssignmentSubmissionResult> {
 		this.checkFeatureEnabled();
 
 		const user = await this.authorizationService.getUserWithPermissions(userId);
@@ -209,13 +217,25 @@ export class AssignmentUc {
 		const now = new Date();
 		this.assertSubmittable(element, now);
 
-		const files = await this.filesStorageClientAdapterService.listFilesOfParent(submission.id);
+		let files: FileDto[];
+		try {
+			files = await this.filesStorageClientAdapterService.listFilesOfParent(submission.id);
+		} catch (error) {
+			// the file storage RPC fails as a plain 500 upstream - surface a deliberate,
+			// dedicated error instead of an unlabelled internal server error
+			this.logger.warning(new AssignmentFilesStorageErrorLoggable(submission.id, error as Error));
+			throw new InternalServerErrorException('The file of this submission could not be verified. Please try again later.');
+		}
+
 		if (files.length === 0) {
 			throw new ConflictException('Please upload a file before submitting.');
 		}
 
 		submission.submittedAt = now;
 		submission.isLate = element.isLateAt(now);
+		if (comment !== undefined) {
+			submission.comment = comment;
+		}
 		await this.boardNodeService.save(submission);
 
 		return { submission, file: pickLatestFile(files) };
@@ -322,9 +342,20 @@ export class AssignmentUc {
 	}
 
 	private async getLatestFile(parentId: EntityId): Promise<FileDto | undefined> {
-		const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
+		try {
+			const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
 
-		return pickLatestFile(files);
+			return pickLatestFile(files);
+		} catch (error) {
+			// A broken file record (e.g. from an interrupted upload) must not take down the
+			// whole submission view - the file storage RPC errors would surface as a 500
+			// here. Log it and present the submission without its file instead.
+			this.logger.warning(
+				new AssignmentFilesStorageErrorLoggable(parentId, error as Error)
+			);
+
+			return undefined;
+		}
 	}
 
 	private checkFeatureEnabled(): void {

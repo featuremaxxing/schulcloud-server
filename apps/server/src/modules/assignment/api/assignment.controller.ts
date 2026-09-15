@@ -23,6 +23,7 @@ import {
 	AssignmentSubmissionResponse,
 	AssignmentSubmissionUrlParams,
 	GradeSubmissionBodyParams,
+	SubmitSubmissionBodyParams,
 } from './dto';
 import { AssignmentListResponseMapper, AssignmentSubmissionResponseMapper } from './mapper';
 
@@ -89,9 +90,10 @@ export class AssignmentController {
 	@Patch('submissions/:submissionId/submit')
 	public async submit(
 		@Param() urlParams: AssignmentSubmissionUrlParams,
+		@Body() bodyParams: SubmitSubmissionBodyParams,
 		@CurrentUser() currentUser: ICurrentUser
 	): Promise<AssignmentSubmissionResponse> {
-		const result = await this.assignmentUc.submit(currentUser.userId, urlParams.submissionId);
+		const result = await this.assignmentUc.submit(currentUser.userId, urlParams.submissionId, bodyParams?.comment);
 
 		return AssignmentSubmissionResponseMapper.mapSingleForOwner(result);
 	}

@@ -137,6 +137,10 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: 'boolean', nullable: true })
 	isLate: boolean | undefined;
 
+	// the submitting student's optional note, sent along with a (re)submit
+	@Property({ type: 'string', nullable: true })
+	comment: string | undefined;
+
 	@Property({ type: 'integer', nullable: true })
 	points: number | undefined;
 
