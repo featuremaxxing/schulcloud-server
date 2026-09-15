@@ -12,7 +12,7 @@ import {
 	Post,
 	Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiValidationError } from '@shared/common/error';
 import { AssignmentUc } from './assignment.uc';
 import {
@@ -81,6 +81,7 @@ export class AssignmentController {
 	@ApiOperation({
 		summary: 'Submit (or resubmit) the caller’s own submission. Requires a file to already be uploaded.',
 	})
+	@ApiBody({ type: SubmitSubmissionBodyParams, required: false })
 	@ApiResponse({ status: 200, type: AssignmentSubmissionResponse })
 	@ApiResponse({ status: 400, type: ApiValidationError })
 	@ApiResponse({ status: 403, type: ForbiddenException })
