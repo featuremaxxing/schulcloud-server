@@ -48,6 +48,7 @@ export interface AssignmentListEntry {
 	element: AssignmentElement;
 	roomId: EntityId;
 	boardId: EntityId;
+	cardId: EntityId;
 	isTeacher: boolean;
 	// teacher: all submissions below the element; student: only the caller's own
 	submissions: AssignmentSubmission[];
@@ -89,7 +90,8 @@ export class AssignmentUc {
 				entries.push({
 					element,
 					roomId: room.roomId,
-					boardId: this.boardIdOf(element),
+					boardId: this.pathSegmentOf(element, 0),
+					cardId: this.pathSegmentOf(element, 2),
 					isTeacher,
 					submissions: [],
 				});
@@ -111,9 +113,10 @@ export class AssignmentUc {
 		return entries;
 	}
 
-	// The element's path starts with its board's id: ',<boardId>,<columnId>,...'
-	private boardIdOf(element: AssignmentElement): EntityId {
-		return element.path.split(',').filter(Boolean)[0];
+	// The element's path is ',<boardId>,<columnId>,<cardId>,<elementId>' - the board
+	// and card ids are what the client needs to deep-link to the element's card.
+	private pathSegmentOf(element: AssignmentElement, index: number): EntityId {
+		return element.path.split(',').filter(Boolean)[index];
 	}
 
 	public async listSubmissions(userId: EntityId, elementId: EntityId): Promise<AssignmentSubmissionsListResult> {

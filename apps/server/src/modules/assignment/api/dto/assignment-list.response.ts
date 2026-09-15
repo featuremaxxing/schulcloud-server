@@ -5,6 +5,7 @@ export interface AssignmentListItemResponseProps {
 	id: string;
 	roomId: string;
 	boardId: string;
+	cardId: string;
 	title: string;
 	startDate: string | null;
 	dueDate: string | null;
@@ -23,6 +24,7 @@ export class AssignmentListItemResponse {
 		this.id = props.id;
 		this.roomId = props.roomId;
 		this.boardId = props.boardId;
+		this.cardId = props.cardId;
 		this.title = props.title;
 		this.startDate = props.startDate;
 		this.dueDate = props.dueDate;
@@ -44,6 +46,9 @@ export class AssignmentListItemResponse {
 
 	@ApiProperty({ description: 'board containing the element, for deep-linking' })
 	boardId: string;
+
+	@ApiProperty({ description: 'card containing the element, for deep-linking' })
+	cardId: string;
 
 	@ApiProperty()
 	title: string;

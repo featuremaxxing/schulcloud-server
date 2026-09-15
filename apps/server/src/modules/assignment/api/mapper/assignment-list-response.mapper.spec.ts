@@ -25,6 +25,7 @@ describe(AssignmentListResponseMapper.name, () => {
 					element,
 					roomId: 'room-1',
 					boardId: 'board-1',
+					cardId: 'card-1',
 					isTeacher: true,
 					submissions: [submissionOfStudentA, submissionOfStudentB],
 				},
@@ -35,6 +36,7 @@ describe(AssignmentListResponseMapper.name, () => {
 			expect(item.id).toEqual(element.id);
 			expect(item.roomId).toEqual('room-1');
 			expect(item.boardId).toEqual('board-1');
+			expect(item.cardId).toEqual('card-1');
 			expect(item.title).toEqual('Homework 1');
 			expect(item.startDate).toEqual('2099-01-10T09:00:00.000Z');
 			expect(item.dueDate).toEqual('2099-01-20T10:00:00.000Z');
@@ -53,7 +55,7 @@ describe(AssignmentListResponseMapper.name, () => {
 			element.startDate = new Date('2020-01-10T09:00:00.000Z');
 
 			const result = AssignmentListResponseMapper.mapList([
-				{ element, roomId: 'room-1', boardId: 'board-1', isTeacher: false, submissions: [] },
+				{ element, roomId: 'room-1', boardId: 'board-1', cardId: 'card-1', isTeacher: false, submissions: [] },
 			]);
 
 			const item = result.assignments[0];
@@ -67,7 +69,14 @@ describe(AssignmentListResponseMapper.name, () => {
 			const submitted = assignmentSubmissionFactory.build({ userId: 'student-b', submittedAt: new Date() });
 
 			const result = AssignmentListResponseMapper.mapList([
-				{ element, roomId: 'room-1', boardId: 'board-1', isTeacher: true, submissions: [open, submitted] },
+				{
+					element,
+					roomId: 'room-1',
+					boardId: 'board-1',
+					cardId: 'card-1',
+					isTeacher: true,
+					submissions: [open, submitted],
+				},
 			]);
 
 			expect(result.assignments[0].submissionsTotal).toEqual(2);
@@ -83,7 +92,14 @@ describe(AssignmentListResponseMapper.name, () => {
 			});
 
 			const result = AssignmentListResponseMapper.mapList([
-				{ element, roomId: 'room-1', boardId: 'board-1', isTeacher: false, submissions: [ownSubmission] },
+				{
+					element,
+					roomId: 'room-1',
+					boardId: 'board-1',
+					cardId: 'card-1',
+					isTeacher: false,
+					submissions: [ownSubmission],
+				},
 			]);
 
 			const item = result.assignments[0];
@@ -97,7 +113,7 @@ describe(AssignmentListResponseMapper.name, () => {
 			const { element } = setup();
 
 			const result = AssignmentListResponseMapper.mapList([
-				{ element, roomId: 'room-1', boardId: 'board-1', isTeacher: false, submissions: [] },
+				{ element, roomId: 'room-1', boardId: 'board-1', cardId: 'card-1', isTeacher: false, submissions: [] },
 			]);
 
 			const item = result.assignments[0];
@@ -110,7 +126,7 @@ describe(AssignmentListResponseMapper.name, () => {
 			element.startDate = new Date('2099-01-01T00:00:00.000Z');
 
 			const result = AssignmentListResponseMapper.mapList([
-				{ element, roomId: 'room-1', boardId: 'board-1', isTeacher: false, submissions: [] },
+				{ element, roomId: 'room-1', boardId: 'board-1', cardId: 'card-1', isTeacher: false, submissions: [] },
 			]);
 
 			const item = result.assignments[0];

@@ -14,6 +14,7 @@ export class AssignmentListResponseMapper {
 			id: element.id,
 			roomId: entry.roomId,
 			boardId: entry.boardId,
+			cardId: entry.cardId,
 			title: element.title,
 			startDate: element.startDate?.toISOString() ?? null,
 			dueDate: element.dueDate?.toISOString() ?? null,
