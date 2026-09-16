@@ -34,6 +34,7 @@ export interface AssignmentSubmissionEntry {
 	lastName?: string;
 	submission?: AssignmentSubmission;
 	file?: FileDto;
+	feedbackAudio?: FileDto;
 }
 
 export interface AssignmentSubmissionsListResult {
@@ -45,6 +46,7 @@ export interface AssignmentSubmissionsListResult {
 export interface AssignmentSubmissionResult {
 	submission: AssignmentSubmission;
 	file?: FileDto;
+	feedbackAudio?: FileDto;
 }
 
 export interface AssignmentListEntry {
@@ -151,14 +153,15 @@ export class AssignmentUc {
 			const entries = await Promise.all(
 				students.map(async (student): Promise<AssignmentSubmissionEntry> => {
 					const submission = submissions.find((s) => s.userId === student.userId);
-					const file = submission ? await this.getLatestFile(submission.id) : undefined;
+					const files = submission ? await this.getSubmissionFiles(submission.id) : {};
 
 					return {
 						userId: student.userId,
 						firstName: student.firstName,
 						lastName: student.lastName,
 						submission,
-						file,
+						file: files.submissionFile,
+						feedbackAudio: files.feedbackAudio,
 					};
 				})
 			);
@@ -167,9 +170,15 @@ export class AssignmentUc {
 		}
 
 		const ownSubmission = submissions.find((s) => s.userId === userId);
-		const ownFile = ownSubmission ? await this.getLatestFile(ownSubmission.id) : undefined;
+		const ownFiles = ownSubmission ? await this.getSubmissionFiles(ownSubmission.id) : {};
 
-		return { element, isTeacher: false, entries: [{ userId, submission: ownSubmission, file: ownFile }] };
+		return {
+			element,
+			isTeacher: false,
+			entries: [
+				{ userId, submission: ownSubmission, file: ownFiles.submissionFile, feedbackAudio: ownFiles.feedbackAudio },
+			],
+		};
 	}
 
 	public async createOwnSubmission(userId: EntityId, elementId: EntityId): Promise<AssignmentSubmissionResult> {
@@ -225,7 +234,7 @@ export class AssignmentUc {
 			);
 		}
 
-		if (files.length === 0) {
+		if (pickLatestSubmissionFile(files) === undefined) {
 			throw new ConflictException('Please upload a file before submitting.');
 		}
 
@@ -236,7 +245,7 @@ export class AssignmentUc {
 		}
 		await this.boardNodeService.save(submission);
 
-		return { submission, file: pickLatestFile(files) };
+		return { submission, file: pickLatestSubmissionFile(files), feedbackAudio: pickLatestFeedbackAudio(files) };
 	}
 
 	public async deleteOwnSubmission(userId: EntityId, submissionId: EntityId): Promise<void> {
@@ -273,9 +282,9 @@ export class AssignmentUc {
 		submission.gradedBy = userId;
 		await this.boardNodeService.save(submission);
 
-		const file = await this.getLatestFile(submission.id);
+		const files = await this.getSubmissionFiles(submission.id);
 
-		return { submission, file };
+		return { submission, file: files.submissionFile, feedbackAudio: files.feedbackAudio };
 	}
 
 	public async returnSubmission(
@@ -299,9 +308,9 @@ export class AssignmentUc {
 		submission.returnedAt = new Date();
 		await this.boardNodeService.save(submission);
 
-		const file = await this.getLatestFile(submission.id);
+		const files = await this.getSubmissionFiles(submission.id);
 
-		return { submission, file };
+		return { submission, file: files.submissionFile, feedbackAudio: files.feedbackAudio };
 	}
 
 	private async loadOwnedSubmissionForGrading(
@@ -339,18 +348,21 @@ export class AssignmentUc {
 		}
 	}
 
-	private async getLatestFile(parentId: EntityId): Promise<FileDto | undefined> {
+	private async getSubmissionFiles(parentId: EntityId): Promise<{ submissionFile?: FileDto; feedbackAudio?: FileDto }> {
 		try {
 			const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
 
-			return pickLatestFile(files);
+			return {
+				submissionFile: pickLatestSubmissionFile(files),
+				feedbackAudio: pickLatestFeedbackAudio(files),
+			};
 		} catch (error) {
 			// A broken file record (e.g. from an interrupted upload) must not take down the
 			// whole submission view - the file storage RPC errors would surface as a 500
 			// here. Log it and present the submission without its file instead.
 			this.logger.warning(new AssignmentFilesStorageErrorLoggable(parentId, error as Error));
 
-			return undefined;
+			return {};
 		}
 	}
 
@@ -386,8 +398,15 @@ const isPlainStudent = (student: { userId: EntityId; roles: BoardRoles[] }): boo
 	return isReader && !isStaff;
 };
 
-// V1 keeps at most one file per submission; if more than one somehow exists (e.g. a race
-// between two uploads), the most recently created one wins.
+// A submission parent holds two kinds of files: the student's submission document and
+// (since the feedback round) the teacher's audio recording. The file storage RPC does not
+// expose mime types, so feedback audio is identified by the name prefix the client's
+// recorder sets. If more than one file of a kind exists (e.g. a race between two
+// uploads), the most recently created one wins.
+const FEEDBACK_AUDIO_PREFIX = 'feedback-audio-';
+
+const isFeedbackAudio = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_AUDIO_PREFIX);
+
 const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 	if (files.length === 0) {
 		return undefined;
@@ -397,3 +416,9 @@ const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 
 	return sorted[0];
 };
+
+const pickLatestSubmissionFile = (files: FileDto[]): FileDto | undefined =>
+	pickLatestFile(files.filter((file) => !isFeedbackAudio(file)));
+
+const pickLatestFeedbackAudio = (files: FileDto[]): FileDto | undefined =>
+	pickLatestFile(files.filter(isFeedbackAudio));

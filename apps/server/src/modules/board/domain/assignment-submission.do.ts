@@ -91,11 +91,17 @@ export class AssignmentSubmission extends BoardNode<AssignmentSubmissionProps> {
 		return AssignmentStatus.OPEN;
 	}
 
-	// V1: a submission holds exactly one file, attached directly to this node
-	// (FileRecordParentType.BoardNode). No child board nodes yet. V2 (in-platform
-	// correction: annotated PDF, audio feedback) is expected to add a feedback
-	// child node here, so this stays a deliberate, revisitable false rather than
-	// removing canHaveChild entirely.
+	// V1: a submission holds the student's submission file plus (since the feedback
+	// round) optional teacher audio, both attached directly to this node as file
+	// records (FileRecordParentType.BoardNode, distinguished by mime type) - no child
+	// board nodes. A dedicated feedback child node remains the designated shape if
+	// V2 adds more feedback artifacts (e.g. annotated PDFs).
+	//
+	// TODO(Löschkonzept): submissions are personal data and must be deleted
+	// automatically 4 weeks after the end of the school year in which the parent
+	// assignment was created (SchoolYear entity + BoardNodeService.delete cascade,
+	// which removes attached files via the delete hook). Flagged 2026-09-15, see
+	// the deletion-concept work.
 	public canHaveChild(): boolean {
 		return false;
 	}

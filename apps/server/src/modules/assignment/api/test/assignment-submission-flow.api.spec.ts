@@ -360,6 +360,66 @@ describe('assignment submission flow (api)', () => {
 		});
 	});
 
+	describe('the teacher audio feedback', () => {
+		const buildAudioFileDto = (parentId: string, name = 'feedback-audio-1.webm'): FileDto =>
+			new FileDto({
+				id: `audio-${name}`,
+				name,
+				parentType: 'boardnodes' as FileDto['parentType'],
+				parentId,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
+
+		it('should keep the submission file and the audio apart, for teacher and student', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([
+				buildFileDto(submissionId),
+				buildAudioFileDto(submissionId),
+			]);
+			await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			// teacher sees both
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			expect(teacherEntry?.file?.name).toEqual('submission.pdf');
+			expect(teacherEntry?.feedbackAudio?.name).toEqual('feedback-audio-1.webm');
+
+			// the student does not get the audio before it has been returned
+			const ownListBefore = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownBefore = (ownListBefore.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownBefore.file?.name).toEqual('submission.pdf');
+			expect(ownBefore.feedbackAudio).toBeNull();
+
+			// after the return, the audio is revealed
+			await teacherClient.post(`submissions/${submissionId}/return`, { points: 5 });
+			const ownListAfter = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownAfter = (ownListAfter.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownAfter.feedbackAudio?.name).toEqual('feedback-audio-1.webm');
+		});
+
+		it('should reject submitting when only an audio file (no submission document) exists', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildAudioFileDto(submissionId)]);
+			const response = await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			expect(response.status).toEqual(409);
+		});
+	});
+
 	describe('when the file storage is broken', () => {
 		it('should still list submissions without the file instead of failing', async () => {
 			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();

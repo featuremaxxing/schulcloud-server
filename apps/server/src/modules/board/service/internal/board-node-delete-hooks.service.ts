@@ -122,6 +122,13 @@ export class BoardNodeDeleteHooksService {
 		}
 	}
 
+	// Removes the student's submission file and (if present) the teacher's feedback
+	// audio - everything attached to this node via FileRecordParentType.BoardNode.
+	//
+	// TODO(Löschkonzept): submissions are personal data and must additionally be
+	// deleted automatically 4 weeks after the end of the school year in which the
+	// parent assignment was created (SchoolYear entity + this delete cascade are
+	// the building blocks). Flagged 2026-09-15, see the deletion-concept work.
 	public afterDeleteAssignmentSubmission(submission: AssignmentSubmission): void {
 		this.filesStorageClientAdapterService.deleteFilesOfParent(submission.id).catch((err: Error) => {
 			this.errorHandler.exec(err);

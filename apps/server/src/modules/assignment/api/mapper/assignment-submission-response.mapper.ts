@@ -26,6 +26,7 @@ export class AssignmentSubmissionResponseMapper {
 			feedbackComment: entry.submission?.feedbackComment ?? null,
 			returnedAt: entry.submission?.returnedAt?.toISOString() ?? null,
 			comment: entry.submission?.comment ?? null,
+			feedbackAudio: mapFile(entry.feedbackAudio),
 		});
 	}
 
@@ -46,18 +47,30 @@ export class AssignmentSubmissionResponseMapper {
 			feedbackComment: isReturned ? (entry.submission?.feedbackComment ?? null) : null,
 			returnedAt: entry.submission?.returnedAt?.toISOString() ?? null,
 			comment: entry.submission?.comment ?? null,
+			// the audio feedback follows the same release rule as points/comment
+			feedbackAudio: isReturned ? mapFile(entry.feedbackAudio) : null,
 		});
 	}
 
 	public static mapSingleForOwner(result: AssignmentSubmissionResult): AssignmentSubmissionResponse {
-		return this.mapForOwner({ userId: result.submission.userId, submission: result.submission, file: result.file });
+		return this.mapForOwner({
+			userId: result.submission.userId,
+			submission: result.submission,
+			file: result.file,
+			feedbackAudio: result.feedbackAudio,
+		});
 	}
 
 	// Names are omitted here: the teacher already knows whom they are grading from the list
 	// view that led them here, so a name lookup for this single-item response is not worth
 	// the extra query.
 	public static mapSingleForTeacher(result: AssignmentSubmissionResult): AssignmentSubmissionResponse {
-		return this.mapForTeacher({ userId: result.submission.userId, submission: result.submission, file: result.file });
+		return this.mapForTeacher({
+			userId: result.submission.userId,
+			submission: result.submission,
+			file: result.file,
+			feedbackAudio: result.feedbackAudio,
+		});
 	}
 
 	public static mapList(result: AssignmentSubmissionsListResult): AssignmentSubmissionListResponse {

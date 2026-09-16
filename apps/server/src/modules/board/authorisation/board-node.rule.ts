@@ -330,9 +330,11 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 	// The submission's file is the one place a plain reader (student) needs write access to
 	// a node they do not own the containing board of - mirrors hasPermissionForDrawingElementFile.
-	// Unlike that one, this is NOT symmetric: only the owning student may write, and never the
-	// teacher (V1 has no teacher-authored file at the same parent, see AssignmentSubmission.canHaveChild),
-	// and only while the assignment is still accepting submissions.
+	// The owning student may write their file, and only while the assignment is still
+	// accepting submissions. Since the teacher's audio feedback was introduced, board
+	// editors may additionally ADD files (the feedback recording) to the same parent -
+	// but they must not remove or replace the student's file via the file storage REST
+	// paths; removing happens only through the student's withdrawal or the node delete hook.
 	private hasPermissionForAssignmentSubmissionFile(
 		userWithBoardRoles: UserWithBoardRoles,
 		authorizable: BoardNodeAuthorizable,
@@ -343,6 +345,19 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 		if (context.action === Action.read) {
 			return isOwner || this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles);
+		}
+
+		// Feedback audio upload: an editor-only create, deliberately unconditional on
+		// returnedAt/submittable - a teacher may also attach audio after returning.
+		// Falls through to the owner logic otherwise (student uploads, withdrawals).
+		const isFileCreate = context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE);
+		const isFileRemove = context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
+		if (
+			isFileCreate &&
+			!isFileRemove &&
+			(this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles))
+		) {
+			return true;
 		}
 
 		if (!isOwner) {

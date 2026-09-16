@@ -846,7 +846,7 @@ describe(BoardNodeRule.name, () => {
 					expect(res).toBe(true);
 				});
 
-				it('should NOT allow the teacher (board editor) to upload into a student’s submission', () => {
+				it('should allow the teacher (board editor) to add a feedback file (audio) to a student’s submission', () => {
 					const owner = userFactory.asStudent().buildWithId();
 					const teacher = userFactory.asTeacher().buildWithId();
 					const submission = assignmentSubmissionFactory.build({ userId: owner.id, returnedAt: undefined });
@@ -866,6 +866,60 @@ describe(BoardNodeRule.name, () => {
 					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
 
 					const res = boardNodeRule.hasPermission(teacher, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow the teacher (board editor) to remove files from a student’s submission', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const teacher = userFactory.asTeacher().buildWithId();
+					const submission = assignmentSubmissionFactory.build({ userId: owner.id, returnedAt: undefined });
+					const element = assignmentElementFactory.build({ children: [submission], dueDate: undefined });
+					const columnBoard = columnBoardFactory.build();
+					const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+						],
+						boardNode: submission,
+						parentNode: element,
+						rootNode: columnBoard,
+						boardConfiguration: { isLocked: false },
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(teacher, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_REMOVE],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should still NOT allow a plain student (non-owner) to upload into another student’s submission', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const otherStudent = userFactory.asStudent().buildWithId();
+					const submission = assignmentSubmissionFactory.build({ userId: owner.id, returnedAt: undefined });
+					const element = assignmentElementFactory.build({ children: [submission], dueDate: undefined });
+					const columnBoard = columnBoardFactory.build();
+					const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: otherStudent.id, roles: [BoardRoles.READER] },
+						],
+						boardNode: submission,
+						parentNode: element,
+						rootNode: columnBoard,
+						boardConfiguration: { isLocked: false },
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(otherStudent, boardNodeAuthorizable, {
 						action: Action.write,
 						requiredPermissions: [Permission.FILESTORAGE_CREATE],
 					});
