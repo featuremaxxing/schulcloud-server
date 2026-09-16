@@ -48,8 +48,11 @@ export class BoardNodeService {
 		await this.boardNodeRepo.save(parent);
 	}
 
-	public findAssignmentElementsByRoomIds(roomIds: EntityId[]): Promise<AssignmentElement[]> {
-		return this.boardNodeRepo.findAssignmentElementsByRoomIds(roomIds);
+	public findAssignmentElementsByBoardIds(
+		boardIds: EntityId[],
+		options: { onlyVisible?: boolean } = {}
+	): Promise<AssignmentElement[]> {
+		return this.boardNodeRepo.findAssignmentElementsByBoardIds(boardIds, options);
 	}
 
 	public findAssignmentSubmissionsByParentIds(

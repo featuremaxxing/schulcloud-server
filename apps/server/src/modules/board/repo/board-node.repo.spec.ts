@@ -176,14 +176,11 @@ describe('BoardNodeRepo', () => {
 	// 	});
 	// });
 
-	describe('findAssignmentElementsByRoomIds', () => {
-		const ROOM_ID = '000000000000000000000001';
-		const OTHER_ROOM_ID = '000000000000000000000002';
-
-		const setupBoard = async (roomId: string) => {
+	describe('findAssignmentElementsByBoardIds', () => {
+		const setupBoard = async () => {
 			const element = assignmentElementFactory.build();
 			const board = columnBoardFactory.build({
-				context: { type: BoardExternalReferenceType.Room, id: roomId },
+				context: { type: BoardExternalReferenceType.Room, id: '000000000000000000000001' },
 				children: [columnFactory.build({ children: [cardFactory.build({ children: [element] })] })],
 			});
 			await repo.save(board);
@@ -192,27 +189,28 @@ describe('BoardNodeRepo', () => {
 			return { board, element };
 		};
 
-		it('should find assignment elements of the given rooms', async () => {
-			const { element } = await setupBoard(ROOM_ID);
+		it('should find assignment elements of the given boards', async () => {
+			const { board, element } = await setupBoard();
 
-			const result = await repo.findAssignmentElementsByRoomIds([ROOM_ID]);
+			const result = await repo.findAssignmentElementsByBoardIds([board.id]);
 
 			expect(result).toHaveLength(1);
 			expect(result[0].id).toEqual(element.id);
 		});
 
-		it('should return nothing for rooms without boards', async () => {
-			await setupBoard(ROOM_ID);
+		it('should return nothing for boards without assignments', async () => {
+			const { board } = await setupBoard();
+			const otherBoard = columnBoardFactory.build();
 
-			const result = await repo.findAssignmentElementsByRoomIds([OTHER_ROOM_ID]);
+			const result = await repo.findAssignmentElementsByBoardIds([otherBoard.id]);
 
 			expect(result).toHaveLength(0);
 		});
 
-		it('should return nothing for an empty room list', async () => {
-			await setupBoard(ROOM_ID);
+		it('should return nothing for an empty board list', async () => {
+			const { board } = await setupBoard();
 
-			const result = await repo.findAssignmentElementsByRoomIds([]);
+			const result = await repo.findAssignmentElementsByBoardIds([]);
 
 			expect(result).toHaveLength(0);
 		});

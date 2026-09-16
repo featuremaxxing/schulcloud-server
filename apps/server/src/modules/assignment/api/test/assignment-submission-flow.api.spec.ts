@@ -13,7 +13,10 @@ import {
 } from '@modules/board/testing';
 import { GroupEntityTypes } from '@modules/group/entity';
 import { groupEntityFactory } from '@modules/group/testing';
+import { RoomContentType } from '@modules/room';
+import { roomContentEntityFactory } from '@modules/room/testing';
 import { roomMembershipEntityFactory } from '@modules/room-membership/testing';
+import { BoardNodeEntity } from '@modules/board/repo/entity/board-node.entity';
 import { roomEntityFactory } from '@modules/room/testing';
 import { RoomRolesTestFactory } from '@modules/room/testing/room-roles.test.factory';
 import { schoolEntityFactory } from '@modules/school/testing';
@@ -134,7 +137,14 @@ describe('assignment submission flow (api)', () => {
 			.withParent(cardNode)
 			.build({ dueDate: undefined, graceMinutes: undefined, maxPoints: 10, ...elementOverrides });
 
-		await em.persist([columnBoardNode, columnNode, cardNode, assignmentElementNode]).flush();
+		// the room content list links the board to the room - without it the board is
+		// unreachable through the room and the assignment list must not surface it
+		const roomContent = roomContentEntityFactory.build({
+			roomId: room.id,
+			items: [{ id: columnBoardNode.id, type: RoomContentType.BOARD }],
+		});
+
+		await em.persist([columnBoardNode, columnNode, cardNode, assignmentElementNode, roomContent]).flush();
 		em.clear();
 
 		return {
@@ -555,6 +565,48 @@ describe('assignment submission flow (api)', () => {
 			expect(teacherItems.assignments).toHaveLength(1);
 			expect(teacherItems.assignments[0].id).toEqual(assignmentElementNode.id);
 			expect(teacherItems.assignments[0].isStarted).toBe(false);
+		});
+
+		it('should not list assignments on draft boards for students, but list them for teachers', async () => {
+			// draft boards (isVisible=false) reject findBoard for non-editors - a student
+			// clicking such a list entry would land on the board 404 page
+			const { teacherAccount, studentAccount, columnBoardNode } = await setup();
+			const boardEntity = await em.findOne(BoardNodeEntity, { id: columnBoardNode.id });
+			boardEntity!.isVisible = false;
+			await em.persistAndFlush(boardEntity!);
+			em.clear();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const studentResponse = await studentClient.get('');
+			expect((studentResponse.body as AssignmentListResponse).assignments).toHaveLength(0);
+
+			const teacherResponse = await teacherClient.get('');
+			expect((teacherResponse.body as AssignmentListResponse).assignments).toHaveLength(1);
+		});
+
+		it('should not list assignments that live on a board the room no longer references', async () => {
+			// a copied/replaced room can leave old boards behind that keep the room's context -
+			// their assignments are unreachable through the room and must not surface here
+			const { teacherAccount, columnBoardNode, room } = await setup();
+			const orphanBoard = columnBoardEntityFactory.build({
+				context: { id: room.id, type: BoardExternalReferenceType.Room },
+			});
+			const orphanColumn = columnEntityFactory.withParent(orphanBoard).build();
+			const orphanCard = cardEntityFactory.withParent(orphanColumn).build();
+			const orphanElement = assignmentElementEntityFactory.withParent(orphanCard).build();
+			await em.persist([orphanBoard, orphanColumn, orphanCard, orphanElement]).flush();
+			em.clear();
+
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+			const response = await teacherClient.get('');
+
+			expect(response.status).toEqual(200);
+			const items = (response.body as AssignmentListResponse).assignments;
+			expect(items).toHaveLength(1);
+			expect(items[0].id).not.toEqual(orphanElement.id);
+			expect(items[0].boardId).toEqual(columnBoardNode.id);
 		});
 	});
 });

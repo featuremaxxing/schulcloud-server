@@ -6,6 +6,7 @@
  *********************************************************** */
 
 export { Room, RoomColor, RoomFeatures, RoomService } from './domain';
+export { RoomContentService, RoomContentType } from './domain';
 export { RoomArrangementEntity, RoomEntity } from './repo/entity';
 export { ROOM_PUBLIC_API_CONFIG_TOKEN, RoomPublicApiConfig } from './room.config';
 export { RoomModule } from './room.module';

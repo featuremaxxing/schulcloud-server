@@ -14,6 +14,7 @@ import {
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
 import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
+import { RoomContentService } from '@modules/room';
 import {
 	ConflictException,
 	ForbiddenException,
@@ -69,6 +70,7 @@ export class AssignmentUc {
 		private readonly boardNodeRule: BoardNodeRule,
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
 		private readonly roomMembershipService: RoomMembershipService,
+		private readonly roomContentService: RoomContentService,
 		private readonly logger: Logger,
 		@Inject(BOARD_PUBLIC_API_CONFIG_TOKEN) private readonly boardConfig: BoardPublicApiConfig
 	) {}
@@ -86,12 +88,23 @@ export class AssignmentUc {
 
 		const entries: AssignmentListEntry[] = [];
 		for (const room of relevantRooms) {
-			const elements = await this.boardNodeService.findAssignmentElementsByRoomIds([room.roomId]);
-			if (elements.length === 0) {
+			// only boards the room actually references (its "Lerninhalt") - the database can
+			// contain older, unlinked boards whose assignments must not surface here
+			const boardIds = await this.roomContentService.getBoardOrder(room.roomId);
+			if (boardIds.length === 0) {
 				continue;
 			}
 
 			const isTeacher = this.isRoomEditor(room, userId);
+			const elements = await this.boardNodeService.findAssignmentElementsByBoardIds(boardIds, {
+				// draft boards (isVisible=false) are unreachable for students - offering a
+				// deep link would 404 the board page for them
+				onlyVisible: !isTeacher,
+			});
+			if (elements.length === 0) {
+				continue;
+			}
+
 			const now = new Date();
 			for (const element of elements) {
 				// assignments that have not started yet are invisible for students -

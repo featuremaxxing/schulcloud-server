@@ -8,6 +8,7 @@ import { LoggerModule } from '@infra/logger';
 import { RABBITMQ_CONFIG_TOKEN, RabbitMQConfig } from '@infra/rabbitmq';
 import { AuthorizationModule } from '@modules/authorization';
 import { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardModule, BoardPublicApiConfig } from '@modules/board';
+import { RoomContentService, RoomModule } from '@modules/room';
 import { RoomMembershipModule } from '@modules/room-membership';
 import { Module } from '@nestjs/common';
 import { AssignmentController, AssignmentUc } from './api';
@@ -17,6 +18,7 @@ import { AssignmentController, AssignmentUc } from './api';
 		ConfigurationModule.register(BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig),
 		AuthorizationModule,
 		BoardModule,
+		RoomModule,
 		RoomMembershipModule,
 		LoggerModule,
 		FilesStorageAMQPClientModule.register({
