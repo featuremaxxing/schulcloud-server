@@ -199,7 +199,7 @@ describe('BoardNodeRepo', () => {
 		});
 
 		it('should return nothing for boards without assignments', async () => {
-			const { board } = await setupBoard();
+			await setupBoard();
 			const otherBoard = columnBoardFactory.build();
 
 			const result = await repo.findAssignmentElementsByBoardIds([otherBoard.id]);
@@ -208,7 +208,7 @@ describe('BoardNodeRepo', () => {
 		});
 
 		it('should return nothing for an empty board list', async () => {
-			const { board } = await setupBoard();
+			await setupBoard();
 
 			const result = await repo.findAssignmentElementsByBoardIds([]);
 

@@ -7,7 +7,6 @@ import {
 	AssignmentElement,
 	AssignmentSubmission,
 	BoardExternalReference,
-	BoardExternalReferenceType,
 	BoardNodeType,
 	getBoardNodeType,
 } from '../domain';
