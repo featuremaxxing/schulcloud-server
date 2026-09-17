@@ -1,6 +1,7 @@
 import { CourseService } from '@modules/course';
 import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
+import { UserService } from '@modules/user';
 import { Injectable } from '@nestjs/common';
 import { BoardExternalReference, BoardExternalReferenceType } from '../../../domain';
 import { CourseBoardContext, CourseBoardContextData, CourseUserInfo } from './course-board-context';
@@ -20,7 +21,8 @@ export class BoardContextResolverService {
 	constructor(
 		private readonly courseService: CourseService,
 		private readonly roomService: RoomService,
-		private readonly roomMembershipService: RoomMembershipService
+		private readonly roomMembershipService: RoomMembershipService,
+		private readonly userService: UserService
 	) {}
 
 	/**
@@ -50,7 +52,13 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
-		return new RoomBoardContext(room, roomAuthorizable);
+		// room memberships carry no user names - load them for the board authorizable
+		// consumers (e.g. the assignment teacher overview shows student names)
+		const memberIds = roomAuthorizable.members.map((member) => member.userId);
+		const users = memberIds.length > 0 ? await this.userService.getUserEntitiesWithRoles(memberIds) : [];
+		const userNames = new Map(users.map((user) => [user.id, { firstName: user.firstName, lastName: user.lastName }]));
+
+		return new RoomBoardContext(room, roomAuthorizable, userNames);
 	}
 
 	private async resolveCourseContext(courseId: string): Promise<CourseBoardContext> {
