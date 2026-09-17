@@ -1,4 +1,5 @@
 import { AssignmentStatus } from '@modules/board';
+import { type FileDto } from '@infra/files-storage-amqp-client';
 import {
 	AssignmentSubmissionListResponse,
 	AssignmentSubmissionResponse,
@@ -27,6 +28,7 @@ export class AssignmentSubmissionResponseMapper {
 			returnedAt: entry.submission?.returnedAt?.toISOString() ?? null,
 			comment: entry.submission?.comment ?? null,
 			feedbackAudio: mapFile(entry.feedbackAudio),
+			feedbackFiles: mapFiles(entry.feedbackFiles),
 		});
 	}
 
@@ -49,6 +51,8 @@ export class AssignmentSubmissionResponseMapper {
 			comment: entry.submission?.comment ?? null,
 			// the audio feedback follows the same release rule as points/comment
 			feedbackAudio: isReturned ? mapFile(entry.feedbackAudio) : null,
+			// corrections (annotated PDFs/images) are released with the return as well
+			feedbackFiles: isReturned ? mapFiles(entry.feedbackFiles) : null,
 		});
 	}
 
@@ -58,6 +62,7 @@ export class AssignmentSubmissionResponseMapper {
 			submission: result.submission,
 			file: result.file,
 			feedbackAudio: result.feedbackAudio,
+			feedbackFiles: result.feedbackFiles,
 		});
 	}
 
@@ -70,6 +75,7 @@ export class AssignmentSubmissionResponseMapper {
 			submission: result.submission,
 			file: result.file,
 			feedbackAudio: result.feedbackAudio,
+			feedbackFiles: result.feedbackFiles,
 		});
 	}
 
@@ -94,4 +100,12 @@ const mapFile = (file: AssignmentSubmissionEntry['file']): AssignmentSubmissionF
 	}
 
 	return new AssignmentSubmissionFileResponse({ fileRecordId: file.id, name: file.name });
+};
+
+const mapFiles = (files?: FileDto[]): AssignmentSubmissionFileResponse[] | null => {
+	if (!files || files.length === 0) {
+		return null;
+	}
+
+	return files.map((file) => new AssignmentSubmissionFileResponse({ fileRecordId: file.id, name: file.name }));
 };

@@ -35,6 +35,7 @@ export class AssignmentSubmissionResponse {
 		this.returnedAt = props.returnedAt;
 		this.comment = props.comment;
 		this.feedbackAudio = props.feedbackAudio;
+		this.feedbackFiles = props.feedbackFiles;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -79,4 +80,12 @@ export class AssignmentSubmissionResponse {
 		description: 'the teacher’s audio feedback; withheld from students until the submission has been returned',
 	})
 	feedbackAudio?: AssignmentSubmissionFileResponse | null;
+
+	@ApiPropertyOptional({
+		type: [AssignmentSubmissionFileResponse],
+		nullable: true,
+		description:
+			'the teacher’s feedback files (annotated corrections), newest first; withheld from students until the submission has been returned',
+	})
+	feedbackFiles?: AssignmentSubmissionFileResponse[] | null;
 }

@@ -36,6 +36,9 @@ export interface AssignmentSubmissionEntry {
 	submission?: AssignmentSubmission;
 	file?: FileDto;
 	feedbackAudio?: FileDto;
+	// all teacher feedback files (annotated corrections etc.), newest first - the
+	// mapper withholds them from students until the submission has been returned
+	feedbackFiles?: FileDto[];
 }
 
 export interface AssignmentSubmissionsListResult {
@@ -48,6 +51,7 @@ export interface AssignmentSubmissionResult {
 	submission: AssignmentSubmission;
 	file?: FileDto;
 	feedbackAudio?: FileDto;
+	feedbackFiles?: FileDto[];
 }
 
 export interface AssignmentListEntry {
@@ -175,6 +179,7 @@ export class AssignmentUc {
 						submission,
 						file: files.submissionFile,
 						feedbackAudio: files.feedbackAudio,
+						feedbackFiles: files.feedbackFiles,
 					};
 				})
 			);
@@ -189,7 +194,13 @@ export class AssignmentUc {
 			element,
 			isTeacher: false,
 			entries: [
-				{ userId, submission: ownSubmission, file: ownFiles.submissionFile, feedbackAudio: ownFiles.feedbackAudio },
+				{
+					userId,
+					submission: ownSubmission,
+					file: ownFiles.submissionFile,
+					feedbackAudio: ownFiles.feedbackAudio,
+					feedbackFiles: ownFiles.feedbackFiles,
+				},
 			],
 		};
 	}
@@ -258,7 +269,12 @@ export class AssignmentUc {
 		}
 		await this.boardNodeService.save(submission);
 
-		return { submission, file: pickLatestSubmissionFile(files), feedbackAudio: pickLatestFeedbackAudio(files) };
+		return {
+			submission,
+			file: pickLatestSubmissionFile(files),
+			feedbackAudio: pickLatestFeedbackAudio(files),
+			feedbackFiles: pickFeedbackFiles(files),
+		};
 	}
 
 	public async deleteOwnSubmission(userId: EntityId, submissionId: EntityId): Promise<void> {
@@ -297,7 +313,12 @@ export class AssignmentUc {
 
 		const files = await this.getSubmissionFiles(submission.id);
 
-		return { submission, file: files.submissionFile, feedbackAudio: files.feedbackAudio };
+		return {
+			submission,
+			file: files.submissionFile,
+			feedbackAudio: files.feedbackAudio,
+			feedbackFiles: files.feedbackFiles,
+		};
 	}
 
 	public async returnSubmission(
@@ -323,7 +344,12 @@ export class AssignmentUc {
 
 		const files = await this.getSubmissionFiles(submission.id);
 
-		return { submission, file: files.submissionFile, feedbackAudio: files.feedbackAudio };
+		return {
+			submission,
+			file: files.submissionFile,
+			feedbackAudio: files.feedbackAudio,
+			feedbackFiles: files.feedbackFiles,
+		};
 	}
 
 	private async loadOwnedSubmissionForGrading(
@@ -361,13 +387,16 @@ export class AssignmentUc {
 		}
 	}
 
-	private async getSubmissionFiles(parentId: EntityId): Promise<{ submissionFile?: FileDto; feedbackAudio?: FileDto }> {
+	private async getSubmissionFiles(
+		parentId: EntityId
+	): Promise<{ submissionFile?: FileDto; feedbackAudio?: FileDto; feedbackFiles?: FileDto[] }> {
 		try {
 			const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
 
 			return {
 				submissionFile: pickLatestSubmissionFile(files),
 				feedbackAudio: pickLatestFeedbackAudio(files),
+				feedbackFiles: pickFeedbackFiles(files),
 			};
 		} catch (error) {
 			// A broken file record (e.g. from an interrupted upload) must not take down the
@@ -411,12 +440,16 @@ const isPlainStudent = (student: { userId: EntityId; roles: BoardRoles[] }): boo
 	return isReader && !isStaff;
 };
 
-// A submission parent holds two kinds of files: the student's submission document and
-// (since the feedback round) the teacher's audio recording. The file storage RPC does not
-// expose mime types, so feedback audio is identified by the name prefix the client's
-// recorder sets. If more than one file of a kind exists (e.g. a race between two
-// uploads), the most recently created one wins.
+// A submission parent holds several kinds of files: the student's submission document,
+// the teacher's audio recording and the teacher's annotated corrections (PDF/image).
+// The file storage RPC does not expose mime types, so feedback files are identified by
+// the name prefixes the client sets (`feedback-audio-`, `feedback-pdf-`,
+// `feedback-img-`). If more than one file of a kind exists (e.g. a race between two
+// uploads), the most recently created one wins for the singular fields.
+const FEEDBACK_PREFIX = 'feedback-';
 const FEEDBACK_AUDIO_PREFIX = 'feedback-audio-';
+
+const isFeedbackFile = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_PREFIX);
 
 const isFeedbackAudio = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_AUDIO_PREFIX);
 
@@ -431,7 +464,15 @@ const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 };
 
 const pickLatestSubmissionFile = (files: FileDto[]): FileDto | undefined =>
-	pickLatestFile(files.filter((file) => !isFeedbackAudio(file)));
+	pickLatestFile(files.filter((file) => !isFeedbackFile(file)));
 
 const pickLatestFeedbackAudio = (files: FileDto[]): FileDto | undefined =>
 	pickLatestFile(files.filter(isFeedbackAudio));
+
+const pickFeedbackFiles = (files: FileDto[]): FileDto[] => {
+	const sorted = [...files.filter(isFeedbackFile)].sort(
+		(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+	);
+
+	return sorted;
+};

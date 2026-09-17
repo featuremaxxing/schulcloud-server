@@ -1,4 +1,5 @@
 import { ObjectId } from '@mikro-orm/mongodb';
+import { FileDto, FileRecordParentType } from '@infra/files-storage-amqp-client';
 import { assignmentElementFactory, assignmentSubmissionFactory } from '@modules/board/testing';
 import { AssignmentSubmissionResponseMapper } from './assignment-submission-response.mapper';
 import { type AssignmentSubmissionEntry, type AssignmentSubmissionsListResult } from '../assignment.uc';
@@ -9,6 +10,23 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 
 		return { userId, ...overrides };
 	};
+
+	const buildFeedbackFiles = (): FileDto[] => [
+		new FileDto({
+			id: new ObjectId().toHexString(),
+			name: 'feedback-pdf-2.pdf',
+			parentType: FileRecordParentType.BoardNode,
+			parentId: new ObjectId().toHexString(),
+			createdAt: new Date('2026-01-02'),
+		}),
+		new FileDto({
+			id: new ObjectId().toHexString(),
+			name: 'feedback-img-1.png',
+			parentType: FileRecordParentType.BoardNode,
+			parentId: new ObjectId().toHexString(),
+			createdAt: new Date('2026-01-01'),
+		}),
+	];
 
 	describe('mapForOwner', () => {
 		it('should withhold points and feedbackComment before the submission has been returned', () => {
@@ -39,6 +57,24 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 
 			expect(response.points).toBe(8);
 			expect(response.feedbackComment).toBe('nicely done');
+		});
+
+		it('should withhold feedback files before the submission has been returned', () => {
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
+			const entry = buildEntry({ submission, feedbackFiles: buildFeedbackFiles() });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.feedbackFiles).toBeNull();
+		});
+
+		it('should reveal feedback files once the submission has been returned, keeping the order', () => {
+			const submission = assignmentSubmissionFactory.build({ returnedAt: new Date() });
+			const entry = buildEntry({ submission, feedbackFiles: buildFeedbackFiles() });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.feedbackFiles?.map((file) => file.name)).toEqual(['feedback-pdf-2.pdf', 'feedback-img-1.png']);
 		});
 
 		it('should never include firstName/lastName, even if the entry carries them', () => {
@@ -76,6 +112,15 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			expect(response.feedbackComment).toBe('nicely done');
 			expect(response.firstName).toBe('Marie');
 			expect(response.lastName).toBe('Curie');
+		});
+
+		it('should include feedback files immediately, before any return', () => {
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
+			const entry = buildEntry({ submission, feedbackFiles: buildFeedbackFiles() });
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.feedbackFiles).toHaveLength(2);
 		});
 	});
 

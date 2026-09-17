@@ -430,6 +430,57 @@ describe('assignment submission flow (api)', () => {
 		});
 	});
 
+	describe('the teacher feedback files (annotated corrections)', () => {
+		const buildFeedbackFileDto = (parentId: string, name: string): FileDto =>
+			new FileDto({
+				id: `feedback-${name}`,
+				name,
+				parentType: 'boardnodes' as FileDto['parentType'],
+				parentId,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
+
+		it('should keep feedback files out of the submission document slot and release them with the return', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([
+				buildFileDto(submissionId),
+				buildFeedbackFileDto(submissionId, 'feedback-pdf-1.pdf'),
+				buildFeedbackFileDto(submissionId, 'feedback-img-1.png'),
+			]);
+			await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			// the teacher sees the corrections immediately, newest first
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			expect(teacherEntry?.file?.name).toEqual('submission.pdf');
+			expect(teacherEntry?.feedbackFiles?.map((file) => file.name)).toEqual([
+				'feedback-pdf-1.pdf',
+				'feedback-img-1.png',
+			]);
+
+			// the student does not get the corrections before the return
+			const ownListBefore = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownBefore = (ownListBefore.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownBefore.file?.name).toEqual('submission.pdf');
+			expect(ownBefore.feedbackFiles).toBeNull();
+
+			// after the return, the corrections are revealed
+			await teacherClient.post(`submissions/${submissionId}/return`, { points: 7 });
+			const ownListAfter = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownAfter = (ownListAfter.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownAfter.feedbackFiles?.map((file) => file.name)).toEqual(['feedback-pdf-1.pdf', 'feedback-img-1.png']);
+		});
+	});
+
 	describe('when the file storage is broken', () => {
 		it('should still list submissions without the file instead of failing', async () => {
 			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
