@@ -11,7 +11,7 @@ import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardModule } from './board.module';
 import { BoardCollaborationGateway } from './gateway/board-collaboration.gateway';
 import { MetricsService } from './metrics/metrics.service';
-import { BoardUc, CardUc, ColumnUc, ElementUc } from './uc';
+import { BoardUc, CardUc, ColumnUc, ElementUc, PollUc } from './uc';
 
 @Module({
 	imports: [
@@ -25,7 +25,7 @@ import { BoardUc, CardUc, ColumnUc, ElementUc } from './uc';
 		RoomModule,
 		BoardContextApiHelperModule,
 	],
-	providers: [BoardCollaborationGateway, CardUc, ColumnUc, ElementUc, BoardUc, MetricsService],
+	providers: [BoardCollaborationGateway, CardUc, ColumnUc, ElementUc, BoardUc, PollUc, MetricsService],
 	exports: [],
 })
 export class BoardWsApiModule {}

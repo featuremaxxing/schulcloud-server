@@ -15,6 +15,8 @@ export * from './media-available-line.factory';
 export * from './media-board.factory';
 export * from './media-external-tool-element.factory';
 export * from './media-line.factory';
+export * from './poll-element.factory';
+export * from './poll-vote.factory';
 export * from './rich-text-element.factory';
 export * from './test-socket-api-client';
 export * from './video-conference-element.factory';

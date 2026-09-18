@@ -1,3 +1,4 @@
+import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable } from '@nestjs/common';
 import { sanitizeRichText } from '@shared/controller/transformer';
 import { InputFormat } from '@shared/domain/types';
@@ -9,6 +10,7 @@ import {
 	FileFolderContentBody,
 	H5pContentBody,
 	LinkContentBody,
+	PollContentBody,
 	RichTextContentBody,
 	VideoConferenceContentBody,
 } from '../../controller/dto';
@@ -19,6 +21,10 @@ import type {
 	FileElement,
 	FileFolderElement,
 	LinkElement,
+	PollElement,
+	PollQuestion,
+	PollQuestionResult,
+	PollResultSnapshot,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -30,8 +36,12 @@ import {
 	isFileFolderElement,
 	isH5pElement,
 	isLinkElement,
+	isPollElement,
+	isPollVote,
 	isRichTextElement,
 	isVideoConferenceElement,
+	PollAnswerMode,
+	PollStatus,
 } from '../../domain';
 import { BoardNodeRepo } from '../../repo';
 
@@ -57,6 +67,8 @@ export class ContentElementUpdateService {
 			this.updateFileFolderElement(element, content);
 		} else if (isH5pElement(element) && content instanceof H5pContentBody) {
 			this.updateH5pElement(element, content);
+		} else if (isPollElement(element) && content instanceof PollContentBody) {
+			this.updatePollElement(element, content);
 		} else {
 			throw new Error(`Cannot update element of type: '${element.constructor.name}'`);
 		}
@@ -116,5 +128,72 @@ export class ContentElementUpdateService {
 		if (content.contentId !== undefined && element.contentId === undefined) {
 			element.contentId = content.contentId;
 		}
+	}
+
+	// Covers everything a teacher can change on a poll: questions/options/answer & chart
+	// types, the anonymous/live-results switches, status and deadline - all through the
+	// generic element update path, which is why voting itself needs its own (socket) path
+	// instead of going through here.
+	public updatePollElement(element: PollElement, content: PollContentBody): void {
+		const wasClosed = element.pollStatus === PollStatus.CLOSED;
+
+		element.title = content.title ? sanitizeRichText(content.title, InputFormat.PLAIN_TEXT) : undefined;
+		element.questions = content.questions.map((question): PollQuestion => {
+			return {
+				id: question.id ?? new ObjectId().toHexString(),
+				text: sanitizeRichText(question.text, InputFormat.PLAIN_TEXT),
+				answerMode: question.answerMode,
+				chartType: question.chartType,
+				options: question.options.map((option) => {
+					return {
+						id: option.id ?? new ObjectId().toHexString(),
+						text: sanitizeRichText(option.text, InputFormat.PLAIN_TEXT),
+					};
+				}),
+			};
+		});
+		element.isAnonymous = content.isAnonymous;
+		element.showResultsLive = content.showResultsLive;
+		element.pollStatus = content.pollStatus;
+		element.closesAt = content.closesAt ? new Date(content.closesAt) : undefined;
+
+		const isClosingNow = !wasClosed && element.pollStatus === PollStatus.CLOSED;
+		if (isClosingNow) {
+			element.resultSnapshot = this.buildPollResultSnapshot(element);
+		}
+	}
+
+	// Counts votes once at close time and freezes the numbers into the element - see
+	// PollElement/PollResultSnapshot: the rendered result no longer depends on the
+	// individual PollVote nodes afterwards. Anonymous, aggregated numbers only, never raw
+	// voter identities - those are derived live from PollVote children by the results
+	// endpoint for non-anonymous, still-open-in-the-UI polls, never stored here.
+	private buildPollResultSnapshot(element: PollElement): PollResultSnapshot {
+		const votes = element.children.filter(isPollVote);
+
+		const perQuestion: PollQuestionResult[] = element.questions.map((question) => {
+			const counts = question.options.map((option) => {
+				return {
+					optionId: option.id,
+					count: votes.filter((vote) =>
+						vote.answers.some(
+							(answer) => answer.questionId === question.id && answer.selectedOptionIds.includes(option.id)
+						)
+					).length,
+				};
+			});
+
+			const textAnswers =
+				question.answerMode === PollAnswerMode.TEXT
+					? votes
+							.flatMap((vote) => vote.answers.filter((answer) => answer.questionId === question.id))
+							.map((answer) => answer.textAnswer)
+							.filter((textAnswer): textAnswer is string => !!textAnswer)
+					: undefined;
+
+			return { questionId: question.id, counts, textAnswers };
+		});
+
+		return { frozenAt: new Date(), participantCount: votes.length, perQuestion };
 	}
 }

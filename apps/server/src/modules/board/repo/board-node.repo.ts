@@ -2,7 +2,7 @@ import { FilterQuery, Utils } from '@mikro-orm/core';
 import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
 import { Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
-import { AnyBoardNode, BoardExternalReference, getBoardNodeType } from '../domain';
+import { AnyBoardNode, BoardExternalReference, BoardNodeType, getBoardNodeType, PollVote } from '../domain';
 import { pathOfChildren } from '../domain/path-utils';
 import { BoardNodeEntity } from './entity/board-node.entity';
 import { TreeBuilder } from './tree-builder';
@@ -84,6 +84,23 @@ export class BoardNodeRepo {
 
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.persist(boardNode).flush();
+	}
+
+	// Direct children of the given poll elements. Matches paths ending in ',<elementId>,' -
+	// only votes can be direct children of a poll element. Passing userId narrows to a
+	// single participant's vote, used by the vote handler to find an existing vote to update.
+	public async findPollVotesByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<PollVote[]> {
+		if (parentIds.length === 0) {
+			return [];
+		}
+
+		const votes = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.POLL_VOTE,
+			path: { $re: `,(${parentIds.join('|')}),$` },
+			...(userId ? { userId } : {}),
+		});
+
+		return votes.map((entity) => new TreeBuilder().build(entity)) as PollVote[];
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

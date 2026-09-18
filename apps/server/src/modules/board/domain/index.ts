@@ -15,6 +15,8 @@ export * from './h5p-element.do';
 export * from './link-element.do';
 export * from './media-board';
 export * from './path-utils';
+export * from './poll-element.do';
+export * from './poll-vote.do';
 export * from './rich-text-element.do';
 export * from './type-mapping';
 export * from './types';

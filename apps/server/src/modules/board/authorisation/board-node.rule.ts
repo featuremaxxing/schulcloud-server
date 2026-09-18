@@ -8,6 +8,8 @@ import {
 	BoardRoles,
 	ColumnBoard,
 	isDrawingElement,
+	isPollElement,
+	isPollVote,
 	isVideoConferenceElement,
 	MediaBoard,
 	UserWithBoardRoles,
@@ -58,6 +60,12 @@ export const BoardOperationValues = [
 
 	// element / videoConferenceElement
 	'manageVideoConference',
+
+	// element / pollElement
+	'createOwnPollVote',
+	'updateOwnPollVote',
+	'viewPollResults',
+	'managePoll',
 
 	// mediaBoard
 	'collapseMediaBoard',
@@ -128,7 +136,16 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
 			const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
 
-			const requiredBoardPermission = isReader && readersCanEdit ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
+			// Same reasoning as the carve-out in _canEditBoard below: a poll's questions,
+			// status and deadline are configuration with real consequences for participants,
+			// so the readersCanEdit collaboration toggle must never let a student write here.
+			// This is a SEPARATE relaxation from the one in _canEditBoard - hasPermission() is
+			// its own Rule-interface entry point, not routed through _canEditBoard, so it
+			// needs its own guard.
+			const isPollNode = isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode);
+
+			const requiredBoardPermission =
+				isReader && readersCanEdit && !isPollNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
 			const writePermissions = Array.from(new Set([requiredBoardPermission, ...context.requiredPermissions]));
 			return this.hasAllPermissions(user, authorizable, writePermissions);
 		}
@@ -195,6 +212,12 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 			// element / videoConferenceElement
 			manageVideoConference: canManageVideoConference,
+
+			// element / pollElement
+			createOwnPollVote: _isPlainBoardReader,
+			updateOwnPollVote: _isOwnPollVote,
+			viewPollResults: _canViewBoard,
+			managePoll: _canEditBoard,
 
 			// mediaBoard
 			collapseMediaBoard: _canManageBoard,
@@ -302,6 +325,15 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	const permissions = authorizable.getUserPermissions(user.id);
 	const hasEditPermission = permissions.includes(Permission.BOARD_EDIT);
 	if (hasEditPermission) return true;
+
+	if (isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode)) {
+		// A poll's questions, status and deadline are configuration with real consequences
+		// for participants (e.g. accepting/rejecting votes). The readersCanEdit collaboration
+		// toggle must never grant a student write access here, same reasoning as the board
+		// title carve-out below. Voting itself is a separate, narrower path (see
+		// createOwnPollVote/updateOwnPollVote), unaffected by this carve-out.
+		return false;
+	}
 
 	const isReader = hasBoardRole(user, authorizable, BoardRoles.READER);
 	const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
@@ -433,4 +465,39 @@ const canShareBoardNode = (user: User, authorizable: BoardNodeAuthorizable): boo
 	const canShareBoard = permissions.includes(Permission.BOARD_SHARE_BOARD);
 
 	return isBoard && canShareBoard;
+};
+
+// "student" in a room: has the READER role and none of the roles that imply staff-level
+// rights. A room owner/admin can also carry the READER role (e.g. via multiple permission
+// grants), so this is deliberately not just "isBoardReader && !isBoardEditor".
+const _isPlainBoardReader = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
+	if (!userWithBoardRoles) {
+		return false;
+	}
+
+	const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
+	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => userWithBoardRoles.roles.includes(role));
+
+	return isReader && !isStaff;
+};
+
+// Deliberately checks ownership only - business-rule checks that need "now" (whether the
+// poll is still open) are PollUc's job, not the rule's, so it can throw a specific,
+// clearly-worded exception.
+const _isOwnPollVote = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode } = authorizable;
+	if (!isPollVote(boardNode)) {
+		return false;
+	}
+
+	return boardNode.userId === user.id;
 };
