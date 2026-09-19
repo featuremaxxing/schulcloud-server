@@ -30,6 +30,7 @@ import {
 	type AssignmentListResponse,
 	type AssignmentSubmissionResponse,
 	type AssignmentSubmissionListResponse,
+	type BatchReturnSubmissionsResponse,
 } from '../dto';
 
 const baseRouteName = '/assignments';
@@ -311,6 +312,154 @@ describe('assignment submission flow (api)', () => {
 		});
 	});
 
+	describe('rubric grading', () => {
+		const criteria = [
+			{ id: 'criterion-1', name: 'Content', maxPoints: 6 },
+			{ id: 'criterion-2', name: 'Grammar', maxPoints: 4 },
+		];
+
+		it('should sum criterionPoints into points and persist them', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup({ criteria, maxPoints: 10 });
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const gradeResponse = await teacherClient.patch(`submissions/${submissionId}/grade`, {
+				criterionPoints: [
+					{ criterionId: 'criterion-1', points: 5 },
+					{ criterionId: 'criterion-2', points: 3 },
+				],
+			});
+
+			expect(gradeResponse.status).toEqual(200);
+			expect((gradeResponse.body as AssignmentSubmissionResponse).points).toEqual(8);
+			expect((gradeResponse.body as AssignmentSubmissionResponse).criterionPoints).toEqual([
+				{ criterionId: 'criterion-1', points: 5 },
+				{ criterionId: 'criterion-2', points: 3 },
+			]);
+
+			// the list response carries the rubric itself, for the grading UI
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			expect((teacherList.body as AssignmentSubmissionListResponse).criteria).toEqual(criteria);
+		});
+
+		it('should reject criterionPoints for an unknown criterion', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup({ criteria, maxPoints: 10 });
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await teacherClient.patch(`submissions/${submissionId}/grade`, {
+				criterionPoints: [
+					{ criterionId: 'does-not-exist', points: 1 },
+					{ criterionId: 'criterion-2', points: 1 },
+				],
+			});
+
+			expect(response.status).toEqual(422);
+		});
+
+		it('should reject criterionPoints exceeding a criterion’s own max', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup({ criteria, maxPoints: 10 });
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await teacherClient.patch(`submissions/${submissionId}/grade`, {
+				criterionPoints: [
+					{ criterionId: 'criterion-1', points: 99 },
+					{ criterionId: 'criterion-2', points: 1 },
+				],
+			});
+
+			expect(response.status).toEqual(422);
+		});
+
+		it('should require criterionPoints once the assignment has a rubric', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup({ criteria, maxPoints: 10 });
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await teacherClient.patch(`submissions/${submissionId}/grade`, { points: 5 });
+
+			expect(response.status).toEqual(422);
+		});
+
+		it('should keep flat-points grading unchanged for an assignment without a rubric', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const gradeResponse = await teacherClient.patch(`submissions/${submissionId}/grade`, { points: 7 });
+
+			expect(gradeResponse.status).toEqual(200);
+			expect((gradeResponse.body as AssignmentSubmissionResponse).points).toEqual(7);
+			expect((gradeResponse.body as AssignmentSubmissionResponse).criterionPoints).toBeNull();
+		});
+	});
+
+	describe('submission file versions', () => {
+		it('should list every uploaded version, newest first, numbered oldest to newest', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const v1 = new FileDto({
+				id: 'file-v1',
+				name: 'essay-v1.pdf',
+				parentType: 'boardnodes' as FileDto['parentType'],
+				parentId: submissionId,
+				createdAt: new Date('2020-01-01T00:00:00.000Z'),
+				updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+			});
+			const v2 = new FileDto({
+				id: 'file-v2',
+				name: 'essay-v2.pdf',
+				parentType: 'boardnodes' as FileDto['parentType'],
+				parentId: submissionId,
+				createdAt: new Date('2020-01-02T00:00:00.000Z'),
+				updatedAt: new Date('2020-01-02T00:00:00.000Z'),
+			});
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([v1, v2]);
+			await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownEntry = (ownList.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownEntry.fileVersions?.map((f) => [f.name, f.version])).toEqual([
+				['essay-v2.pdf', 2],
+				['essay-v1.pdf', 1],
+			]);
+
+			// never withheld, unlike teacher feedback - visible before any return
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			expect(teacherEntry?.fileVersions?.map((f) => f.name)).toEqual(['essay-v2.pdf', 'essay-v1.pdf']);
+		});
+	});
+
 	describe('the optional student comment', () => {
 		it('should store the comment on submit and show it to student and teacher', async () => {
 			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
@@ -513,6 +662,60 @@ describe('assignment submission flow (api)', () => {
 
 			expect(response.status).toEqual(500);
 			expect((response.body as { message: string }).message).toContain('could not be verified');
+		});
+	});
+
+	describe('batch return', () => {
+		it('should return graded submissions and report ungraded ones as failed, without aborting the batch', async () => {
+			const { teacherAccount, studentAccount, otherStudentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const otherStudentClient = await new TestApiClientBuilder(app, baseRouteName).build(otherStudentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const gradedCreate = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const gradedSubmissionId = (gradedCreate.body as AssignmentSubmissionResponse).id as string;
+			await teacherClient.patch(`submissions/${gradedSubmissionId}/grade`, { points: 8 });
+
+			const ungradedCreate = await otherStudentClient.post(`${assignmentElementNode.id}/submissions`);
+			const ungradedSubmissionId = (ungradedCreate.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await teacherClient.post('submissions/return-batch', {
+				submissionIds: [gradedSubmissionId, ungradedSubmissionId],
+			});
+
+			expect(response.status).toEqual(200);
+			const body = response.body as BatchReturnSubmissionsResponse;
+			expect(body.returned).toHaveLength(1);
+			expect(body.returned[0].id).toEqual(gradedSubmissionId);
+			expect(body.returned[0].status).toEqual('returned');
+			expect(body.returned[0].points).toEqual(8);
+			expect(body.failed).toHaveLength(1);
+			expect(body.failed[0].submissionId).toEqual(ungradedSubmissionId);
+
+			// the returned submission is now visible to its owner
+			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			expect((ownList.body as AssignmentSubmissionListResponse).submissions[0].points).toEqual(8);
+
+			// the ungraded one was left untouched
+			const otherOwnList = await otherStudentClient.get(`${assignmentElementNode.id}/submissions`);
+			expect((otherOwnList.body as AssignmentSubmissionListResponse).submissions[0].points).toBeNull();
+		});
+
+		it('should reject a batch return from a student', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await studentClient.post('submissions/return-batch', { submissionIds: [submissionId] });
+
+			const body = response.body as BatchReturnSubmissionsResponse;
+			expect(response.status).toEqual(200);
+			expect(body.returned).toHaveLength(0);
+			expect(body.failed).toHaveLength(1);
+			expect(body.failed[0].submissionId).toEqual(submissionId);
 		});
 	});
 

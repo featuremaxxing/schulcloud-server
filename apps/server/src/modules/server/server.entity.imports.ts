@@ -1,5 +1,6 @@
 import { RuntimeConfigEntity } from '@infra/runtime-config/repo/entity/runtime-config.entity';
 import { AccountEntity } from '@modules/account/repo';
+import { AssignmentReviewEntity } from '@modules/assignment/repo';
 import { BoardNodeEntity } from '@modules/board/repo/entity';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity } from '@modules/course/repo/course.entity';
@@ -54,6 +55,7 @@ import { VideoConferenceEntity } from '@modules/video-conference/repo';
 
 export const ENTITIES = [
 	AccountEntity,
+	AssignmentReviewEntity,
 	BoardNodeEntity,
 	ClassEntity,
 	ColumnBoardBoardElement,

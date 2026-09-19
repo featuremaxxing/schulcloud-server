@@ -2,7 +2,10 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentRubricCriterion,
+	AssignmentStatus,
 	AssignmentSubmission,
+	AssignmentSubmissionCriterionPoints,
 	BOARD_PUBLIC_API_CONFIG_TOKEN,
 	BoardNodeAuthorizableService,
 	BoardNodeFactory,
@@ -28,6 +31,19 @@ import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { Permission } from '@shared/domain/interface';
 import { EntityId } from '@shared/domain/types';
 import { AssignmentFilesStorageErrorLoggable } from './loggable/assignment-files-storage-error.loggable';
+import { AssignmentReviewEntity, AssignmentReviewRepo } from '../repo';
+
+export interface PeerReviewSummary {
+	averagePoints: number | null;
+	count: number;
+	comments: string[];
+}
+
+export interface GradeBody {
+	points?: number;
+	feedbackComment?: string;
+	criterionPoints?: AssignmentSubmissionCriterionPoints[];
+}
 
 export interface AssignmentSubmissionEntry {
 	userId: EntityId;
@@ -39,6 +55,11 @@ export interface AssignmentSubmissionEntry {
 	// all teacher feedback files (annotated corrections etc.), newest first - the
 	// mapper withholds them from students until the submission has been returned
 	feedbackFiles?: FileDto[];
+	// every file the student has ever uploaded as their submission document, newest
+	// first (including the current one) - never gated, this is the student's own work
+	fileVersions?: FileDto[];
+	// advisory student peer reviews, teacher view only - see AssignmentUc.buildPeerReviewSummary
+	peerReviews?: PeerReviewSummary;
 }
 
 export interface AssignmentSubmissionsListResult {
@@ -52,6 +73,7 @@ export interface AssignmentSubmissionResult {
 	file?: FileDto;
 	feedbackAudio?: FileDto;
 	feedbackFiles?: FileDto[];
+	fileVersions?: FileDto[];
 }
 
 export interface AssignmentListEntry {
@@ -75,6 +97,7 @@ export class AssignmentUc {
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
 		private readonly roomMembershipService: RoomMembershipService,
 		private readonly roomContentService: RoomContentService,
+		private readonly assignmentReviewRepo: AssignmentReviewRepo,
 		private readonly logger: Logger,
 		@Inject(BOARD_PUBLIC_API_CONFIG_TOKEN) private readonly boardConfig: BoardPublicApiConfig
 	) {}
@@ -166,6 +189,7 @@ export class AssignmentUc {
 
 		if (isTeacher) {
 			const students = boardNodeAuthorizable.users.filter(isPlainStudent);
+			const allReviews = await this.assignmentReviewRepo.findByElementId(element.id);
 
 			const entries = await Promise.all(
 				students.map(async (student): Promise<AssignmentSubmissionEntry> => {
@@ -180,6 +204,8 @@ export class AssignmentUc {
 						file: files.submissionFile,
 						feedbackAudio: files.feedbackAudio,
 						feedbackFiles: files.feedbackFiles,
+						fileVersions: files.fileVersions,
+						peerReviews: submission ? this.buildPeerReviewSummary(allReviews, submission.id) : undefined,
 					};
 				})
 			);
@@ -200,6 +226,7 @@ export class AssignmentUc {
 					file: ownFiles.submissionFile,
 					feedbackAudio: ownFiles.feedbackAudio,
 					feedbackFiles: ownFiles.feedbackFiles,
+					fileVersions: ownFiles.fileVersions,
 				},
 			],
 		};
@@ -274,6 +301,7 @@ export class AssignmentUc {
 			file: pickLatestSubmissionFile(files),
 			feedbackAudio: pickLatestFeedbackAudio(files),
 			feedbackFiles: pickFeedbackFiles(files),
+			fileVersions: pickSubmissionFileVersions(files),
 		};
 	}
 
@@ -298,15 +326,13 @@ export class AssignmentUc {
 	public async gradeSubmission(
 		userId: EntityId,
 		submissionId: EntityId,
-		body: { points?: number; feedbackComment?: string }
+		body: GradeBody
 	): Promise<AssignmentSubmissionResult> {
 		this.checkFeatureEnabled();
 
 		const { submission, element } = await this.loadOwnedSubmissionForGrading(userId, submissionId);
 
-		this.validatePoints(element, body.points);
-
-		submission.points = body.points;
+		this.applyPoints(element, submission, body);
 		submission.feedbackComment = body.feedbackComment;
 		submission.gradedBy = userId;
 		await this.boardNodeService.save(submission);
@@ -318,28 +344,23 @@ export class AssignmentUc {
 			file: files.submissionFile,
 			feedbackAudio: files.feedbackAudio,
 			feedbackFiles: files.feedbackFiles,
+			fileVersions: files.fileVersions,
 		};
 	}
 
 	public async returnSubmission(
 		userId: EntityId,
 		submissionId: EntityId,
-		body: { points?: number; feedbackComment?: string }
+		body: GradeBody
 	): Promise<AssignmentSubmissionResult> {
 		this.checkFeatureEnabled();
 
 		const { submission, element } = await this.loadOwnedSubmissionForGrading(userId, submissionId);
 
-		this.validatePoints(element, body.points);
-
-		if (body.points !== undefined) {
-			submission.points = body.points;
+		if (body.points !== undefined || body.criterionPoints !== undefined) {
+			this.applyPoints(element, submission, body);
 		}
-		if (body.feedbackComment !== undefined) {
-			submission.feedbackComment = body.feedbackComment;
-		}
-		submission.gradedBy = userId;
-		submission.returnedAt = new Date();
+		this.applyReturn(submission, userId, body);
 		await this.boardNodeService.save(submission);
 
 		const files = await this.getSubmissionFiles(submission.id);
@@ -349,7 +370,82 @@ export class AssignmentUc {
 			file: files.submissionFile,
 			feedbackAudio: files.feedbackAudio,
 			feedbackFiles: files.feedbackFiles,
+			fileVersions: files.fileVersions,
 		};
+	}
+
+	// Returns everyone who is already graded (status IN_REVIEW) in one step, without changing
+	// their points/feedbackComment - those must already have been saved via gradeSubmission.
+	// Best-effort: a submission that cannot be returned (not graded yet, not owned by the
+	// caller, unknown id) is reported in `failed` instead of aborting the whole batch, so the
+	// teacher still gets everyone else returned from a single "return all graded" click.
+	public async returnSubmissionsBatch(
+		userId: EntityId,
+		submissionIds: EntityId[]
+	): Promise<{ returned: AssignmentSubmissionResult[]; failed: { submissionId: EntityId; reason: string }[] }> {
+		this.checkFeatureEnabled();
+
+		const returned: AssignmentSubmissionResult[] = [];
+		const failed: { submissionId: EntityId; reason: string }[] = [];
+
+		for (const submissionId of submissionIds) {
+			try {
+				const { submission } = await this.loadOwnedSubmissionForGrading(userId, submissionId);
+
+				if (submission.getStatus() !== AssignmentStatus.IN_REVIEW) {
+					failed.push({ submissionId, reason: 'This submission has not been graded yet.' });
+					continue;
+				}
+
+				this.applyReturn(submission, userId, {});
+				await this.boardNodeService.save(submission);
+
+				const files = await this.getSubmissionFiles(submission.id);
+				returned.push({
+					submission,
+					file: files.submissionFile,
+					feedbackAudio: files.feedbackAudio,
+					feedbackFiles: files.feedbackFiles,
+					fileVersions: files.fileVersions,
+				});
+			} catch (error) {
+				failed.push({ submissionId, reason: error instanceof Error ? error.message : 'Unknown error.' });
+			}
+		}
+
+		return { returned, failed };
+	}
+
+	// Shared by returnSubmission and returnSubmissionsBatch. The batch path calls this with an
+	// empty body since it only returns already-graded submissions as-is; the single-submission
+	// path may still carry a last-minute feedbackComment change alongside the return. Points
+	// (flat or per-criterion) are handled separately by applyPoints, called before this when
+	// the body actually carries a points update.
+	private applyReturn(submission: AssignmentSubmission, gradedBy: EntityId, body: { feedbackComment?: string }): void {
+		if (body.feedbackComment !== undefined) {
+			submission.feedbackComment = body.feedbackComment;
+		}
+		submission.gradedBy = gradedBy;
+		submission.returnedAt = new Date();
+	}
+
+	// Writes points to the submission, either as a single flat value or - when the element has
+	// a rubric - as the validated sum of per-criterion points (criterionPoints is then also
+	// persisted, so a later edit can be pre-filled). A rubric assignment requires
+	// criterionPoints in the body; there is no flat-points fallback once criteria exist.
+	private applyPoints(element: AssignmentElement, submission: AssignmentSubmission, body: GradeBody): void {
+		if (element.criteria && element.criteria.length > 0) {
+			if (body.criterionPoints === undefined) {
+				throw new UnprocessableEntityException('criterionPoints is required for assignments with a rubric.');
+			}
+			this.validateCriterionPoints(element.criteria, body.criterionPoints);
+			submission.criterionPoints = body.criterionPoints;
+			submission.points = body.criterionPoints.reduce((sum, criterion) => sum + criterion.points, 0);
+			return;
+		}
+
+		this.validatePoints(element, body.points);
+		submission.points = body.points;
 	}
 
 	private async loadOwnedSubmissionForGrading(
@@ -387,9 +483,35 @@ export class AssignmentUc {
 		}
 	}
 
-	private async getSubmissionFiles(
-		parentId: EntityId
-	): Promise<{ submissionFile?: FileDto; feedbackAudio?: FileDto; feedbackFiles?: FileDto[] }> {
+	// Every criterion must be scored, exactly once, within its own bounds - a partial or
+	// unknown-criterion submission would silently under/over-count the derived total.
+	private validateCriterionPoints(
+		criteria: AssignmentRubricCriterion[],
+		criterionPoints: AssignmentSubmissionCriterionPoints[]
+	): void {
+		if (criterionPoints.length !== criteria.length) {
+			throw new UnprocessableEntityException('criterionPoints must contain exactly one entry per rubric criterion.');
+		}
+
+		for (const entry of criterionPoints) {
+			const criterion = criteria.find((c) => c.id === entry.criterionId);
+			if (!criterion) {
+				throw new UnprocessableEntityException(`Unknown rubric criterion id ${entry.criterionId}.`);
+			}
+			if (entry.points < 0 || entry.points > criterion.maxPoints) {
+				throw new UnprocessableEntityException(
+					`points for criterion ${criterion.name} must be between 0 and ${criterion.maxPoints}.`
+				);
+			}
+		}
+	}
+
+	private async getSubmissionFiles(parentId: EntityId): Promise<{
+		submissionFile?: FileDto;
+		feedbackAudio?: FileDto;
+		feedbackFiles?: FileDto[];
+		fileVersions?: FileDto[];
+	}> {
 		try {
 			const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
 
@@ -397,6 +519,7 @@ export class AssignmentUc {
 				submissionFile: pickLatestSubmissionFile(files),
 				feedbackAudio: pickLatestFeedbackAudio(files),
 				feedbackFiles: pickFeedbackFiles(files),
+				fileVersions: pickSubmissionFileVersions(files),
 			};
 		} catch (error) {
 			// A broken file record (e.g. from an interrupted upload) must not take down the
@@ -406,6 +529,30 @@ export class AssignmentUc {
 
 			return {};
 		}
+	}
+
+	// Advisory only - averages submitted reviews for one submission, never touches
+	// points/criterionPoints. Reviewer identity is intentionally left out of the summary.
+	private buildPeerReviewSummary(
+		allReviews: AssignmentReviewEntity[],
+		submissionId: EntityId
+	): PeerReviewSummary | undefined {
+		const reviews = allReviews.filter((review) => review.submissionId === submissionId && review.submittedAt);
+		if (reviews.length === 0) {
+			return undefined;
+		}
+
+		const withPoints = reviews.filter((review) => review.points !== undefined);
+		const averagePoints =
+			withPoints.length > 0
+				? withPoints.reduce((sum, review) => sum + (review.points ?? 0), 0) / withPoints.length
+				: null;
+
+		return {
+			averagePoints,
+			count: reviews.length,
+			comments: reviews.map((review) => review.feedbackComment).filter((comment): comment is string => !!comment),
+		};
 	}
 
 	private checkFeatureEnabled(): void {
@@ -471,6 +618,18 @@ const pickLatestFeedbackAudio = (files: FileDto[]): FileDto | undefined =>
 
 const pickFeedbackFiles = (files: FileDto[]): FileDto[] => {
 	const sorted = [...files.filter(isFeedbackFile)].sort(
+		(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+	);
+
+	return sorted;
+};
+
+// Every submission document version the student has ever uploaded (including the current
+// one), newest first. Nothing is ever deleted on resubmission, so this is simply every
+// non-feedback file for the submission - the mapper turns this into 1-based version numbers,
+// oldest = v1.
+const pickSubmissionFileVersions = (files: FileDto[]): FileDto[] => {
+	const sorted = [...files.filter((file) => !isFeedbackFile(file))].sort(
 		(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
 	);
 

@@ -2,6 +2,8 @@ import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger
 import { InputFormat } from '@shared/domain/types';
 import { Type } from 'class-transformer';
 import {
+	ArrayMaxSize,
+	IsArray,
 	IsDateString,
 	IsEnum,
 	IsInt,
@@ -174,6 +176,22 @@ export class H5pElementContentBody extends ElementContentBody {
 	content!: H5pContentBody;
 }
 
+export class AssignmentRubricCriterionBody {
+	@IsString()
+	@ApiProperty({ description: 'client-generated id, stable across edits so submissions can reference it' })
+	id!: string;
+
+	@IsString()
+	@ApiProperty()
+	name!: string;
+
+	@IsInt()
+	@Min(1)
+	@Max(1000)
+	@ApiProperty()
+	maxPoints!: number;
+}
+
 export class AssignmentContentBody {
 	@IsString()
 	@ApiProperty()
@@ -210,6 +228,14 @@ export class AssignmentContentBody {
 	@IsOptional()
 	@ApiPropertyOptional()
 	maxPoints?: number;
+
+	@IsArray()
+	@ArrayMaxSize(50)
+	@ValidateNested({ each: true })
+	@Type(() => AssignmentRubricCriterionBody)
+	@IsOptional()
+	@ApiPropertyOptional({ type: [AssignmentRubricCriterionBody] })
+	criteria?: AssignmentRubricCriterionBody[];
 }
 
 export class AssignmentElementContentBody extends ElementContentBody {

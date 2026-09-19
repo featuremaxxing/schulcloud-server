@@ -1,11 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
 import { AssignmentStatus } from '@modules/board';
+import { AssignmentPeerReviewSummaryResponse } from './assignment-peer-review-summary.response';
+
+export class AssignmentCriterionPointsResponse {
+	constructor(props: AssignmentCriterionPointsResponse) {
+		this.criterionId = props.criterionId;
+		this.points = props.points;
+	}
+
+	@ApiProperty()
+	criterionId: string;
+
+	@ApiProperty()
+	points: number;
+}
 
 export class AssignmentSubmissionFileResponse {
 	constructor(props: AssignmentSubmissionFileResponse) {
 		this.fileRecordId = props.fileRecordId;
 		this.name = props.name;
+		this.createdAt = props.createdAt;
+		this.version = props.version;
 	}
 
 	@ApiProperty({ pattern: bsonStringPattern })
@@ -13,6 +29,16 @@ export class AssignmentSubmissionFileResponse {
 
 	@ApiProperty()
 	name: string;
+
+	@ApiPropertyOptional({ type: String, nullable: true, description: 'when this file was uploaded' })
+	createdAt?: string | null;
+
+	@ApiPropertyOptional({
+		type: Number,
+		nullable: true,
+		description: 'only set for submission document versions - 1-based, oldest upload is version 1',
+	})
+	version?: number | null;
 }
 
 // Represents one student's row in the teacher's overview, or the caller's own submission.
@@ -36,6 +62,9 @@ export class AssignmentSubmissionResponse {
 		this.comment = props.comment;
 		this.feedbackAudio = props.feedbackAudio;
 		this.feedbackFiles = props.feedbackFiles;
+		this.fileVersions = props.fileVersions;
+		this.criterionPoints = props.criterionPoints;
+		this.peerReviews = props.peerReviews;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -88,4 +117,26 @@ export class AssignmentSubmissionResponse {
 			'the teacher’s feedback files (annotated corrections), newest first; withheld from students until the submission has been returned',
 	})
 	feedbackFiles?: AssignmentSubmissionFileResponse[] | null;
+
+	@ApiPropertyOptional({
+		type: [AssignmentSubmissionFileResponse],
+		nullable: true,
+		description:
+			'every submission document version the student has uploaded, newest first, including the current one; never withheld',
+	})
+	fileVersions?: AssignmentSubmissionFileResponse[] | null;
+
+	@ApiPropertyOptional({
+		type: [AssignmentCriterionPointsResponse],
+		nullable: true,
+		description: 'per-criterion points, only present for assignments with a rubric',
+	})
+	criterionPoints?: AssignmentCriterionPointsResponse[] | null;
+
+	@ApiPropertyOptional({
+		type: AssignmentPeerReviewSummaryResponse,
+		nullable: true,
+		description: 'advisory summary of student peer reviews - only present for the teacher view',
+	})
+	peerReviews?: AssignmentPeerReviewSummaryResponse | null;
 }

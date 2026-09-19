@@ -1,7 +1,7 @@
 import { type EntityId } from '@shared/domain/types';
 import { AssignmentStatus } from './assignment-status.enum';
 import { BoardNode } from './board-node.do';
-import type { AssignmentSubmissionProps } from './types';
+import type { AssignmentSubmissionCriterionPoints, AssignmentSubmissionProps } from './types';
 
 // A submission is never a content element itself (it cannot be added via the
 // "add element" dialog) but a regular node in the board tree, one per student,
@@ -72,6 +72,16 @@ export class AssignmentSubmission extends BoardNode<AssignmentSubmissionProps> {
 
 	set gradedBy(value: EntityId | undefined) {
 		this.props.gradedBy = value;
+	}
+
+	// Per-criterion points when the parent element has a rubric. `points` above remains the
+	// single source every other consumer reads - the use case sums this into it on write.
+	get criterionPoints(): AssignmentSubmissionCriterionPoints[] | undefined {
+		return this.props.criterionPoints;
+	}
+
+	set criterionPoints(value: AssignmentSubmissionCriterionPoints[] | undefined) {
+		this.props.criterionPoints = value;
 	}
 
 	// Status is derived, never persisted directly, so that no invalid combination

@@ -1,7 +1,7 @@
 import { type InputFormat } from '@shared/domain/types';
 import { BoardNode } from './board-node.do';
 import { isAssignmentSubmission } from './assignment-submission.do';
-import type { AnyBoardNode, AssignmentElementProps } from './types';
+import type { AnyBoardNode, AssignmentElementProps, AssignmentRubricCriterion } from './types';
 
 export class AssignmentElement extends BoardNode<AssignmentElementProps> {
 	get title(): string {
@@ -58,6 +58,40 @@ export class AssignmentElement extends BoardNode<AssignmentElementProps> {
 
 	set maxPoints(value: number | undefined) {
 		this.props.maxPoints = value;
+	}
+
+	// The rubric, when the teacher configured one - empty/undefined means "no rubric",
+	// the flat maxPoints/points fields are then the only grading model in use.
+	get criteria(): AssignmentRubricCriterion[] | undefined {
+		return this.props.criteria;
+	}
+
+	set criteria(value: AssignmentRubricCriterion[] | undefined) {
+		this.props.criteria = value;
+	}
+
+	get peerReviewEnabled(): boolean {
+		return this.props.peerReviewEnabled ?? false;
+	}
+
+	set peerReviewEnabled(value: boolean) {
+		this.props.peerReviewEnabled = value;
+	}
+
+	get peerReviewMode(): 'manual' | 'auto' {
+		return this.props.peerReviewMode ?? 'manual';
+	}
+
+	set peerReviewMode(value: 'manual' | 'auto') {
+		this.props.peerReviewMode = value;
+	}
+
+	get peerReviewCount(): number {
+		return this.props.peerReviewCount ?? 1;
+	}
+
+	set peerReviewCount(value: number) {
+		this.props.peerReviewCount = value;
 	}
 
 	// The point in time until a (still open) submission may be created or replaced.

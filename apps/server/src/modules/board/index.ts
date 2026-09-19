@@ -10,8 +10,10 @@ export { BoardModule } from './board.module';
 export {
 	AnyBoardNode,
 	AssignmentElement,
+	AssignmentRubricCriterion,
 	AssignmentStatus,
 	AssignmentSubmission,
+	AssignmentSubmissionCriterionPoints,
 	BoardExternalReference,
 	BoardExternalReferenceType,
 	BoardLayout,

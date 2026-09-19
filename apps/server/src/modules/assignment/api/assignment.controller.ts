@@ -22,6 +22,9 @@ import {
 	AssignmentSubmissionListResponse,
 	AssignmentSubmissionResponse,
 	AssignmentSubmissionUrlParams,
+	BatchReturnSubmissionsBodyParams,
+	BatchReturnSubmissionsFailureResponse,
+	BatchReturnSubmissionsResponse,
 	GradeSubmissionBodyParams,
 	SubmitSubmissionBodyParams,
 } from './dto';
@@ -148,5 +151,26 @@ export class AssignmentController {
 		const result = await this.assignmentUc.returnSubmission(currentUser.userId, urlParams.submissionId, bodyParams);
 
 		return AssignmentSubmissionResponseMapper.mapSingleForTeacher(result);
+	}
+
+	@ApiOperation({
+		summary:
+			'Return several already-graded submissions in one step. Submissions that are not graded yet (or cannot be returned) are reported in `failed` instead of aborting the whole request.',
+	})
+	@ApiResponse({ status: 200, type: BatchReturnSubmissionsResponse })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@HttpCode(200)
+	@Post('submissions/return-batch')
+	public async returnSubmissionsBatch(
+		@Body() bodyParams: BatchReturnSubmissionsBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<BatchReturnSubmissionsResponse> {
+		const result = await this.assignmentUc.returnSubmissionsBatch(currentUser.userId, bodyParams.submissionIds);
+
+		return new BatchReturnSubmissionsResponse({
+			returned: result.returned.map((entry) => AssignmentSubmissionResponseMapper.mapSingleForTeacher(entry)),
+			failed: result.failed.map((entry) => new BatchReturnSubmissionsFailureResponse(entry)),
+		});
 	}
 }

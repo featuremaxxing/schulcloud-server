@@ -1,9 +1,12 @@
-import { AssignmentStatus } from '@modules/board';
+import { AssignmentStatus, type AssignmentSubmissionCriterionPoints } from '@modules/board';
 import { type FileDto } from '@infra/files-storage-amqp-client';
 import {
+	AssignmentCriterionPointsResponse,
+	AssignmentPeerReviewSummaryResponse,
 	AssignmentSubmissionListResponse,
 	AssignmentSubmissionResponse,
 	AssignmentSubmissionFileResponse,
+	AssignmentSubmissionRubricCriterionResponse,
 } from '../dto';
 import {
 	type AssignmentSubmissionEntry,
@@ -29,6 +32,9 @@ export class AssignmentSubmissionResponseMapper {
 			comment: entry.submission?.comment ?? null,
 			feedbackAudio: mapFile(entry.feedbackAudio),
 			feedbackFiles: mapFiles(entry.feedbackFiles),
+			fileVersions: mapFileVersions(entry.fileVersions),
+			criterionPoints: mapCriterionPoints(entry.submission?.criterionPoints),
+			peerReviews: entry.peerReviews ? new AssignmentPeerReviewSummaryResponse(entry.peerReviews) : null,
 		});
 	}
 
@@ -53,6 +59,10 @@ export class AssignmentSubmissionResponseMapper {
 			feedbackAudio: isReturned ? mapFile(entry.feedbackAudio) : null,
 			// corrections (annotated PDFs/images) are released with the return as well
 			feedbackFiles: isReturned ? mapFiles(entry.feedbackFiles) : null,
+			// the student's own submission history is never withheld, unlike teacher feedback
+			fileVersions: mapFileVersions(entry.fileVersions),
+			// follows the same release rule as the flat points total it sums up to
+			criterionPoints: isReturned ? mapCriterionPoints(entry.submission?.criterionPoints) : null,
 		});
 	}
 
@@ -63,6 +73,7 @@ export class AssignmentSubmissionResponseMapper {
 			file: result.file,
 			feedbackAudio: result.feedbackAudio,
 			feedbackFiles: result.feedbackFiles,
+			fileVersions: result.fileVersions,
 		});
 	}
 
@@ -76,6 +87,7 @@ export class AssignmentSubmissionResponseMapper {
 			file: result.file,
 			feedbackAudio: result.feedbackAudio,
 			feedbackFiles: result.feedbackFiles,
+			fileVersions: result.fileVersions,
 		});
 	}
 
@@ -90,6 +102,8 @@ export class AssignmentSubmissionResponseMapper {
 			lateUntil: result.element.lateUntil?.toISOString() ?? null,
 			isSubmittable: result.element.isSubmittable(new Date()),
 			submissions,
+			criteria:
+				result.element.criteria?.map((criterion) => new AssignmentSubmissionRubricCriterionResponse(criterion)) ?? null,
 		});
 	}
 }
@@ -99,7 +113,30 @@ const mapFile = (file: AssignmentSubmissionEntry['file']): AssignmentSubmissionF
 		return null;
 	}
 
-	return new AssignmentSubmissionFileResponse({ fileRecordId: file.id, name: file.name });
+	return new AssignmentSubmissionFileResponse({
+		fileRecordId: file.id,
+		name: file.name,
+		createdAt: file.createdAt?.toISOString() ?? null,
+	});
+};
+
+// files come in newest-first (see pickSubmissionFileVersions); the oldest upload is version 1
+const mapFileVersions = (files?: FileDto[]): AssignmentSubmissionFileResponse[] | null => {
+	if (!files || files.length === 0) {
+		return null;
+	}
+
+	const total = files.length;
+
+	return files.map(
+		(file, index) =>
+			new AssignmentSubmissionFileResponse({
+				fileRecordId: file.id,
+				name: file.name,
+				createdAt: file.createdAt?.toISOString() ?? null,
+				version: total - index,
+			})
+	);
 };
 
 const mapFiles = (files?: FileDto[]): AssignmentSubmissionFileResponse[] | null => {
@@ -108,4 +145,14 @@ const mapFiles = (files?: FileDto[]): AssignmentSubmissionFileResponse[] | null 
 	}
 
 	return files.map((file) => new AssignmentSubmissionFileResponse({ fileRecordId: file.id, name: file.name }));
+};
+
+const mapCriterionPoints = (
+	criterionPoints: AssignmentSubmissionCriterionPoints[] | undefined
+): AssignmentCriterionPointsResponse[] | null => {
+	if (!criterionPoints || criterionPoints.length === 0) {
+		return null;
+	}
+
+	return criterionPoints.map((entry) => new AssignmentCriterionPointsResponse(entry));
 };

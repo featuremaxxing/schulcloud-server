@@ -1,5 +1,10 @@
 import { AssignmentElement, ContentElementType } from '../../domain';
-import { AssignmentElementContent, AssignmentElementResponse, TimestampsResponse } from '../dto';
+import {
+	AssignmentElementContent,
+	AssignmentElementResponse,
+	AssignmentRubricCriterionResponse,
+	TimestampsResponse,
+} from '../dto';
 import { type BaseResponseMapper } from './base-mapper.interface';
 
 export class AssignmentElementResponseMapper implements BaseResponseMapper {
@@ -27,6 +32,10 @@ export class AssignmentElementResponseMapper implements BaseResponseMapper {
 				graceMinutes: element.graceMinutes ?? null,
 				maxPoints: element.maxPoints ?? null,
 				lateUntil: element.lateUntil?.toISOString() ?? null,
+				criteria: element.criteria?.map((criterion) => new AssignmentRubricCriterionResponse(criterion)) ?? null,
+				peerReviewEnabled: element.peerReviewEnabled,
+				peerReviewMode: element.peerReviewMode,
+				peerReviewCount: element.peerReviewCount,
 			}),
 		});
 

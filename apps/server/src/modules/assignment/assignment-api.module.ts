@@ -11,7 +11,8 @@ import { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardModule, BoardPublicApiConfig } from
 import { RoomModule } from '@modules/room';
 import { RoomMembershipModule } from '@modules/room-membership';
 import { Module } from '@nestjs/common';
-import { AssignmentController, AssignmentUc } from './api';
+import { AssignmentController, AssignmentUc, PeerReviewController, PeerReviewUc } from './api';
+import { AssignmentReviewRepo } from './repo';
 
 @Module({
 	imports: [
@@ -28,7 +29,7 @@ import { AssignmentController, AssignmentUc } from './api';
 			configConstructor: RabbitMQConfig,
 		}),
 	],
-	controllers: [AssignmentController],
-	providers: [AssignmentUc],
+	controllers: [AssignmentController, PeerReviewController],
+	providers: [AssignmentUc, PeerReviewUc, AssignmentReviewRepo],
 })
 export class AssignmentApiModule {}

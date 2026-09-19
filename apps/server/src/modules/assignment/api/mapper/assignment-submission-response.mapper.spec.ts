@@ -94,6 +94,18 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			expect(response.id).toBeNull();
 			expect(response.status).toBe('open');
 		});
+
+		it('should reveal fileVersions even before the submission has been returned, numbered oldest to newest', () => {
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
+			const entry = buildEntry({ submission, fileVersions: buildFeedbackFiles() });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.fileVersions?.map((file) => [file.name, file.version])).toEqual([
+				['feedback-pdf-2.pdf', 2],
+				['feedback-img-1.png', 1],
+			]);
+		});
 	});
 
 	describe('mapForTeacher', () => {
@@ -121,6 +133,16 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
 
 			expect(response.feedbackFiles).toHaveLength(2);
+		});
+	});
+
+	describe('fileVersions', () => {
+		it('should return null when there are no versions', () => {
+			const entry = buildEntry({});
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.fileVersions).toBeNull();
 		});
 	});
 

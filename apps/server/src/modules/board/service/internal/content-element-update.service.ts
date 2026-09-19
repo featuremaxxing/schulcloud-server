@@ -130,6 +130,10 @@ export class ContentElementUpdateService {
 		element.startDate = content.startDate ? new Date(content.startDate) : undefined;
 		element.dueDate = content.dueDate ? new Date(content.dueDate) : undefined;
 		element.graceMinutes = content.graceMinutes;
+		// when criteria are set, the client already computed maxPoints as their sum - the
+		// element stays dumb and just stores whatever it is sent, see AssignmentUc for the
+		// per-criterion grading logic that actually depends on this
 		element.maxPoints = content.maxPoints;
+		element.criteria = content.criteria;
 	}
 }
