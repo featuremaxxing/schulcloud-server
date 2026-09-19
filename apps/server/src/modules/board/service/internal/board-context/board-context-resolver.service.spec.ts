@@ -4,9 +4,12 @@ import { CourseService } from '@modules/course';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { courseEntityFactory } from '@modules/course/testing';
 import { RoomService } from '@modules/room';
+import { roleFactory } from '@modules/role/testing';
+import { Permission } from '@shared/domain/interface';
 import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
 import { roomFactory } from '@modules/room/testing';
 import { User } from '@modules/user/repo';
+import { UserService } from '@modules/user';
 import { userFactory } from '@modules/user/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
@@ -22,6 +25,7 @@ describe(BoardContextResolverService.name, () => {
 	let courseService: DeepMocked<CourseService>;
 	let roomService: DeepMocked<RoomService>;
 	let roomMembershipService: DeepMocked<RoomMembershipService>;
+	let userService: DeepMocked<UserService>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -39,6 +43,10 @@ describe(BoardContextResolverService.name, () => {
 					provide: CourseService,
 					useValue: createMock<CourseService>(),
 				},
+				{
+					provide: UserService,
+					useValue: createMock<UserService>(),
+				},
 			],
 		}).compile();
 
@@ -46,6 +54,7 @@ describe(BoardContextResolverService.name, () => {
 		roomService = module.get(RoomService);
 		roomMembershipService = module.get(RoomMembershipService);
 		courseService = module.get(CourseService);
+		userService = module.get(UserService);
 
 		await setupEntities([User, CourseEntity, CourseGroupEntity]);
 	});
@@ -90,6 +99,32 @@ describe(BoardContextResolverService.name, () => {
 
 				expect(result).toBeInstanceOf(RoomBoardContext);
 				expect(result.type).toBe(BoardExternalReferenceType.Room);
+			});
+
+			it('should load the member names and pass them to the context', async () => {
+				const student = userFactory.buildWithId({ firstName: 'Anna', lastName: 'Admin' });
+				const room = roomFactory.build();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const roomAuthorizable = new RoomAuthorizable(
+					room.id,
+					[{ userId: student.id, userSchoolId: student.school.id, roles: [role] }],
+					room.schoolId
+				);
+				const contextRef: BoardExternalReference = {
+					id: room.id,
+					type: BoardExternalReferenceType.Room,
+				};
+
+				roomService.getSingleRoom.mockResolvedValue(room);
+				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([student]);
+
+				const result = await service.resolve(contextRef);
+				const users = result.getUsersWithBoardRoles();
+
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([student.id]);
+				expect(users[0].firstName).toBe('Anna');
+				expect(users[0].lastName).toBe('Admin');
 			});
 		});
 

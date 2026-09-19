@@ -1,6 +1,8 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable, NotImplementedException, UnprocessableEntityException } from '@nestjs/common';
-import { InputFormat } from '@shared/domain/types';
+import { EntityId, InputFormat } from '@shared/domain/types';
+import { AssignmentElement } from './assignment-element.do';
+import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
@@ -105,6 +107,14 @@ export class BoardNodeFactory {
 					...this.getBaseProps(),
 				});
 				break;
+			case ContentElementType.ASSIGNMENT:
+				element = new AssignmentElement({
+					...this.getBaseProps(),
+					title: '',
+					text: '',
+					inputFormat: InputFormat.RICH_TEXT_CK5,
+				});
+				break;
 			default:
 				handleNonExhaustiveSwitch(type);
 		}
@@ -114,6 +124,18 @@ export class BoardNodeFactory {
 		}
 
 		return element;
+	}
+
+	// A submission is not a content element and cannot be created via buildContentElement -
+	// it is created explicitly by the assignment module, once per student, below an
+	// AssignmentElement.
+	public buildAssignmentSubmission(userId: EntityId): AssignmentSubmission {
+		const submission = new AssignmentSubmission({
+			...this.getBaseProps(),
+			userId,
+		});
+
+		return submission;
 	}
 
 	private getBaseProps(): BoardNodeProps {

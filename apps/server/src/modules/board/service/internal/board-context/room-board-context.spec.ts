@@ -59,6 +59,28 @@ describe(RoomBoardContext.name, () => {
 			});
 		});
 
+		describe('when the resolver provides user names', () => {
+			it('should attach first and last name to the board roles', () => {
+				const userId = new ObjectId().toHexString();
+				const schoolId = new ObjectId().toHexString();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const member: UserWithRoomRoles = {
+					userId,
+					userSchoolId: schoolId,
+					roles: [role],
+				};
+				const room = roomFactory.build({ schoolId });
+				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
+				const userNames = new Map([[userId, { firstName: 'Anna', lastName: 'Admin' }]]);
+
+				const context = new RoomBoardContext(room, roomAuthorizable, userNames);
+				const result = context.getUsersWithBoardRoles();
+
+				expect(result[0].firstName).toBe('Anna');
+				expect(result[0].lastName).toBe('Admin');
+			});
+		});
+
 		describe('when room has members with ROOM_EDIT_CONTENT permission', () => {
 			it('should return users with EDITOR role', () => {
 				const userId = new ObjectId().toHexString();

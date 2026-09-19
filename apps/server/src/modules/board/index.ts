@@ -9,6 +9,11 @@ export { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from './board.con
 export { BoardModule } from './board.module';
 export {
 	AnyBoardNode,
+	AssignmentElement,
+	AssignmentRubricCriterion,
+	AssignmentStatus,
+	AssignmentSubmission,
+	AssignmentSubmissionCriterionPoints,
 	BoardExternalReference,
 	BoardExternalReferenceType,
 	BoardLayout,
@@ -19,9 +24,15 @@ export {
 	Card,
 	Column,
 	ColumnBoard,
+	isAssignmentElement,
+	isAssignmentSubmission,
 	isColumnBoard,
 	// @modules/tool/tool-launch/service/auto-parameter-strategy/auto-context-name.strategy.ts
 	MediaBoard,
 } from './domain';
 
+// modules/assignment/api/assignment.uc.ts
+export { BoardNodeFactory } from './domain';
+// modules/assignment/api/assignment.uc.ts
+export { BoardNodeRule } from './authorisation/board-node.rule';
 export { BoardCommonToolService, BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from './service';

@@ -2,7 +2,14 @@ import { FilterQuery, Utils } from '@mikro-orm/core';
 import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
 import { Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
-import { AnyBoardNode, BoardExternalReference, getBoardNodeType } from '../domain';
+import {
+	AnyBoardNode,
+	AssignmentElement,
+	AssignmentSubmission,
+	BoardExternalReference,
+	BoardNodeType,
+	getBoardNodeType,
+} from '../domain';
 import { pathOfChildren } from '../domain/path-utils';
 import { BoardNodeEntity } from './entity/board-node.entity';
 import { TreeBuilder } from './tree-builder';
@@ -84,6 +91,63 @@ export class BoardNodeRepo {
 
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.persist(boardNode).flush();
+	}
+
+	// Light-weight overview query for the assignment list: instead of loading entire
+	// board trees (findByExternalReference), it loads the assignment elements of the
+	// given boards. The caller must pass the boards the rooms actually reference
+	// (RoomContentService.getBoardOrder) - a room's database can contain older boards
+	// that are no longer linked, and their assignments must not surface in the list.
+	// With onlyVisible, boards in draft state (isVisible=false) are skipped - students
+	// cannot open them (canFindBoard rejects non-editors), so the list must not offer
+	// deep links into them either.
+	public async findAssignmentElementsByBoardIds(
+		boardIds: EntityId[],
+		options: { onlyVisible?: boolean } = {}
+	): Promise<AssignmentElement[]> {
+		if (boardIds.length === 0) {
+			return [];
+		}
+
+		let reachableBoardIds = boardIds;
+		if (options.onlyVisible) {
+			const boards = await this.em.find(BoardNodeEntity, {
+				type: BoardNodeType.COLUMN_BOARD,
+				id: { $in: boardIds },
+			});
+			reachableBoardIds = boards.filter((board) => board.isVisible).map((board) => board.id);
+		}
+
+		if (reachableBoardIds.length === 0) {
+			return [];
+		}
+
+		// An element's path starts with its board's id: ',<boardId>,<columnId>,...' (ROOT_PATH=',').
+		const elements = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.ASSIGNMENT_ELEMENT,
+			path: { $re: `^,(${reachableBoardIds.join('|')}),` },
+		});
+
+		return elements.map((entity) => new TreeBuilder().build(entity)) as AssignmentElement[];
+	}
+
+	// Direct children of the given assignment elements. Matches paths ending in
+	// ',<elementId>,' - only submissions can be direct children of an assignment element.
+	public async findAssignmentSubmissionsByParentIds(
+		parentIds: EntityId[],
+		userId?: EntityId
+	): Promise<AssignmentSubmission[]> {
+		if (parentIds.length === 0) {
+			return [];
+		}
+
+		const submissions = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.ASSIGNMENT_SUBMISSION,
+			path: { $re: `,(${parentIds.join('|')}),$` },
+			...(userId ? { userId } : {}),
+		});
+
+		return submissions.map((entity) => new TreeBuilder().build(entity)) as AssignmentSubmission[];
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

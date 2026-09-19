@@ -1,7 +1,19 @@
 import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { InputFormat } from '@shared/domain/types';
 import { Type } from 'class-transformer';
-import { IsEnum, IsMongoId, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+	ArrayMaxSize,
+	IsArray,
+	IsDateString,
+	IsEnum,
+	IsInt,
+	IsMongoId,
+	IsOptional,
+	IsString,
+	Max,
+	Min,
+	ValidateNested,
+} from 'class-validator';
 import { ContentElementType } from '../../../domain/types';
 
 abstract class ElementContentBody {
@@ -164,7 +176,79 @@ export class H5pElementContentBody extends ElementContentBody {
 	content!: H5pContentBody;
 }
 
+export class AssignmentRubricCriterionBody {
+	@IsString()
+	@ApiProperty({ description: 'client-generated id, stable across edits so submissions can reference it' })
+	id!: string;
+
+	@IsString()
+	@ApiProperty()
+	name!: string;
+
+	@IsInt()
+	@Min(1)
+	@Max(1000)
+	@ApiProperty()
+	maxPoints!: number;
+}
+
+export class AssignmentContentBody {
+	@IsString()
+	@ApiProperty()
+	title!: string;
+
+	@IsString()
+	@ApiProperty()
+	text!: string;
+
+	@IsEnum(InputFormat)
+	@ApiProperty()
+	inputFormat!: InputFormat;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
+	startDate?: string;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
+	dueDate?: string;
+
+	@IsInt()
+	@Min(0)
+	@Max(60 * 24 * 30)
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'grace period after dueDate in minutes, during which a submission is late' })
+	graceMinutes?: number;
+
+	@IsInt()
+	@Min(1)
+	@Max(1000)
+	@IsOptional()
+	@ApiPropertyOptional()
+	maxPoints?: number;
+
+	@IsArray()
+	@ArrayMaxSize(50)
+	@ValidateNested({ each: true })
+	@Type(() => AssignmentRubricCriterionBody)
+	@IsOptional()
+	@ApiPropertyOptional({ type: [AssignmentRubricCriterionBody] })
+	criteria?: AssignmentRubricCriterionBody[];
+}
+
+export class AssignmentElementContentBody extends ElementContentBody {
+	@ApiProperty({ type: () => ContentElementType.ASSIGNMENT })
+	type!: ContentElementType.ASSIGNMENT;
+
+	@ValidateNested()
+	@ApiProperty()
+	content!: AssignmentContentBody;
+}
+
 export type AnyElementContentBody =
+	| AssignmentContentBody
 	| FileContentBody
 	| DrawingContentBody
 	| LinkContentBody
@@ -188,6 +272,7 @@ export class UpdateElementContentBodyParams {
 				{ value: VideoConferenceElementContentBody, name: ContentElementType.VIDEO_CONFERENCE },
 				{ value: FileFolderElementContentBody, name: ContentElementType.FILE_FOLDER },
 				{ value: H5pElementContentBody, name: ContentElementType.H5P },
+				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -202,6 +287,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(VideoConferenceElementContentBody) },
 			{ $ref: getSchemaPath(FileFolderElementContentBody) },
 			{ $ref: getSchemaPath(H5pElementContentBody) },
+			{ $ref: getSchemaPath(AssignmentElementContentBody) },
 		],
 	})
 	data!:
@@ -212,5 +298,6 @@ export class UpdateElementContentBodyParams {
 		| DrawingElementContentBody
 		| VideoConferenceElementContentBody
 		| FileFolderElementContentBody
-		| H5pElementContentBody;
+		| H5pElementContentBody
+		| AssignmentElementContentBody;
 }

@@ -3,6 +3,7 @@ import { sanitizeRichText } from '@shared/controller/transformer';
 import { InputFormat } from '@shared/domain/types';
 import {
 	type AnyElementContentBody,
+	AssignmentContentBody,
 	DrawingContentBody,
 	ExternalToolContentBody,
 	FileContentBody,
@@ -13,6 +14,7 @@ import {
 	VideoConferenceContentBody,
 } from '../../controller/dto';
 import type {
+	AssignmentElement,
 	AnyContentElement,
 	DrawingElement,
 	ExternalToolElement,
@@ -24,6 +26,7 @@ import type {
 } from '../../domain';
 import {
 	H5pElement,
+	isAssignmentElement,
 	isDrawingElement,
 	isExternalToolElement,
 	isFileElement,
@@ -57,6 +60,8 @@ export class ContentElementUpdateService {
 			this.updateFileFolderElement(element, content);
 		} else if (isH5pElement(element) && content instanceof H5pContentBody) {
 			this.updateH5pElement(element, content);
+		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
+			this.updateAssignmentElement(element, content);
 		} else {
 			throw new Error(`Cannot update element of type: '${element.constructor.name}'`);
 		}
@@ -116,5 +121,19 @@ export class ContentElementUpdateService {
 		if (content.contentId !== undefined && element.contentId === undefined) {
 			element.contentId = content.contentId;
 		}
+	}
+
+	public updateAssignmentElement(element: AssignmentElement, content: AssignmentContentBody): void {
+		element.title = sanitizeRichText(content.title, InputFormat.PLAIN_TEXT);
+		element.text = sanitizeRichText(content.text, content.inputFormat);
+		element.inputFormat = content.inputFormat;
+		element.startDate = content.startDate ? new Date(content.startDate) : undefined;
+		element.dueDate = content.dueDate ? new Date(content.dueDate) : undefined;
+		element.graceMinutes = content.graceMinutes;
+		// when criteria are set, the client already computed maxPoints as their sum - the
+		// element stays dumb and just stores whatever it is sent, see AssignmentUc for the
+		// per-criterion grading logic that actually depends on this
+		element.maxPoints = content.maxPoints;
+		element.criteria = content.criteria;
 	}
 }

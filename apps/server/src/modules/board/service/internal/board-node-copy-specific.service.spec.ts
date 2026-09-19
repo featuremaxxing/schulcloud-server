@@ -14,6 +14,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { copyFileDtoFactory } from '@infra/files-storage-amqp-client/testing';
 import { BOARD_CONFIG_TOKEN, type BoardConfig } from '@modules/board/board.config';
 import {
+	AssignmentElement,
 	Card,
 	CollaborativeTextEditorElement,
 	Column,
@@ -28,6 +29,8 @@ import {
 	VideoConferenceElement,
 } from '../../domain';
 import {
+	assignmentElementFactory,
+	assignmentSubmissionFactory,
 	cardFactory,
 	collaborativeTextEditorFactory,
 	columnBoardFactory,
@@ -111,6 +114,39 @@ describe(BoardNodeCopyService.name, () => {
 
 		return { copyContext };
 	};
+
+	describe('copy assignment element', () => {
+		const setup = () => {
+			const { copyContext } = setupContext();
+			// a submission below the element models the real-life state: students already
+			// handed in work when the teacher copies the assignment
+			const submission = assignmentSubmissionFactory.build();
+			const element = assignmentElementFactory.build({ children: [submission] });
+
+			return { copyContext, element, submission };
+		};
+
+		it('should copy the assignment element without its submissions', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyAssignmentElement(element, copyContext);
+
+			const copy = result.copyEntity as AssignmentElement;
+			expect(copy).toBeInstanceOf(AssignmentElement);
+			expect(copy.children).toHaveLength(0);
+		});
+
+		it('should report copy success and never enter the submission copy case', async () => {
+			const { copyContext, element, submission } = setup();
+
+			const elementResult = await service.copyAssignmentElement(element, copyContext);
+			const submissionResult = service.copyAssignmentSubmission(submission);
+
+			expect(elementResult.status).toEqual(CopyStatusEnum.SUCCESS);
+			expect(elementResult.elements).toHaveLength(0);
+			expect(submissionResult.status).toEqual(CopyStatusEnum.NOT_DOING);
+		});
+	});
 
 	describe('copy column board', () => {
 		const setup = () => {

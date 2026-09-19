@@ -6,6 +6,8 @@ import {
 	AnyBoardNode,
 	AnyContentElement,
 	AnyMediaElement,
+	AssignmentElement,
+	AssignmentSubmission,
 	BoardExternalReferenceType,
 	ColumnBoard,
 	isAnyMediaElement,
@@ -46,6 +48,20 @@ export class BoardNodeService {
 		await this.boardNodeRepo.save(parent);
 	}
 
+	public findAssignmentElementsByBoardIds(
+		boardIds: EntityId[],
+		options: { onlyVisible?: boolean } = {}
+	): Promise<AssignmentElement[]> {
+		return this.boardNodeRepo.findAssignmentElementsByBoardIds(boardIds, options);
+	}
+
+	public findAssignmentSubmissionsByParentIds(
+		parentIds: EntityId[],
+		userId?: EntityId
+	): Promise<AssignmentSubmission[]> {
+		return this.boardNodeRepo.findAssignmentSubmissionsByParentIds(parentIds, userId);
+	}
+
 	public async updateTitle<T extends WithTitle<AnyBoardNode>>(node: T, title: T['title']): Promise<void> {
 		node.title = title;
 		await this.boardNodeRepo.save(node);
@@ -80,6 +96,13 @@ export class BoardNodeService {
 
 	public async updateContent(element: AnyContentElement, content: AnyElementContentBody): Promise<void> {
 		await this.contentElementUpdateService.updateContent(element, content);
+	}
+
+	// Generic escape hatch for callers (e.g. the assignment module) that mutate a node's
+	// props directly via its domain object setters instead of going through one of the
+	// typed update* methods above.
+	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
+		await this.boardNodeRepo.save(boardNode);
 	}
 
 	public async replace(oldNode: AnyBoardNode, newNode: AnyBoardNode): Promise<void> {
