@@ -25,7 +25,7 @@ export interface PollResults {
 	participantCount: number;
 	myVote?: PollAnswer[];
 	results?: PollQuestionResult[];
-	voters?: { userId: EntityId; answers: PollAnswer[] }[];
+	voters?: { userId: EntityId; firstName?: string; lastName?: string; answers: PollAnswer[] }[];
 }
 
 @Injectable()
@@ -95,7 +95,14 @@ export class PollUc {
 		const voters =
 			canSeeResults && isManager && !element.isAnonymous
 				? votes.map((vote) => {
-						return { userId: vote.userId, answers: vote.answers };
+						const voterInfo = authorizable.users.find((user) => user.userId === vote.userId);
+
+						return {
+							userId: vote.userId,
+							firstName: voterInfo?.firstName,
+							lastName: voterInfo?.lastName,
+							answers: vote.answers,
+						};
 					})
 				: undefined;
 

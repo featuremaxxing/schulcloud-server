@@ -4,8 +4,9 @@ import { CourseService } from '@modules/course';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { courseEntityFactory } from '@modules/course/testing';
 import { RoomService } from '@modules/room';
-import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
+import { RoomAuthorizable, RoomMembershipService, type UserWithRoomRoles } from '@modules/room-membership';
 import { roomFactory } from '@modules/room/testing';
+import { UserService } from '@modules/user';
 import { User } from '@modules/user/repo';
 import { userFactory } from '@modules/user/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -22,6 +23,7 @@ describe(BoardContextResolverService.name, () => {
 	let courseService: DeepMocked<CourseService>;
 	let roomService: DeepMocked<RoomService>;
 	let roomMembershipService: DeepMocked<RoomMembershipService>;
+	let userService: DeepMocked<UserService>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -39,6 +41,10 @@ describe(BoardContextResolverService.name, () => {
 					provide: CourseService,
 					useValue: createMock<CourseService>(),
 				},
+				{
+					provide: UserService,
+					useValue: createMock<UserService>(),
+				},
 			],
 		}).compile();
 
@@ -46,6 +52,7 @@ describe(BoardContextResolverService.name, () => {
 		roomService = module.get(RoomService);
 		roomMembershipService = module.get(RoomMembershipService);
 		courseService = module.get(CourseService);
+		userService = module.get(UserService);
 
 		await setupEntities([User, CourseEntity, CourseGroupEntity]);
 	});
@@ -70,6 +77,7 @@ describe(BoardContextResolverService.name, () => {
 
 				roomService.getSingleRoom.mockResolvedValue(room);
 				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([]);
 
 				return { contextRef, room, roomAuthorizable };
 			};
@@ -90,6 +98,61 @@ describe(BoardContextResolverService.name, () => {
 
 				expect(result).toBeInstanceOf(RoomBoardContext);
 				expect(result.type).toBe(BoardExternalReferenceType.Room);
+			});
+
+			it('should not fetch user names when the room has no members', async () => {
+				const { contextRef } = setup();
+
+				await service.resolve(contextRef);
+
+				expect(userService.getUserEntitiesWithRoles).not.toHaveBeenCalled();
+			});
+		});
+
+		describe('when context type is Room and the room has members', () => {
+			const setup = () => {
+				const member = userFactory.buildWithId({ firstName: 'Anna', lastName: 'Beispiel' });
+				const roomMember: UserWithRoomRoles = {
+					userId: member.id,
+					userSchoolId: member.school.id,
+					roles: [],
+				};
+				const room = roomFactory.build();
+				const roomAuthorizable = new RoomAuthorizable(room.id, [roomMember], room.schoolId);
+				const contextRef: BoardExternalReference = {
+					id: room.id,
+					type: BoardExternalReferenceType.Room,
+				};
+
+				roomService.getSingleRoom.mockResolvedValue(room);
+				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([member]);
+
+				return { contextRef, member };
+			};
+
+			it('should batch-load the member names once', async () => {
+				const { contextRef, member } = setup();
+
+				await service.resolve(contextRef);
+
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledTimes(1);
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([member.id]);
+			});
+
+			it('should populate firstName and lastName on the resulting users', async () => {
+				const { contextRef, member } = setup();
+
+				const result = await service.resolve(contextRef);
+				const users = result.getUsersWithBoardRoles();
+
+				expect(users).toEqual([
+					expect.objectContaining({
+						userId: member.id,
+						firstName: 'Anna',
+						lastName: 'Beispiel',
+					}),
+				]);
 			});
 		});
 

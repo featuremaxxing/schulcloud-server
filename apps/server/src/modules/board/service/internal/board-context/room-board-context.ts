@@ -2,6 +2,7 @@ import { RoleName } from '@modules/role';
 import { type Room, RoomFeatures } from '@modules/room';
 import { type RoomAuthorizable, type UserWithRoomRoles } from '@modules/room-membership';
 import { Permission } from '@shared/domain/interface';
+import { type EntityId } from '@shared/domain/types';
 import {
 	type BoardConfiguration,
 	BoardExternalReferenceType,
@@ -27,7 +28,8 @@ export class RoomBoardContext implements PreparedBoardContext {
 
 	constructor(
 		private readonly room: Room,
-		private readonly roomAuthorizable: RoomAuthorizable
+		private readonly roomAuthorizable: RoomAuthorizable,
+		private readonly userNames: Map<EntityId, { firstName?: string; lastName?: string }> = new Map()
 	) {
 		this.usersWithBoardRoles = this.computeUsersWithBoardRoles();
 		this.hasOwner = this.computeHasOwner();
@@ -51,8 +53,12 @@ export class RoomBoardContext implements PreparedBoardContext {
 
 	private computeUsersWithBoardRoles(): UserWithBoardRoles[] {
 		return this.roomAuthorizable.members.map((member) => {
+			const userName = this.userNames.get(member.userId);
+
 			return {
 				userId: member.userId,
+				firstName: userName?.firstName,
+				lastName: userName?.lastName,
 				roles: this.getBoardRolesFromRoomMembership(member),
 			};
 		});

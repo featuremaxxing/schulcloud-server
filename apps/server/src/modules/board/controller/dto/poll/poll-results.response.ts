@@ -25,11 +25,19 @@ export class PollAnswerResponse {
 export class PollVoterResponse {
 	constructor(props: PollVoterResponse) {
 		this.userId = props.userId;
+		this.firstName = props.firstName;
+		this.lastName = props.lastName;
 		this.answers = props.answers;
 	}
 
 	@ApiProperty({ pattern: bsonStringPattern })
 	userId: string;
+
+	@ApiPropertyOptional()
+	firstName?: string;
+
+	@ApiPropertyOptional()
+	lastName?: string;
 
 	@ApiProperty({ type: () => [PollAnswerResponse] })
 	answers: PollAnswerResponse[];

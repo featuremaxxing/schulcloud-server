@@ -58,7 +58,11 @@ describe('poll vote flow (api)', () => {
 
 	const setup = async () => {
 		const { teacherAccount, teacherUser } = UserAndAccountTestFactory.buildTeacher();
-		const { studentAccount, studentUser } = UserAndAccountTestFactory.buildStudent({ school: teacherUser.school });
+		const { studentAccount, studentUser } = UserAndAccountTestFactory.buildStudent({
+			school: teacherUser.school,
+			firstName: 'Anna',
+			lastName: 'Beispiel',
+		});
 
 		const course = courseEntityFactory.build({
 			school: teacherUser.school,
@@ -103,6 +107,7 @@ describe('poll vote flow (api)', () => {
 			studentPollsClient,
 			pollElementId: pollElement.id,
 			studentUserId: studentUser.id,
+			teacherUserId: teacherUser.id,
 		};
 	};
 
@@ -168,6 +173,64 @@ describe('poll vote flow (api)', () => {
 		const results = await pollUc.getResults(studentUserId, pollElementId);
 		expect(results.totalVotes).toBe(1);
 		expect(results.participantCount).toBe(1);
+	});
+
+	it('should include voter names for the manager on a non-anonymous poll', async () => {
+		const { teacherClient, pollElementId, studentUserId, teacherUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const results = await pollUc.getResults(teacherUserId, pollElementId);
+
+		expect(results.voters).toEqual([
+			expect.objectContaining({
+				userId: studentUserId,
+				firstName: 'Anna',
+				lastName: 'Beispiel',
+			}),
+		]);
+	});
+
+	it('should not include voters for a student even though names would be resolvable', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const results = await pollUc.getResults(studentUserId, pollElementId);
+
+		expect(results.voters).toBeUndefined();
+	});
+
+	it('should not include voters (and therefore no names) for an anonymous poll, even for the manager', async () => {
+		const { teacherClient, pollElementId, studentUserId, teacherUserId } = await setup();
+		await teacherClient.patch(`${pollElementId}/content`, {
+			data: {
+				type: ContentElementType.POLL,
+				content: {
+					title: 'My poll',
+					isAnonymous: true,
+					showResultsLive: true,
+					pollStatus: PollStatus.OPEN,
+					questions: [
+						{
+							id: 'question-1',
+							text: 'Which one?',
+							answerMode: PollAnswerMode.SINGLE,
+							chartType: PollChartType.BAR,
+							options: [
+								{ id: 'option-a', text: 'Option A' },
+								{ id: 'option-b', text: 'Option B' },
+							],
+						},
+					],
+				},
+			},
+		});
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const results = await pollUc.getResults(teacherUserId, pollElementId);
+
+		expect(results.voters).toBeUndefined();
 	});
 
 	it('should freeze a resultSnapshot when the teacher closes the poll, and reject further votes', async () => {

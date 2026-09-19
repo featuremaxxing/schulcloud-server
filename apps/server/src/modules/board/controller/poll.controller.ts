@@ -48,6 +48,8 @@ export class PollController {
 				(voter) =>
 					new PollVoterResponse({
 						userId: voter.userId,
+						firstName: voter.firstName,
+						lastName: voter.lastName,
 						answers: voter.answers.map((answer) => new PollAnswerResponse(answer)),
 					})
 			),
