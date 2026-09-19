@@ -4,3 +4,4 @@ export * from './card.uc';
 export * from './column.uc';
 export * from './element.uc';
 export * from './media-board';
+export * from './poll.uc';

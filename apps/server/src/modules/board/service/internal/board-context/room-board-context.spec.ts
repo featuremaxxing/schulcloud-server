@@ -133,6 +133,55 @@ describe(RoomBoardContext.name, () => {
 				]);
 			});
 		});
+
+		describe('when userNames are provided for a member', () => {
+			it('should include firstName and lastName for that member', () => {
+				const userId = new ObjectId().toHexString();
+				const schoolId = new ObjectId().toHexString();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const member: UserWithRoomRoles = {
+					userId,
+					userSchoolId: schoolId,
+					roles: [role],
+				};
+				const room = roomFactory.build({ schoolId });
+				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
+				const userNames = new Map([[userId, { firstName: 'Anna', lastName: 'Beispiel' }]]);
+
+				const context = new RoomBoardContext(room, roomAuthorizable, userNames);
+				const result = context.getUsersWithBoardRoles();
+
+				expect(result).toEqual([
+					{
+						userId,
+						firstName: 'Anna',
+						lastName: 'Beispiel',
+						roles: [BoardRoles.READER],
+					},
+				]);
+			});
+		});
+
+		describe('when no userNames are provided', () => {
+			it('should leave firstName and lastName undefined', () => {
+				const userId = new ObjectId().toHexString();
+				const schoolId = new ObjectId().toHexString();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const member: UserWithRoomRoles = {
+					userId,
+					userSchoolId: schoolId,
+					roles: [role],
+				};
+				const room = roomFactory.build({ schoolId });
+				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
+
+				const context = new RoomBoardContext(room, roomAuthorizable);
+				const result = context.getUsersWithBoardRoles();
+
+				expect(result[0].firstName).toBeUndefined();
+				expect(result[0].lastName).toBeUndefined();
+			});
+		});
 	});
 
 	describe('getBoardConfiguration', () => {

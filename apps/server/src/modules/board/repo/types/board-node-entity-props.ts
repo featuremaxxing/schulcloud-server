@@ -14,6 +14,8 @@ import type {
 	MediaBoardProps,
 	MediaExternalToolElementProps,
 	MediaLineProps,
+	PollElementProps,
+	PollVoteProps,
 	RichTextElementProps,
 } from '../../domain';
 
@@ -54,4 +56,6 @@ export interface BoardNodeEntityProps
 		ComponentProps<MediaBoardProps>,
 		ComponentProps<MediaExternalToolElementProps>,
 		ComponentProps<MediaLineProps>,
-		ComponentProps<DeletedElementProps> {}
+		ComponentProps<DeletedElementProps>,
+		ComponentProps<PollElementProps>,
+		ComponentProps<PollVoteProps> {}

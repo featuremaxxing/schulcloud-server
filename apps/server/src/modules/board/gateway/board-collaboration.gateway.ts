@@ -24,7 +24,7 @@ import { MoveCardResponseMapper } from '../controller/mapper/move-card-response.
 import { AnyBoardNode, ColumnBoard } from '../domain';
 import { MetricsService } from '../metrics/metrics.service';
 import { TrackExecutionTime } from '../metrics/track-execution-time.decorator';
-import { BoardUc, CardUc, ColumnUc, ElementUc } from '../uc';
+import { BoardUc, CardUc, ColumnUc, ElementUc, PollUc } from '../uc';
 import {
 	CopyCardMessageParams,
 	CopyColumnMessageParams,
@@ -41,6 +41,7 @@ import {
 	MoveCardToBoardMessageParams,
 	MoveColumnMessageParams,
 	MoveContentElementMessageParams,
+	PollVoteMessageParams,
 	UpdateBoardLayoutMessageParams,
 	UpdateBoardTitleMessageParams,
 	UpdateBoardVisibilityMessageParams,
@@ -77,6 +78,7 @@ export class BoardCollaborationGateway implements OnGatewayConnection, OnGateway
 		private readonly columnUc: ColumnUc,
 		private readonly cardUc: CardUc,
 		private readonly elementUc: ElementUc,
+		private readonly pollUc: PollUc,
 		private readonly metricsService: MetricsService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly boardConfig: BoardConfig
 	) {
@@ -497,6 +499,38 @@ export class BoardCollaborationGateway implements OnGatewayConnection, OnGateway
 		try {
 			const element = await this.elementUc.updateElement(userId, data.elementId, data.data.content);
 			emitter.emitToClientAndRoom(data, element);
+		} catch {
+			emitter.emitFailure(data);
+		}
+	}
+
+	// The only board-node mutation with its own socket message type (see the plan): voting
+	// targets a child node (PollVote) the caller does not otherwise have generic write
+	// access to, so it cannot reuse update-element-request. `results` is included only when
+	// the poll's showResultsLive switch is on - otherwise the room only learns that the vote
+	// count went up, and clients allowed to see results fetch them via the REST endpoint
+	// instead. This prevents a mitreading client from reading interim results of a
+	// non-live poll off the socket.
+	@SubscribeMessage('poll-vote-request')
+	@TrackExecutionTime()
+	@EnsureRequestContext()
+	public async pollVote(socket: Socket, data: PollVoteMessageParams): Promise<void> {
+		const emitter = this.buildBoardSocketEmitter({ socket, action: 'poll-vote' });
+		const { userId } = this.getCurrentUser(socket);
+		try {
+			const { element, totalVotes } = await this.pollUc.vote(userId, data.elementId, data.answers);
+
+			const responsePayload: { elementId: string; totalVotes: number; results?: unknown } = {
+				elementId: data.elementId,
+				totalVotes,
+			};
+
+			if (element.showResultsLive) {
+				const pollResults = await this.pollUc.getResults(userId, data.elementId);
+				responsePayload.results = pollResults.results;
+			}
+
+			emitter.emitToClientAndRoom(responsePayload, element);
 		} catch {
 			emitter.emitFailure(data);
 		}

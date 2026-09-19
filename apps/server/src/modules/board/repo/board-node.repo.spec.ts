@@ -1,10 +1,10 @@
-import { EntityManager } from '@mikro-orm/mongodb';
+import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { BaseEntityWithTimestamps } from '@shared/domain/entity';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { MongoMemoryDatabaseModule } from '@testing/database';
-import { ColumnBoard } from '../domain';
-import { cardFactory, columnBoardFactory, columnFactory } from '../testing';
+import { ColumnBoard, PollAnswerMode, PollChartType, type PollElement, PollStatus, type PollVote } from '../domain';
+import { cardFactory, columnBoardFactory, columnFactory, pollElementFactory, pollVoteFactory } from '../testing';
 import { BoardNodeRepo } from './board-node.repo';
 import { BoardNodeEntity } from './entity/board-node.entity';
 
@@ -257,6 +257,105 @@ describe('BoardNodeRepo', () => {
 					expect(resultColumn.children[1] === resultCard2).toBe(true);
 				});
 			});
+		});
+	});
+
+	// The new part for the poll element: nested @Embedded arrays (questions with nested
+	// options) plus a single nested @Embedded object (resultSnapshot with a nested array
+	// of question results) - both persisted and reloaded as plain-data-shaped instances,
+	// not the domain's own PollQuestion/PollResultSnapshot interfaces.
+	describe('persisting nested embeddables (poll)', () => {
+		const setup = () => {
+			const userId = new ObjectId().toHexString();
+			const optionA = { id: 'option-a', text: 'Option A' };
+			const optionB = { id: 'option-b', text: 'Option B' };
+			const question = {
+				id: 'question-1',
+				text: 'Which one?',
+				answerMode: PollAnswerMode.SINGLE,
+				chartType: PollChartType.BAR,
+				options: [optionA, optionB],
+			};
+
+			const poll = pollElementFactory.build({
+				title: 'My poll',
+				questions: [question],
+				isAnonymous: true,
+				showResultsLive: true,
+				pollStatus: PollStatus.CLOSED,
+				closesAt: new Date('2026-01-10T10:00:00.000Z'),
+				resultSnapshot: {
+					frozenAt: new Date('2026-01-10T10:00:00.000Z'),
+					participantCount: 2,
+					perQuestion: [
+						{
+							questionId: question.id,
+							counts: [
+								{ optionId: optionA.id, count: 1 },
+								{ optionId: optionB.id, count: 1 },
+							],
+						},
+					],
+				},
+			});
+
+			const vote = pollVoteFactory.build({
+				userId,
+				answers: [{ questionId: question.id, selectedOptionIds: [optionA.id] }],
+			});
+			poll.addChild(vote);
+
+			return { poll, vote, userId };
+		};
+
+		it('should round-trip the questions array (nested embeddable array of arrays)', async () => {
+			const { poll } = setup();
+
+			await repo.save(poll);
+			em.clear();
+
+			const result = (await repo.findById(poll.id)) as PollElement;
+
+			expect(result.questions).toHaveLength(1);
+			expect(result.questions[0]).toMatchObject({
+				id: 'question-1',
+				text: 'Which one?',
+				answerMode: PollAnswerMode.SINGLE,
+				chartType: PollChartType.BAR,
+			});
+			expect(result.questions[0].options).toEqual([
+				{ id: 'option-a', text: 'Option A' },
+				{ id: 'option-b', text: 'Option B' },
+			]);
+		});
+
+		it('should round-trip the resultSnapshot (nested embeddable object with a nested array)', async () => {
+			const { poll } = setup();
+
+			await repo.save(poll);
+			em.clear();
+
+			const result = (await repo.findById(poll.id)) as PollElement;
+
+			expect(result.resultSnapshot?.participantCount).toBe(2);
+			expect(result.resultSnapshot?.perQuestion).toHaveLength(1);
+			expect(result.resultSnapshot?.perQuestion[0].counts).toEqual([
+				{ optionId: 'option-a', count: 1 },
+				{ optionId: 'option-b', count: 1 },
+			]);
+		});
+
+		it('should round-trip a poll vote child with its answers', async () => {
+			const { poll, vote, userId } = setup();
+
+			await repo.save(poll);
+			em.clear();
+
+			const result = (await repo.findById(poll.id, 1)) as PollElement;
+			const resultVote = result.children[0] as PollVote;
+
+			expect(resultVote.userId).toBe(userId);
+			expect(resultVote.answers).toEqual(vote.answers);
 		});
 	});
 });

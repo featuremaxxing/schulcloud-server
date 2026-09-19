@@ -2,9 +2,20 @@ import { Embedded, Entity, Enum, Index, Property } from '@mikro-orm/core';
 import { BaseEntityWithTimestamps } from '@shared/domain/entity/base.entity';
 import { EntityId, InputFormat } from '@shared/domain/types';
 import { ObjectIdType } from '@shared/repo/types/object-id.type';
-import { AnyBoardNode, BoardLayout, BoardNodeType, ContentElementType, Colors, ROOT_PATH } from '../../domain';
+import {
+	AnyBoardNode,
+	BoardLayout,
+	BoardNodeType,
+	ContentElementType,
+	Colors,
+	type PollAnswer,
+	type PollQuestion,
+	type PollResultSnapshot,
+	PollStatus,
+	ROOT_PATH,
+} from '../../domain';
 import type { BoardNodeEntityProps } from '../types';
-import { Context } from './embeddables';
+import { Context, PollQuestionEmbeddable, PollResultSnapshotEmbeddable } from './embeddables';
 
 @Entity({ tableName: 'boardnodes' })
 export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNodeEntityProps {
@@ -111,4 +122,37 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// --------------------------------------------------------------------------
 	@Enum({ type: 'ContentElementType', nullable: true })
 	deletedElementType: ContentElementType | undefined;
+
+	// PollElement
+	// --------------------------------------------------------------------------
+	@Embedded(() => PollQuestionEmbeddable, { array: true, nullable: true })
+	questions: PollQuestion[] | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	isAnonymous: boolean | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	showResultsLive: boolean | undefined;
+
+	@Enum({ type: 'PollStatus', nullable: true })
+	pollStatus: PollStatus | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	closesAt: Date | undefined;
+
+	@Embedded(() => PollResultSnapshotEmbeddable, { nullable: true, object: true })
+	resultSnapshot: PollResultSnapshot | undefined;
+
+	// PollVote
+	// --------------------------------------------------------------------------
+	@Property({ type: ObjectIdType, nullable: true })
+	userId: EntityId | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	votedAt: Date | undefined;
+
+	// Plain nested plain-object array (no @Embedded): MongoDB stores objects/arrays
+	// natively, so unlike a relational DB there is no need for a 'json' column type here.
+	@Property({ nullable: true })
+	answers: PollAnswer[] | undefined;
 }

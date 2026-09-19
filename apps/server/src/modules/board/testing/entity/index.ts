@@ -10,5 +10,7 @@ export * from './link-element-entity.factory';
 export * from './media-board-entity.factory';
 export * from './media-external-tool-element-entity.factory';
 export * from './media-line-entity.factory';
+export * from './poll-element-entity.factory';
+export * from './poll-vote-entity.factory';
 export * from './rich-text-element-entity.factory';
 export * from './video-conference-element-entity.factory';

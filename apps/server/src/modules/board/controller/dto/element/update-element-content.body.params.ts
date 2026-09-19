@@ -1,8 +1,20 @@
 import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { InputFormat } from '@shared/domain/types';
 import { Type } from 'class-transformer';
-import { IsEnum, IsMongoId, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+	ArrayMaxSize,
+	IsArray,
+	IsBoolean,
+	IsDateString,
+	IsEnum,
+	IsMongoId,
+	IsOptional,
+	IsString,
+	MaxLength,
+	ValidateNested,
+} from 'class-validator';
 import { ContentElementType } from '../../../domain/types';
+import { PollAnswerMode, PollChartType, PollStatus } from '../../../domain/types/poll.types';
 
 abstract class ElementContentBody {
 	@IsEnum(ContentElementType)
@@ -164,6 +176,94 @@ export class H5pElementContentBody extends ElementContentBody {
 	content!: H5pContentBody;
 }
 
+// Nest runs with no custom body-parser limit, i.e. the Express default of ~100kB - an
+// undocumented implicit limit on the whole request body. Question/option text lengths and
+// array sizes are capped defensively so a poll cannot alone exhaust that budget.
+export class PollOptionBody {
+	// Not necessarily a Mongo id: the client may send its own freshly generated id for a
+	// brand-new option (the server assigns one if missing, see updatePollElement()).
+	@IsString()
+	@IsOptional()
+	@MaxLength(64)
+	@ApiPropertyOptional()
+	id?: string;
+
+	@IsString()
+	@MaxLength(200)
+	@ApiProperty()
+	text!: string;
+}
+
+export class PollQuestionBody {
+	@IsString()
+	@IsOptional()
+	@MaxLength(64)
+	@ApiPropertyOptional()
+	id?: string;
+
+	@IsString()
+	@MaxLength(500)
+	@ApiProperty()
+	text!: string;
+
+	@IsEnum(PollAnswerMode)
+	@ApiProperty({ enum: PollAnswerMode, enumName: 'PollAnswerMode' })
+	answerMode!: PollAnswerMode;
+
+	@IsEnum(PollChartType)
+	@ApiProperty({ enum: PollChartType, enumName: 'PollChartType' })
+	chartType!: PollChartType;
+
+	@IsArray()
+	@ArrayMaxSize(10)
+	@ValidateNested({ each: true })
+	@Type(() => PollOptionBody)
+	@ApiProperty({ type: () => [PollOptionBody] })
+	options!: PollOptionBody[];
+}
+
+export class PollContentBody {
+	@IsString()
+	@IsOptional()
+	@MaxLength(500)
+	@ApiPropertyOptional()
+	title?: string;
+
+	@IsArray()
+	@ArrayMaxSize(20)
+	@ValidateNested({ each: true })
+	@Type(() => PollQuestionBody)
+	@ApiProperty({ type: () => [PollQuestionBody] })
+	questions!: PollQuestionBody[];
+
+	@IsBoolean()
+	@ApiProperty()
+	isAnonymous!: boolean;
+
+	@IsBoolean()
+	@ApiProperty()
+	showResultsLive!: boolean;
+
+	@IsEnum(PollStatus)
+	@ApiProperty({ enum: PollStatus, enumName: 'PollStatus' })
+	pollStatus!: PollStatus;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
+	closesAt?: string;
+}
+
+export class PollElementContentBody extends ElementContentBody {
+	@ApiProperty({ type: () => ContentElementType.POLL })
+	type!: ContentElementType.POLL;
+
+	@ValidateNested()
+	@Type(() => PollContentBody)
+	@ApiProperty()
+	content!: PollContentBody;
+}
+
 export type AnyElementContentBody =
 	| FileContentBody
 	| DrawingContentBody
@@ -172,7 +272,8 @@ export type AnyElementContentBody =
 	| ExternalToolContentBody
 	| VideoConferenceContentBody
 	| FileFolderContentBody
-	| H5pContentBody;
+	| H5pContentBody
+	| PollContentBody;
 
 export class UpdateElementContentBodyParams {
 	@ValidateNested()
@@ -188,6 +289,7 @@ export class UpdateElementContentBodyParams {
 				{ value: VideoConferenceElementContentBody, name: ContentElementType.VIDEO_CONFERENCE },
 				{ value: FileFolderElementContentBody, name: ContentElementType.FILE_FOLDER },
 				{ value: H5pElementContentBody, name: ContentElementType.H5P },
+				{ value: PollElementContentBody, name: ContentElementType.POLL },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -202,6 +304,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(VideoConferenceElementContentBody) },
 			{ $ref: getSchemaPath(FileFolderElementContentBody) },
 			{ $ref: getSchemaPath(H5pElementContentBody) },
+			{ $ref: getSchemaPath(PollElementContentBody) },
 		],
 	})
 	data!:
@@ -212,5 +315,6 @@ export class UpdateElementContentBodyParams {
 		| DrawingElementContentBody
 		| VideoConferenceElementContentBody
 		| FileFolderElementContentBody
-		| H5pElementContentBody;
+		| H5pElementContentBody
+		| PollElementContentBody;
 }

@@ -11,6 +11,7 @@ import {
 	isAnyMediaElement,
 	isContentElement,
 	MediaBoard,
+	PollVote,
 } from '../domain';
 import { RoomBoardCreatedEvent } from '../domain/events/room-board-created.event';
 import { RoomBoardDeletedEvent } from '../domain/events/room-board-deleted.event';
@@ -80,6 +81,17 @@ export class BoardNodeService {
 
 	public async updateContent(element: AnyContentElement, content: AnyElementContentBody): Promise<void> {
 		await this.contentElementUpdateService.updateContent(element, content);
+	}
+
+	public findPollVotesByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<PollVote[]> {
+		return this.boardNodeRepo.findPollVotesByParentIds(parentIds, userId);
+	}
+
+	// Generic escape hatch for callers (e.g. PollUc) that mutate a node's props directly via
+	// its domain object setters, or add a freshly built child node, instead of going through
+	// one of the typed update* methods above.
+	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
+		await this.boardNodeRepo.save(boardNode);
 	}
 
 	public async replace(oldNode: AnyBoardNode, newNode: AnyBoardNode): Promise<void> {

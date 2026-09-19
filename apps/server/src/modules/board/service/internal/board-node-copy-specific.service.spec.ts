@@ -24,6 +24,7 @@ import {
 	FileElement,
 	FileFolderElement,
 	LinkElement,
+	PollElement,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -42,6 +43,8 @@ import {
 	mediaBoardFactory,
 	mediaExternalToolElementFactory,
 	mediaLineFactory,
+	pollElementFactory,
+	pollVoteFactory,
 	richTextElementFactory,
 	videoConferenceElementFactory,
 } from '../../testing';
@@ -111,6 +114,51 @@ describe(BoardNodeCopyService.name, () => {
 
 		return { copyContext };
 	};
+
+	describe('copy poll element', () => {
+		const setup = () => {
+			const { copyContext } = setupContext();
+			// a vote below the element models the real-life state: participants already
+			// voted when the teacher copies the poll
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({
+				children: [vote],
+				resultSnapshot: { frozenAt: new Date(), participantCount: 1, perQuestion: [] },
+			});
+
+			return { copyContext, element, vote };
+		};
+
+		it('should copy the poll element without its votes', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy).toBeInstanceOf(PollElement);
+			expect(copy.children).toHaveLength(0);
+		});
+
+		it('should copy the poll element without its resultSnapshot', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.resultSnapshot).toBeUndefined();
+		});
+
+		it('should report copy success and never enter the vote copy case', async () => {
+			const { copyContext, element, vote } = setup();
+
+			const elementResult = await service.copyPollElement(element, copyContext);
+			const voteResult = service.copyPollVote(vote);
+
+			expect(elementResult.status).toEqual(CopyStatusEnum.SUCCESS);
+			expect(elementResult.elements).toHaveLength(0);
+			expect(voteResult.status).toEqual(CopyStatusEnum.NOT_DOING);
+		});
+	});
 
 	describe('copy column board', () => {
 		const setup = () => {
