@@ -31,11 +31,25 @@ export class FilesStorageClientMapper {
 			name: fileRecordResponse.name,
 			parentType,
 			parentId: fileRecordResponse.parentId,
-			createdAt: fileRecordResponse.createdAt,
-			updatedAt: fileRecordResponse.updatedAt,
+			createdAt: FilesStorageClientMapper.mapToDate(fileRecordResponse.createdAt),
+			updatedAt: FilesStorageClientMapper.mapToDate(fileRecordResponse.updatedAt),
 		});
 
 		return fileDto;
+	}
+
+	// The RPC response crosses AMQP as JSON, so timestamps arrive as ISO strings even though
+	// FileDomainObjectProps types them as Date. Revive them here, at the boundary, so consumers
+	// get the Date the DTO promises instead of a string that only blows up once someone calls a
+	// Date method on it.
+	private static mapToDate(value: Date | string | undefined): Date | undefined {
+		if (value === undefined) {
+			return undefined;
+		}
+
+		const date = value instanceof Date ? value : new Date(value);
+
+		return Number.isNaN(date.getTime()) ? undefined : date;
 	}
 
 	public static mapCopyFileResponseToCopyFileDto(response: CopyFileDomainObjectProps): CopyFileDto {
