@@ -59,6 +59,30 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			expect(response.feedbackComment).toBe('nicely done');
 		});
 
+		// A literal null (as opposed to undefined) is an ordinary field value in Mongo, not an
+		// edge case - `returnedAt !== undefined` would treat it as returned even though nothing
+		// was ever returned. Must stay in lockstep with AssignmentSubmission.getStatus(), which
+		// checks truthiness.
+		it('should withhold points and feedbackComment when returnedAt is null rather than undefined', () => {
+			const submission = assignmentSubmissionFactory.build({
+				submittedAt: new Date(),
+				points: 8,
+				feedbackComment: 'nicely done',
+				returnedAt: undefined,
+			});
+			// simulate a persisted null, which the domain object's own setter never produces but a
+			// raw document read (migration, direct write, ...) could
+			(submission as unknown as { returnedAt: unknown }).returnedAt = null;
+			const entry = buildEntry({ submission });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.points).toBeNull();
+			expect(response.feedbackComment).toBeNull();
+			expect(response.feedbackAudio).toBeNull();
+			expect(response.feedbackFiles).toBeNull();
+		});
+
 		it('should withhold feedback files before the submission has been returned', () => {
 			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
 			const entry = buildEntry({ submission, feedbackFiles: buildFeedbackFiles() });

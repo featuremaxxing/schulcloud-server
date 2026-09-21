@@ -7,6 +7,7 @@ import { accountFactory } from '@modules/account/testing';
 import { BoardExternalReferenceType } from '@modules/board';
 import {
 	assignmentElementEntityFactory,
+	assignmentSubmissionEntityFactory,
 	cardEntityFactory,
 	columnBoardEntityFactory,
 	columnEntityFactory,
@@ -261,6 +262,30 @@ describe('assignment submission flow (api)', () => {
 			expect(ownEntryAfterReturn.points).toEqual(9);
 			expect(ownEntryAfterReturn.feedbackComment).toEqual('well done');
 		});
+
+		it('should not clear an already-saved grade when a later save only carries a comment', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildFileDto(submissionId)]);
+			await studentClient.patch(`submissions/${submissionId}/submit`);
+
+			const firstGrade = await teacherClient.patch(`submissions/${submissionId}/grade`, { points: 7 });
+			expect((firstGrade.body as AssignmentSubmissionResponse).points).toEqual(7);
+
+			// a second save that only touches the comment must not silently drop the points
+			// that were already saved (see AssignmentUc.gradeSubmission)
+			const secondGrade = await teacherClient.patch(`submissions/${submissionId}/grade`, {
+				feedbackComment: 'still 7 points',
+			});
+			expect(secondGrade.status).toEqual(200);
+			expect((secondGrade.body as AssignmentSubmissionResponse).points).toEqual(7);
+			expect((secondGrade.body as AssignmentSubmissionResponse).feedbackComment).toEqual('still 7 points');
+		});
 	});
 
 	describe('multiple teachers in the same room', () => {
@@ -413,6 +438,26 @@ describe('assignment submission flow (api)', () => {
 			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
 
 			const response = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+
+			expect(response.status).toEqual(403);
+		});
+
+		it('should reject withdrawing an already-submitted submission', async () => {
+			const { studentAccount, assignmentElementNode } = await setup({
+				dueDate: new Date('2020-01-01T00:00:00.000Z'),
+				graceMinutes: 0,
+			});
+			// created directly (not via the API, which would itself reject a submission past the
+			// deadline) to simulate a submission that was made while the assignment was still open
+			const submissionNode = assignmentSubmissionEntityFactory
+				.withParent(assignmentElementNode)
+				.build({ userId: String(studentAccount.userId), submittedAt: new Date('2019-12-31T00:00:00.000Z') });
+			await em.persistAndFlush(submissionNode);
+			em.clear();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+
+			const response = await studentClient.delete(`submissions/${submissionNode.id}`);
 
 			expect(response.status).toEqual(403);
 		});

@@ -74,6 +74,8 @@ export class PeerReviewUc {
 
 		const { element } = await this.loadElementForTeacher(userId, elementId);
 
+		const isDisabling = element.peerReviewEnabled && !body.enabled;
+
 		element.peerReviewEnabled = body.enabled;
 		if (body.mode !== undefined) {
 			element.peerReviewMode = body.mode;
@@ -85,6 +87,15 @@ export class PeerReviewUc {
 			element.peerReviewCount = Math.max(1, Math.min(body.count, MAX_PEER_REVIEW_COUNT));
 		}
 		await this.boardNodeService.save(element);
+
+		// Turning peer review off must actually revoke access, not just hide the UI for it -
+		// otherwise a reviewer keeps read access to the submission's file (via
+		// BoardNodeAuthorizableProps.peerReviewerIds) and can keep submitting review feedback
+		// indefinitely. listMyTasks/submitReview also re-check peerReviewEnabled defensively,
+		// but deleting the rows here is what actually closes the access.
+		if (isDisabling) {
+			await this.assignmentReviewRepo.deleteByElementId(elementId);
+		}
 
 		return element;
 	}
@@ -98,6 +109,11 @@ export class PeerReviewUc {
 		this.checkFeatureEnabled();
 
 		const { element } = await this.loadElementForTeacher(userId, elementId);
+
+		if (!element.peerReviewEnabled) {
+			throw new ConflictException('Peer review is not enabled for this assignment.');
+		}
+
 		const submissions = element.getChildrenOfType(AssignmentSubmission).filter((s) => s.id);
 
 		if (submissions.length < 2) {
@@ -146,6 +162,11 @@ export class PeerReviewUc {
 		this.checkFeatureEnabled();
 
 		const { element, boardNodeAuthorizable } = await this.loadElementForTeacher(userId, elementId);
+
+		if (!element.peerReviewEnabled) {
+			throw new ConflictException('Peer review is not enabled for this assignment.');
+		}
+
 		const submissions = element.getChildrenOfType(AssignmentSubmission);
 		const memberIds = new Set(boardNodeAuthorizable.users.map((user) => user.userId));
 		const now = new Date();
@@ -193,9 +214,10 @@ export class PeerReviewUc {
 		this.checkFeatureEnabled();
 
 		const reviews = await this.assignmentReviewRepo.findByReviewerUserId(userId);
+		const eligibleReviews = await this.filterCurrentlyEligible(reviews, userId);
 
 		return Promise.all(
-			reviews.map(async (review): Promise<PeerReviewTaskResult> => {
+			eligibleReviews.map(async (review): Promise<PeerReviewTaskResult> => {
 				try {
 					const files = await this.filesStorageClientAdapterService.listFilesOfParent(review.submissionId);
 					const file = pickLatestNonFeedbackFile(files);
@@ -206,6 +228,46 @@ export class PeerReviewUc {
 				}
 			})
 		);
+	}
+
+	// Assignments (AssignmentReviewEntity rows) are not revoked automatically when peer review
+	// is turned off (updateSettings deletes them, but only from that point forward - and are
+	// not revoked when a reviewer leaves the room). Re-check both on every read/write instead of
+	// trusting the row alone, so access actually tracks the assignment's/room's current state
+	// rather than the state at assignment time. Grouped by elementId so a reviewer with many
+	// tasks for the same assignment only pays for one board lookup.
+	private async filterCurrentlyEligible(
+		reviews: AssignmentReviewEntity[],
+		userId: EntityId
+	): Promise<AssignmentReviewEntity[]> {
+		const elementIds = Array.from(new Set(reviews.map((review) => review.elementId)));
+		const eligibleElementIds = new Set<EntityId>();
+
+		await Promise.all(
+			elementIds.map(async (elementId) => {
+				if (await this.isReviewerStillEligibleForElement(elementId, userId)) {
+					eligibleElementIds.add(elementId);
+				}
+			})
+		);
+
+		return reviews.filter((review) => eligibleElementIds.has(review.elementId));
+	}
+
+	private async isReviewerStillEligibleForElement(elementId: EntityId, userId: EntityId): Promise<boolean> {
+		try {
+			const element = await this.boardNodeService.findByClassAndId(AssignmentElement, elementId, 0);
+			if (!element.peerReviewEnabled) {
+				return false;
+			}
+
+			const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
+			return boardNodeAuthorizable.users.some((user) => user.userId === userId);
+		} catch {
+			// the element (or its room) no longer exists / is no longer reachable - treat as
+			// not eligible rather than letting an unrelated error surface as a 500 here
+			return false;
+		}
 	}
 
 	public async submitReview(
@@ -221,6 +283,11 @@ export class PeerReviewUc {
 		}
 		if (review.reviewerUserId !== userId) {
 			throw new ForbiddenException('This peer review task is not assigned to you.');
+		}
+		if (!(await this.isReviewerStillEligibleForElement(review.elementId, userId))) {
+			// peer review was turned off, or the reviewer left the room, since this task was
+			// assigned - see filterCurrentlyEligible/updateSettings
+			throw new ForbiddenException('This peer review task is no longer available.');
 		}
 
 		review.points = body.points;

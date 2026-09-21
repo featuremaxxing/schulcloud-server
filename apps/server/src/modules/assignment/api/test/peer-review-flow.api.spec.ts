@@ -134,7 +134,7 @@ describe('peer review flow (api)', () => {
 		const cardNode = cardEntityFactory.withParent(columnNode).build();
 		const assignmentElementNode = assignmentElementEntityFactory
 			.withParent(cardNode)
-			.build({ dueDate: undefined, graceMinutes: undefined, maxPoints: 10 });
+			.build({ dueDate: undefined, graceMinutes: undefined, maxPoints: 10, peerReviewEnabled: true });
 
 		const roomContent = roomContentEntityFactory.build({
 			roomId: room.id,
@@ -266,6 +266,40 @@ describe('peer review flow (api)', () => {
 
 			const tasksResponse = await studentBClient.get('peer-review/my-tasks');
 			expect(tasksResponse.body as PeerReviewTaskResponse[]).toHaveLength(1);
+		});
+
+		it("revokes a reviewer's access once peer review is turned off for the assignment", async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentBClient = await new TestApiClientBuilder(app, baseRouteName).build(studentBAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const assignResponse = await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+			expect(assignResponse.status).toEqual(200);
+
+			const tasksBeforeDisable = await studentBClient.get('peer-review/my-tasks');
+			expect(tasksBeforeDisable.body as PeerReviewTaskResponse[]).toHaveLength(1);
+			const taskId = (tasksBeforeDisable.body as PeerReviewTaskResponse[])[0].id;
+
+			const disableResponse = await teacherClient.patch(`${assignmentElementNode.id}/peer-review-settings`, {
+				enabled: false,
+			});
+			expect(disableResponse.status).toEqual(200);
+
+			// the task no longer shows up in the reviewer's list ...
+			const tasksAfterDisable = await studentBClient.get('peer-review/my-tasks');
+			expect(tasksAfterDisable.body as PeerReviewTaskResponse[]).toHaveLength(0);
+
+			// ... and submitting against the old id is rejected outright, not silently accepted -
+			// disabling deletes the row outright (see PeerReviewUc.updateSettings), so this comes
+			// back as "not found" rather than "forbidden"
+			const submitAfterDisable = await studentBClient.patch(`peer-review/${taskId}/submit`, { points: 5 });
+			expect(submitAfterDisable.status).toEqual(404);
 		});
 	});
 

@@ -346,6 +346,13 @@ export class AssignmentUc {
 			throw new ForbiddenException('This submission has already been graded and returned.');
 		}
 
+		// Withdrawing is a write to the submission just like (re)submitting - it must stop being
+		// possible once the deadline has passed, same as replacing the file
+		// (hasPermissionForAssignmentSubmissionFile already enforces this for the file itself; this
+		// closes the matching gap for the submission node/withdrawal path).
+		const element = this.getParentAssignmentElement(boardNodeAuthorizable.parentNode);
+		this.assertSubmittable(element, new Date());
+
 		// deleting the board node triggers BoardNodeDeleteHooksService, which removes the
 		// attached file via afterDeleteAssignmentSubmission
 		await this.boardNodeService.delete(submission);
@@ -360,7 +367,12 @@ export class AssignmentUc {
 
 		const { submission, element } = await this.loadOwnedSubmissionForGrading(userId, submissionId);
 
-		this.applyPoints(element, submission, body);
+		// Only touch points when the caller actually sent some - a save that only carries a
+		// comment must not silently wipe out an already-saved grade (see returnSubmission below,
+		// which already got this right).
+		if (body.points !== undefined || body.criterionPoints !== undefined) {
+			this.applyPoints(element, submission, body);
+		}
 		submission.feedbackComment = normalizeFeedbackComment(body.feedbackComment);
 		submission.gradedBy = userId;
 		await this.boardNodeService.save(submission);

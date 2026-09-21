@@ -44,7 +44,7 @@ export class AssignmentSubmissionResponseMapper {
 	// until the teacher has returned the submission - enforced here on the server, never
 	// only by hiding it in the client. See AGENTS notes / plan §5.3.
 	public static mapForOwner(entry: AssignmentSubmissionEntry): AssignmentSubmissionResponse {
-		const isReturned = entry.submission?.returnedAt !== undefined;
+		const isReturned = !!entry.submission?.returnedAt;
 
 		return new AssignmentSubmissionResponse({
 			id: entry.submission?.id ?? null,
