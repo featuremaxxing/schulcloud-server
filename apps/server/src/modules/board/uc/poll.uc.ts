@@ -4,7 +4,9 @@ import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { EntityId } from '@shared/domain/types';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import {
+	BoardNodeAuthorizable,
 	BoardNodeFactory,
+	BoardRoles,
 	isPollElement,
 	PollAnswer,
 	PollAnswerMode,
@@ -12,6 +14,7 @@ import {
 	PollQuestionResult,
 	PollStatus,
 	PollVote,
+	UserWithBoardRoles,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
@@ -108,11 +111,23 @@ export class PollUc {
 
 		return {
 			totalVotes: votes.length,
-			participantCount: votes.length,
+			participantCount: this.getParticipantCount(element, authorizable),
 			myVote,
 			results,
 			voters,
 		};
+	}
+
+	// How many voters are actually eligible, not how many already voted (that's totalVotes) - the
+	// status bar reads both together as "n of m voted". A closed poll reports the frozen count
+	// from resultSnapshot instead of the room's current membership, so it stays correct even if
+	// students later join or leave the room.
+	private getParticipantCount(element: PollElement, authorizable: BoardNodeAuthorizable): number {
+		if (element.pollStatus === PollStatus.CLOSED && element.resultSnapshot) {
+			return element.resultSnapshot.participantCount;
+		}
+
+		return authorizable.users.filter(isPlainReader).length;
 	}
 
 	private async countVotes(elementId: EntityId): Promise<number> {
@@ -163,3 +178,14 @@ export class PollUc {
 		return element;
 	}
 }
+
+// "student" in a room: has the READER role and none of the roles that imply staff-level
+// rights - mirrors BoardNodeRule's private _isPlainBoardReader, but that one takes a live User
+// and checks a single membership, while this filters the whole authorizable.users list without
+// needing a User lookup per entry.
+const isPlainReader = (userWithBoardRoles: UserWithBoardRoles): boolean => {
+	const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
+	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => userWithBoardRoles.roles.includes(role));
+
+	return isReader && !isStaff;
+};

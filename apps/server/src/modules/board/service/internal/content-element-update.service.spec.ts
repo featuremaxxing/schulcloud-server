@@ -9,9 +9,11 @@ import {
 	FileFolderContentBody,
 	H5pContentBody,
 	LinkContentBody,
+	PollContentBody,
 	RichTextContentBody,
 	VideoConferenceContentBody,
 } from '../../controller/dto';
+import { PollAnswerMode, PollChartType, PollStatus } from '../../domain';
 import { BoardNodeRepo } from '../../repo';
 import {
 	drawingElementFactory,
@@ -20,6 +22,7 @@ import {
 	fileFolderElementFactory,
 	h5pElementFactory,
 	linkElementFactory,
+	pollElementFactory,
 	richTextElementFactory,
 	videoConferenceElementFactory,
 } from '../../testing';
@@ -258,6 +261,91 @@ describe('ContentElementUpdateService', () => {
 
 			expect(element.contentId).toBe(contentId);
 			expect(repo.save).toHaveBeenCalledWith(element);
+		});
+	});
+
+	describe('when the element is a PollElement', () => {
+		const buildContent = (overrides: Partial<PollContentBody> = {}): PollContentBody => {
+			const content = new PollContentBody();
+			content.title = 'title';
+			content.questions = [
+				{
+					id: new ObjectId().toHexString(),
+					text: 'question',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: new ObjectId().toHexString(), text: 'a' },
+						{ id: new ObjectId().toHexString(), text: 'b' },
+					],
+				},
+			];
+			content.isAnonymous = false;
+			content.showResultsLive = false;
+			content.pollStatus = PollStatus.OPEN;
+			Object.assign(content, overrides);
+
+			return content;
+		};
+
+		it('should update the poll element', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ title: 'new title' });
+
+			await service.updateContent(element, content);
+
+			expect(element.title).toBe('new title');
+			expect(element.questions).toHaveLength(1);
+			expect(repo.save).toHaveBeenCalledWith(element);
+		});
+
+		it('should freeze a result snapshot when the poll transitions to CLOSED', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.OPEN });
+			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeDefined();
+		});
+
+		it('should not touch an existing result snapshot while the poll stays CLOSED', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			const existingSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			element.resultSnapshot = existingSnapshot;
+			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBe(existingSnapshot);
+		});
+
+		it('should clear a leftover result snapshot when a closed poll is reopened', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			element.resultSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			const content = buildContent({ pollStatus: PollStatus.OPEN });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should clear a leftover result snapshot when a closed poll is set back to DRAFT', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			element.resultSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			const content = buildContent({ pollStatus: PollStatus.DRAFT });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should not set a result snapshot for a poll that was never closed', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.DRAFT });
+			const content = buildContent({ pollStatus: PollStatus.OPEN });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
 		});
 	});
 

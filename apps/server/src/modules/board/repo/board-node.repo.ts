@@ -94,9 +94,16 @@ export class BoardNodeRepo {
 			return [];
 		}
 
+		// Every current caller passes an @IsMongoId()-validated id, which can never contain a
+		// regex metacharacter - but that's an invariant of the callers, not of this method, so it
+		// is escaped here too rather than trusted. One $or clause per id (each a simple anchored
+		// literal, not joined into one `(a|b|c)` alternation) keeps this from ever becoming a
+		// regex-injection or backtracking concern regardless of what a future caller passes in.
 		const votes = await this.em.find(BoardNodeEntity, {
 			type: BoardNodeType.POLL_VOTE,
-			path: { $re: `,(${parentIds.join('|')}),$` },
+			$or: parentIds.map((parentId) => {
+				return { path: { $re: `,${escapeRegExp(parentId)},$` } };
+			}),
 			...(userId ? { userId } : {}),
 		});
 
@@ -205,3 +212,7 @@ export class BoardNodeRepo {
 		boardNode.props = props;
 	}
 }
+
+// See findPollVotesByParentIds - escapes every character with special meaning in a regex so a
+// value that is embedded into a $re query can never be read as anything but a literal string.
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

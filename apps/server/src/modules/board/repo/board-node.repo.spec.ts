@@ -358,4 +358,68 @@ describe('BoardNodeRepo', () => {
 			expect(resultVote.answers).toEqual(vote.answers);
 		});
 	});
+
+	describe('findPollVotesByParentIds', () => {
+		const setup = async () => {
+			const pollA = pollElementFactory.build();
+			const pollB = pollElementFactory.build();
+			const userId = new ObjectId().toHexString();
+			const otherUserId = new ObjectId().toHexString();
+
+			const voteA1 = pollVoteFactory.build({ userId });
+			const voteA2 = pollVoteFactory.build({ userId: otherUserId });
+			const voteB1 = pollVoteFactory.build({ userId });
+			pollA.addChild(voteA1);
+			pollA.addChild(voteA2);
+			pollB.addChild(voteB1);
+
+			await repo.save(pollA);
+			await repo.save(pollB);
+			em.clear();
+
+			return { pollA, pollB, userId, otherUserId };
+		};
+
+		it('should return an empty array for an empty list of parent ids', async () => {
+			const result = await repo.findPollVotesByParentIds([]);
+
+			expect(result).toEqual([]);
+		});
+
+		it('should return only the votes belonging to the given parent element', async () => {
+			const { pollA } = await setup();
+
+			const result = await repo.findPollVotesByParentIds([pollA.id]);
+
+			expect(result).toHaveLength(2);
+			expect(result.every((vote) => vote.path.includes(pollA.id))).toBe(true);
+		});
+
+		it('should combine votes from multiple parent ids', async () => {
+			const { pollA, pollB } = await setup();
+
+			const result = await repo.findPollVotesByParentIds([pollA.id, pollB.id]);
+
+			expect(result).toHaveLength(3);
+		});
+
+		it('should narrow to a single participant when userId is given', async () => {
+			const { pollA, userId } = await setup();
+
+			const result = await repo.findPollVotesByParentIds([pollA.id], userId);
+
+			expect(result).toHaveLength(1);
+			expect(result[0].userId).toBe(userId);
+		});
+
+		// Regression test for the query previously joining ids into one `(a|b|c)` regex
+		// alternation without escaping - a parentId containing a regex metacharacter must be
+		// matched literally (and match nothing here, since it names no real element) rather than
+		// being interpreted as part of the pattern or throwing.
+		it('should treat a parentId with regex metacharacters as a literal string', async () => {
+			const result = await repo.findPollVotesByParentIds(['(.*)', 'a|b', '[unclosed']);
+
+			expect(result).toEqual([]);
+		});
+	});
 });

@@ -164,6 +164,56 @@ describe('poll vote flow (api)', () => {
 		expect(results.myVote).toEqual([{ questionId: 'question-1', selectedOptionIds: ['option-b'] }]);
 	});
 
+	// Regression test: participantCount must reflect how many students are actually eligible to
+	// vote (the room roster), not how many already have - votes.length would make the status bar
+	// read "1 von 1 abgestimmt" for every poll, no matter the class size (see PollUc.getResults).
+	it('should report participantCount as the room roster size, not the number of votes cast', async () => {
+		const { teacherUser } = UserAndAccountTestFactory.buildTeacher();
+		const { studentAccount: studentAAccount, studentUser: studentA } = UserAndAccountTestFactory.buildStudent({
+			school: teacherUser.school,
+		});
+		const { studentUser: studentB } = UserAndAccountTestFactory.buildStudent({ school: teacherUser.school });
+
+		const course = courseEntityFactory.build({
+			school: teacherUser.school,
+			teachers: [teacherUser],
+			students: [studentA, studentB],
+		});
+		await em.persist([teacherUser, studentAAccount, studentA, studentB, course]).flush();
+
+		const columnBoardNode = columnBoardEntityFactory.build({
+			context: { id: course.id, type: BoardExternalReferenceType.Course },
+		});
+		const column = columnEntityFactory.withParent(columnBoardNode).build();
+		const card = cardEntityFactory.withParent(column).build();
+		const pollElement = pollElementEntityFactory.withParent(card).build({
+			pollStatus: PollStatus.OPEN,
+			isAnonymous: false,
+			showResultsLive: true,
+			questions: [
+				{
+					id: 'question-1',
+					text: 'Which one?',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: 'option-a', text: 'Option A' },
+						{ id: 'option-b', text: 'Option B' },
+					],
+				},
+			],
+		});
+		await em.persist([card, column, columnBoardNode, pollElement]).flush();
+		em.clear();
+
+		await pollUc.vote(studentA.id, pollElement.id, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const results = await pollUc.getResults(studentA.id, pollElement.id);
+
+		expect(results.totalVotes).toBe(1);
+		expect(results.participantCount).toBe(2);
+	});
+
 	it('should reject a vote from another student for someone else’s vote id implicitly by never mixing votes', async () => {
 		const { teacherClient, pollElementId, studentUserId } = await setup();
 		await openPoll(teacherClient, pollElementId);

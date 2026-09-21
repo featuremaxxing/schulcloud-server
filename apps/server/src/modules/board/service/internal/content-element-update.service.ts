@@ -161,6 +161,18 @@ export class ContentElementUpdateService {
 		if (isClosingNow) {
 			element.resultSnapshot = this.buildPollResultSnapshot(element);
 		}
+
+		// The snapshot is embedded straight into the element's content, which every board client
+		// receives regardless of showResultsLive/permission (see PollElementResponseMapper) - a
+		// closed poll's numbers are meant to be public once closed, but reopening it must not leave
+		// last round's counts and free-text answers sitting in students' clients until they happen
+		// to vote or a live update overwrites it. Cleared unconditionally on any reopen (not just
+		// wasClosed -> now OPEN in one step) so a snapshot left over from further back can't linger
+		// through an intermediate DRAFT either.
+		const isReopeningNow = wasClosed && element.pollStatus !== PollStatus.CLOSED;
+		if (isReopeningNow) {
+			element.resultSnapshot = undefined;
+		}
 	}
 
 	// Counts votes once at close time and freezes the numbers into the element - see
