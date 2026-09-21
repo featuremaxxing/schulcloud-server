@@ -8,6 +8,7 @@ import {
 	BoardRoles,
 	ColumnBoard,
 	isDrawingElement,
+	isEligibleVoter,
 	isPollElement,
 	isPollVote,
 	isVideoConferenceElement,
@@ -214,7 +215,7 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			manageVideoConference: canManageVideoConference,
 
 			// element / pollElement
-			createOwnPollVote: _isPlainBoardReader,
+			createOwnPollVote: _canVoteInPoll,
 			updateOwnPollVote: _isOwnPollVote,
 			viewPollResults: _canViewBoard,
 			managePoll: _canEditBoard,
@@ -467,11 +468,17 @@ const canShareBoardNode = (user: User, authorizable: BoardNodeAuthorizable): boo
 	return isBoard && canShareBoard;
 };
 
-// "student" in a room: has the READER role and none of the roles that imply staff-level
-// rights. A room owner/admin can also carry the READER role (e.g. via multiple permission
-// grants), so this is deliberately not just "isBoardReader && !isBoardEditor".
-const _isPlainBoardReader = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+// Whether this user is eligible to cast a vote in this poll at all, per the poll's own
+// audience setting (isEligibleVoter, see poll-audience.ts) - separate from managePoll,
+// which stays board-edit-based: a teacher who is also an eligible voter (audience TEACHERS
+// or ALL) keeps the ability to open/close/configure the poll regardless of this check.
+const _canVoteInPoll = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
 	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode } = authorizable;
+	if (!isPollElement(boardNode)) {
 		return false;
 	}
 
@@ -480,24 +487,33 @@ const _isPlainBoardReader = (user: User, authorizable: BoardNodeAuthorizable): b
 		return false;
 	}
 
-	const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
-	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => userWithBoardRoles.roles.includes(role));
-
-	return isReader && !isStaff;
+	return isEligibleVoter(boardNode, userWithBoardRoles);
 };
 
-// Deliberately checks ownership only - business-rule checks that need "now" (whether the
-// poll is still open) are PollUc's job, not the rule's, so it can throw a specific,
-// clearly-worded exception.
+// Checks ownership and, via the parent PollElement, continued audience eligibility - a
+// change to the poll's audience after a vote was cast must not let that voter go on
+// editing a vote they'd no longer be allowed to cast fresh (see U-R4: the audience is
+// locked once votes exist, but this is the belt to that suspenders). Deliberately does
+// NOT check "now" (whether the poll is still open) - that's PollUc's job, so it can throw
+// a specific, clearly-worded exception.
 const _isOwnPollVote = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
 	if (authorizable.boardConfiguration.isLocked) {
 		return false;
 	}
 
-	const { boardNode } = authorizable;
-	if (!isPollVote(boardNode)) {
+	const { boardNode, parentNode } = authorizable;
+	if (!isPollVote(boardNode) || boardNode.userId !== user.id) {
 		return false;
 	}
 
-	return boardNode.userId === user.id;
+	if (!parentNode || !isPollElement(parentNode)) {
+		return false;
+	}
+
+	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
+	if (!userWithBoardRoles) {
+		return false;
+	}
+
+	return isEligibleVoter(parentNode, userWithBoardRoles);
 };

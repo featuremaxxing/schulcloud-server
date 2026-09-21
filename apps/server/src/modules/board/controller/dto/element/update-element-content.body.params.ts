@@ -13,8 +13,9 @@ import {
 	MaxLength,
 	ValidateNested,
 } from 'class-validator';
+import { BoardRoles } from '../../../domain/board-node-authorizable.do';
 import { ContentElementType } from '../../../domain/types';
-import { PollAnswerMode, PollChartType, PollStatus } from '../../../domain/types/poll.types';
+import { PollAnswerMode, PollAudience, PollChartType, PollStatus } from '../../../domain/types/poll.types';
 
 abstract class ElementContentBody {
 	@IsEnum(ContentElementType)
@@ -252,6 +253,18 @@ export class PollContentBody {
 	@IsOptional()
 	@ApiPropertyOptional()
 	closesAt?: string;
+
+	@IsEnum(PollAudience)
+	@IsOptional()
+	@ApiPropertyOptional({ enum: PollAudience, enumName: 'PollAudience' })
+	audience?: PollAudience;
+
+	@IsArray()
+	@IsEnum(BoardRoles, { each: true })
+	@IsOptional()
+	@ArrayMaxSize(3)
+	@ApiPropertyOptional({ enum: BoardRoles, enumName: 'BoardRoles', isArray: true })
+	audienceRoles?: BoardRoles[];
 }
 
 export class PollElementContentBody extends ElementContentBody {

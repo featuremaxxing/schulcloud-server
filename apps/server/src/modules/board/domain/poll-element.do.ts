@@ -1,7 +1,8 @@
 import { BoardNode } from './board-node.do';
+import { type BoardRoles } from './board-node-authorizable.do';
 import { isPollVote } from './poll-vote.do';
 import type { AnyBoardNode, PollElementProps, PollQuestion, PollResultSnapshot } from './types';
-import { PollStatus } from './types';
+import { PollAudience, PollStatus } from './types';
 
 export class PollElement extends BoardNode<PollElementProps> {
 	get title(): string | undefined {
@@ -58,6 +59,24 @@ export class PollElement extends BoardNode<PollElementProps> {
 
 	set resultSnapshot(value: PollResultSnapshot | undefined) {
 		this.props.resultSnapshot = value;
+	}
+
+	// Defaults to STUDENTS - matches the poll's original, implicit behavior (only board
+	// readers could vote) for every poll created before this field existed.
+	get audience(): PollAudience {
+		return this.props.audience ?? PollAudience.STUDENTS;
+	}
+
+	set audience(value: PollAudience) {
+		this.props.audience = value;
+	}
+
+	get audienceRoles(): BoardRoles[] | undefined {
+		return this.props.audienceRoles;
+	}
+
+	set audienceRoles(value: BoardRoles[] | undefined) {
+		this.props.audienceRoles = value;
 	}
 
 	// A poll only ever accepts votes while explicitly opened and, if a deadline is set,

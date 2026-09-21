@@ -51,7 +51,10 @@ export class ElementUc {
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('updateElement', user, boardNodeAuthorizable));
 
-		await this.boardNodeService.updateContent(element, content);
+		// boardNodeAuthorizable.users is only used for polls (see
+		// ContentElementUpdateService.updatePollElement) - already loaded above, so passing
+		// it through here is free even for every other element type.
+		await this.boardNodeService.updateContent(element, content, boardNodeAuthorizable.users);
 
 		return element;
 	}

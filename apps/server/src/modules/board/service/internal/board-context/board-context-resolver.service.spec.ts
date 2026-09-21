@@ -3,6 +3,8 @@ import { ObjectId } from '@mikro-orm/mongodb';
 import { CourseService } from '@modules/course';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { courseEntityFactory } from '@modules/course/testing';
+import { RoleName } from '@modules/role';
+import { roleFactory } from '@modules/role/testing';
 import { RoomService } from '@modules/room';
 import { RoomAuthorizable, RoomMembershipService, type UserWithRoomRoles } from '@modules/room-membership';
 import { roomFactory } from '@modules/room/testing';
@@ -153,6 +155,30 @@ describe(BoardContextResolverService.name, () => {
 						lastName: 'Beispiel',
 					}),
 				]);
+			});
+
+			it('should populate schoolRoleNames on the resulting users', async () => {
+				const teacher = userFactory.buildWithId({ roles: [roleFactory.buildWithId({ name: RoleName.TEACHER })] });
+				const roomMember: UserWithRoomRoles = {
+					userId: teacher.id,
+					userSchoolId: teacher.school.id,
+					roles: [],
+				};
+				const room = roomFactory.build();
+				const roomAuthorizable = new RoomAuthorizable(room.id, [roomMember], room.schoolId);
+				const contextRef: BoardExternalReference = {
+					id: room.id,
+					type: BoardExternalReferenceType.Room,
+				};
+
+				roomService.getSingleRoom.mockResolvedValue(room);
+				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([teacher]);
+
+				const result = await service.resolve(contextRef);
+				const users = result.getUsersWithBoardRoles();
+
+				expect(users[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
 			});
 		});
 

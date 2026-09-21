@@ -53,6 +53,7 @@ export class PollController {
 						answers: voter.answers.map((answer) => new PollAnswerResponse(answer)),
 					})
 			),
+			canVote: result.canVote,
 		});
 
 		return response;

@@ -1,4 +1,5 @@
 import { CourseService } from '@modules/course';
+import { RoleName } from '@modules/role';
 import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
 import { UserService } from '@modules/user';
@@ -53,17 +54,24 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
+		// room memberships carry no user names or school roles - load them for the board
+		// authorizable consumers (e.g. isStudentMember needs the school role to tell a
+		// teacher who is only a room viewer apart from an actual student)
 		const memberIds = roomAuthorizable.members.map((member) => member.userId);
-		const userNames = new Map<EntityId, { firstName?: string; lastName?: string }>();
+		const userInfo = new Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>();
 
 		if (memberIds.length > 0) {
 			const users = await this.userService.getUserEntitiesWithRoles(memberIds);
 			users.forEach((user) => {
-				userNames.set(user.id, { firstName: user.firstName, lastName: user.lastName });
+				userInfo.set(user.id, {
+					firstName: user.firstName,
+					lastName: user.lastName,
+					schoolRoleNames: user.roles.getItems().map((role) => role.name),
+				});
 			});
 		}
 
-		return new RoomBoardContext(room, roomAuthorizable, userNames);
+		return new RoomBoardContext(room, roomAuthorizable, userInfo);
 	}
 
 	private async resolveCourseContext(courseId: string): Promise<CourseBoardContext> {

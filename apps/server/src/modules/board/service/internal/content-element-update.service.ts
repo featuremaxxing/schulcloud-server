@@ -1,5 +1,5 @@
 import { ObjectId } from '@mikro-orm/mongodb';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { sanitizeRichText } from '@shared/controller/transformer';
 import { InputFormat } from '@shared/domain/types';
 import {
@@ -26,9 +26,11 @@ import type {
 	PollQuestionResult,
 	PollResultSnapshot,
 	RichTextElement,
+	UserWithBoardRoles,
 	VideoConferenceElement,
 } from '../../domain';
 import {
+	countEligibleVoters,
 	H5pElement,
 	isDrawingElement,
 	isExternalToolElement,
@@ -41,6 +43,7 @@ import {
 	isRichTextElement,
 	isVideoConferenceElement,
 	PollAnswerMode,
+	PollAudience,
 	PollStatus,
 } from '../../domain';
 import { BoardNodeRepo } from '../../repo';
@@ -49,7 +52,15 @@ import { BoardNodeRepo } from '../../repo';
 export class ContentElementUpdateService {
 	constructor(private readonly boardNodeRepo: BoardNodeRepo) {}
 
-	public async updateContent(element: AnyContentElement, content: AnyElementContentBody): Promise<void> {
+	// authorizableUsers is only meaningful for a poll (see updatePollElement) - the room's
+	// current membership, needed to both enforce U-R4 (audience is locked once votes exist)
+	// and to freeze the right participantCount into the result snapshot if this update
+	// closes the poll (see U-R3/U1: it must be "eligible voters", not "votes cast").
+	public async updateContent(
+		element: AnyContentElement,
+		content: AnyElementContentBody,
+		authorizableUsers?: UserWithBoardRoles[]
+	): Promise<void> {
 		// TODO refactor if ... else to e.g. discriminated union or non-exhaustive check
 		if (isFileElement(element) && content instanceof FileContentBody) {
 			this.updateFileElement(element, content);
@@ -68,7 +79,7 @@ export class ContentElementUpdateService {
 		} else if (isH5pElement(element) && content instanceof H5pContentBody) {
 			this.updateH5pElement(element, content);
 		} else if (isPollElement(element) && content instanceof PollContentBody) {
-			this.updatePollElement(element, content);
+			this.updatePollElement(element, content, authorizableUsers ?? []);
 		} else {
 			throw new Error(`Cannot update element of type: '${element.constructor.name}'`);
 		}
@@ -131,11 +142,25 @@ export class ContentElementUpdateService {
 	}
 
 	// Covers everything a teacher can change on a poll: questions/options/answer & chart
-	// types, the anonymous/live-results switches, status and deadline - all through the
-	// generic element update path, which is why voting itself needs its own (socket) path
-	// instead of going through here.
-	public updatePollElement(element: PollElement, content: PollContentBody): void {
+	// types, the anonymous/live-results switches, target audience, status and deadline - all
+	// through the generic element update path, which is why voting itself needs its own
+	// (socket) path instead of going through here.
+	public updatePollElement(
+		element: PollElement,
+		content: PollContentBody,
+		authorizableUsers: UserWithBoardRoles[]
+	): void {
 		const wasClosed = element.pollStatus === PollStatus.CLOSED;
+
+		// U-R4: once a poll has votes, changing who is eligible to vote would silently
+		// invalidate/orphan them relative to the audience they were cast under (a "3 of 5"
+		// quota that no longer matches who actually could have voted). Locked here, not just
+		// in the client, so a stale form or a direct API call can't get around it.
+		const newAudience = content.audience ?? PollAudience.STUDENTS;
+		const hasVotes = element.children.some(isPollVote);
+		if (hasVotes && newAudience !== element.audience) {
+			throw new ConflictException("Cannot change a poll's audience once votes have been cast");
+		}
 
 		element.title = content.title ? sanitizeRichText(content.title, InputFormat.PLAIN_TEXT) : undefined;
 		element.questions = content.questions.map((question): PollQuestion => {
@@ -156,10 +181,13 @@ export class ContentElementUpdateService {
 		element.showResultsLive = content.showResultsLive;
 		element.pollStatus = content.pollStatus;
 		element.closesAt = content.closesAt ? new Date(content.closesAt) : undefined;
+		element.audience = newAudience;
+		element.audienceRoles = newAudience === PollAudience.CUSTOM ? content.audienceRoles : undefined;
 
 		const isClosingNow = !wasClosed && element.pollStatus === PollStatus.CLOSED;
 		if (isClosingNow) {
-			element.resultSnapshot = this.buildPollResultSnapshot(element);
+			const participantCount = countEligibleVoters(element, authorizableUsers);
+			element.resultSnapshot = this.buildPollResultSnapshot(element, participantCount);
 		}
 
 		// The snapshot is embedded straight into the element's content, which every board client
@@ -180,7 +208,7 @@ export class ContentElementUpdateService {
 	// individual PollVote nodes afterwards. Anonymous, aggregated numbers only, never raw
 	// voter identities - those are derived live from PollVote children by the results
 	// endpoint for non-anonymous, still-open-in-the-UI polls, never stored here.
-	private buildPollResultSnapshot(element: PollElement): PollResultSnapshot {
+	private buildPollResultSnapshot(element: PollElement, participantCount: number): PollResultSnapshot {
 		const votes = element.children.filter(isPollVote);
 
 		const perQuestion: PollQuestionResult[] = element.questions.map((question) => {
@@ -206,6 +234,6 @@ export class ContentElementUpdateService {
 			return { questionId: question.id, counts, textAnswers };
 		});
 
-		return { frozenAt: new Date(), participantCount: votes.length, perQuestion };
+		return { frozenAt: new Date(), participantCount, perQuestion };
 	}
 }

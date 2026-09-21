@@ -13,7 +13,14 @@ import {
 	RichTextContentBody,
 	VideoConferenceContentBody,
 } from '../../controller/dto';
-import { PollAnswerMode, PollChartType, PollStatus } from '../../domain';
+import {
+	BoardRoles,
+	PollAnswerMode,
+	PollAudience,
+	PollChartType,
+	PollStatus,
+	type UserWithBoardRoles,
+} from '../../domain';
 import { BoardNodeRepo } from '../../repo';
 import {
 	drawingElementFactory,
@@ -23,6 +30,7 @@ import {
 	h5pElementFactory,
 	linkElementFactory,
 	pollElementFactory,
+	pollVoteFactory,
 	richTextElementFactory,
 	videoConferenceElementFactory,
 } from '../../testing';
@@ -346,6 +354,73 @@ describe('ContentElementUpdateService', () => {
 			await service.updateContent(element, content);
 
 			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should update the audience', async () => {
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await service.updateContent(element, content);
+
+			expect(element.audience).toBe(PollAudience.TEACHERS);
+		});
+
+		it('should keep audienceRoles only when audience is CUSTOM', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ audience: PollAudience.ALL, audienceRoles: [BoardRoles.READER] });
+
+			await service.updateContent(element, content);
+
+			expect(element.audienceRoles).toBeUndefined();
+		});
+
+		it('should freeze the number of eligible voters, not the number of votes cast, into the snapshot', async () => {
+			// U-R3/U1: closing a poll where not everyone eligible has voted must not report
+			// "n of n" - the frozen participantCount is the eligible-voter count, independent
+			// of how many PollVote children actually exist.
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({
+				pollStatus: PollStatus.OPEN,
+				audience: PollAudience.STUDENTS,
+				children: [vote],
+			});
+			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+			const users: UserWithBoardRoles[] = [
+				{ userId: 'student-1', roles: [BoardRoles.READER] },
+				{ userId: 'student-2', roles: [BoardRoles.READER] },
+				{ userId: 'teacher-1', roles: [BoardRoles.EDITOR] },
+			];
+
+			await service.updateContent(element, content, users);
+
+			expect(element.resultSnapshot?.participantCount).toBe(2);
+		});
+
+		it('should reject changing the audience once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it('should allow keeping the same audience once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({ audience: PollAudience.STUDENTS, title: 'updated title' });
+
+			await service.updateContent(element, content);
+
+			expect(element.title).toBe('updated title');
+		});
+
+		it('should allow changing the audience before any vote has been cast', async () => {
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [] });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await service.updateContent(element, content);
+
+			expect(element.audience).toBe(PollAudience.TEACHERS);
 		});
 	});
 

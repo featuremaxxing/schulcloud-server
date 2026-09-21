@@ -6,9 +6,11 @@ import {
 	AnyBoardNode,
 	BoardLayout,
 	BoardNodeType,
+	BoardRoles,
 	ContentElementType,
 	Colors,
 	type PollAnswer,
+	PollAudience,
 	type PollQuestion,
 	type PollResultSnapshot,
 	PollStatus,
@@ -142,6 +144,12 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 
 	@Embedded(() => PollResultSnapshotEmbeddable, { nullable: true, object: true })
 	resultSnapshot: PollResultSnapshot | undefined;
+
+	@Enum({ type: 'PollAudience', nullable: true })
+	audience: PollAudience | undefined;
+
+	@Enum({ nullable: true, array: true })
+	audienceRoles: BoardRoles[] | undefined;
 
 	// PollVote
 	// --------------------------------------------------------------------------

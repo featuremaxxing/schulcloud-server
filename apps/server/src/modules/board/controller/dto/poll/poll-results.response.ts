@@ -50,6 +50,7 @@ export class PollResultsResponse {
 		this.myVote = props.myVote;
 		this.results = props.results;
 		this.voters = props.voters;
+		this.canVote = props.canVote;
 	}
 
 	@ApiProperty()
@@ -66,4 +67,7 @@ export class PollResultsResponse {
 
 	@ApiPropertyOptional({ type: () => [PollVoterResponse] })
 	voters?: PollVoterResponse[];
+
+	@ApiProperty({ description: 'whether the caller is eligible to vote in this poll at all' })
+	canVote: boolean;
 }

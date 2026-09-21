@@ -4,7 +4,8 @@ import type { AnyBoardNode } from './any-board-node';
 import type { BoardExternalReference } from './board-external-reference';
 import type { BoardLayout } from './board-layout.enum';
 import type { ContentElementType } from './content-element-type.enum';
-import type { PollAnswer, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
+import type { BoardRoles } from '../board-node-authorizable.do';
+import type { PollAnswer, PollAudience, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
 
 export interface BoardNodeProps {
 	id: EntityId;
@@ -87,6 +88,11 @@ export interface PollElementProps extends BoardNodeProps {
 	pollStatus: PollStatus;
 	closesAt?: Date;
 	resultSnapshot?: PollResultSnapshot;
+	// Who is eligible to vote - defaults to STUDENTS (see PollElement.audience getter) so
+	// existing polls keep behaving exactly as before this field existed.
+	audience?: PollAudience;
+	// Only meaningful when audience is CUSTOM.
+	audienceRoles?: BoardRoles[];
 }
 
 export interface PollVoteProps extends BoardNodeProps {

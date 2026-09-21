@@ -17,6 +17,17 @@ export enum PollStatus {
 	CLOSED = 'closed',
 }
 
+// Who is eligible to vote / counted in participantCount - independent of who may manage
+// the poll (managePoll stays board-edit-based, see board-node.rule.ts). STUDENTS is the
+// default and matches the previous, implicit behavior (only board readers could vote).
+// CUSTOM defers to audienceRoles.
+export enum PollAudience {
+	STUDENTS = 'students',
+	TEACHERS = 'teachers',
+	ALL = 'all',
+	CUSTOM = 'custom',
+}
+
 export interface PollOption {
 	id: string;
 	text: string;

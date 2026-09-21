@@ -12,6 +12,7 @@ import {
 	isContentElement,
 	MediaBoard,
 	PollVote,
+	type UserWithBoardRoles,
 } from '../domain';
 import { RoomBoardCreatedEvent } from '../domain/events/room-board-created.event';
 import { RoomBoardDeletedEvent } from '../domain/events/room-board-deleted.event';
@@ -79,8 +80,12 @@ export class BoardNodeService {
 		await this.boardNodeRepo.save(node);
 	}
 
-	public async updateContent(element: AnyContentElement, content: AnyElementContentBody): Promise<void> {
-		await this.contentElementUpdateService.updateContent(element, content);
+	public async updateContent(
+		element: AnyContentElement,
+		content: AnyElementContentBody,
+		authorizableUsers?: UserWithBoardRoles[]
+	): Promise<void> {
+		await this.contentElementUpdateService.updateContent(element, content, authorizableUsers);
 	}
 
 	public findPollVotesByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<PollVote[]> {

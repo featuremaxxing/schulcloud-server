@@ -43,6 +43,8 @@ export class PollElementResponseMapper implements BaseResponseMapper {
 				showResultsLive: element.showResultsLive,
 				pollStatus: element.pollStatus,
 				closesAt: element.closesAt?.toISOString() ?? null,
+				audience: element.audience,
+				audienceRoles: element.audienceRoles,
 				resultSnapshot: element.resultSnapshot
 					? new PollResultSnapshotResponse({
 							frozenAt: element.resultSnapshot.frozenAt.toISOString(),

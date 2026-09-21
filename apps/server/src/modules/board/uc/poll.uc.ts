@@ -6,7 +6,7 @@ import { BoardNodeRule } from '../authorisation/board-node.rule';
 import {
 	BoardNodeAuthorizable,
 	BoardNodeFactory,
-	BoardRoles,
+	countEligibleVoters,
 	isPollElement,
 	PollAnswer,
 	PollAnswerMode,
@@ -14,7 +14,6 @@ import {
 	PollQuestionResult,
 	PollStatus,
 	PollVote,
-	UserWithBoardRoles,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
@@ -29,6 +28,12 @@ export interface PollResults {
 	myVote?: PollAnswer[];
 	results?: PollQuestionResult[];
 	voters?: { userId: EntityId; firstName?: string; lastName?: string; answers: PollAnswer[] }[];
+	// Whether the caller is eligible to vote at all, per the poll's own audience setting -
+	// the client can't derive this from allowedOperations (that's board-wide, not per
+	// element, see board-allowed-operations.composable.ts), so the server states it
+	// explicitly. Reuses the same 'createOwnPollVote' check the vote() mutation itself
+	// gates on, so this can never say yes when voting would actually be rejected.
+	canVote: boolean;
 }
 
 @Injectable()
@@ -115,19 +120,23 @@ export class PollUc {
 			myVote,
 			results,
 			voters,
+			canVote: this.boardNodeRule.can('createOwnPollVote', user, authorizable),
 		};
 	}
 
 	// How many voters are actually eligible, not how many already voted (that's totalVotes) - the
 	// status bar reads both together as "n of m voted". A closed poll reports the frozen count
 	// from resultSnapshot instead of the room's current membership, so it stays correct even if
-	// students later join or leave the room.
+	// students later join or leave the room. Eligibility follows the poll's own audience
+	// setting (isEligibleVoter/countEligibleVoters, see poll-audience.ts) - the same function
+	// the authorisation rule uses to gate voting itself, so this count and the actual voting
+	// gate can never drift apart.
 	private getParticipantCount(element: PollElement, authorizable: BoardNodeAuthorizable): number {
 		if (element.pollStatus === PollStatus.CLOSED && element.resultSnapshot) {
 			return element.resultSnapshot.participantCount;
 		}
 
-		return authorizable.users.filter(isPlainReader).length;
+		return countEligibleVoters(element, authorizable.users);
 	}
 
 	private async countVotes(elementId: EntityId): Promise<number> {
@@ -178,14 +187,3 @@ export class PollUc {
 		return element;
 	}
 }
-
-// "student" in a room: has the READER role and none of the roles that imply staff-level
-// rights - mirrors BoardNodeRule's private _isPlainBoardReader, but that one takes a live User
-// and checks a single membership, while this filters the whole authorizable.users list without
-// needing a User lookup per entry.
-const isPlainReader = (userWithBoardRoles: UserWithBoardRoles): boolean => {
-	const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
-	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => userWithBoardRoles.roles.includes(role));
-
-	return isReader && !isStaff;
-};

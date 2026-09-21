@@ -330,4 +330,77 @@ describe('poll vote flow (api)', () => {
 		expect(resultsResponse.statusCode).toEqual(HttpStatus.OK);
 		expect(resultsResponse.body).toMatchObject({ totalVotes: 1, participantCount: 1 });
 	});
+
+	// Regression test for the frozen snapshot specifically (as opposed to the live
+	// getResults() path covered above): closing with only some of the eligible students
+	// having voted must not freeze "n of n" into the snapshot either.
+	it('should freeze the eligible-voter count, not the vote count, when closing with partial participation', async () => {
+		const { teacherAccount, teacherUser } = UserAndAccountTestFactory.buildTeacher();
+		const { studentUser: studentA } = UserAndAccountTestFactory.buildStudent({ school: teacherUser.school });
+		const { studentUser: studentB } = UserAndAccountTestFactory.buildStudent({ school: teacherUser.school });
+
+		const course = courseEntityFactory.build({
+			school: teacherUser.school,
+			teachers: [teacherUser],
+			students: [studentA, studentB],
+		});
+		await em.persist([teacherUser, teacherAccount, studentA, studentB, course]).flush();
+
+		const columnBoardNode = columnBoardEntityFactory.build({
+			context: { id: course.id, type: BoardExternalReferenceType.Course },
+		});
+		const column = columnEntityFactory.withParent(columnBoardNode).build();
+		const card = cardEntityFactory.withParent(column).build();
+		const pollElement = pollElementEntityFactory.withParent(card).build({
+			pollStatus: PollStatus.OPEN,
+			isAnonymous: false,
+			showResultsLive: true,
+			questions: [
+				{
+					id: 'question-1',
+					text: 'Which one?',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: 'option-a', text: 'Option A' },
+						{ id: 'option-b', text: 'Option B' },
+					],
+				},
+			],
+		});
+		await em.persist([card, column, columnBoardNode, pollElement]).flush();
+		em.clear();
+
+		// only studentA votes, studentB never does
+		await pollUc.vote(studentA.id, pollElement.id, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const teacherClient = await testApiClient.login(teacherAccount);
+		const closeResponse = await teacherClient.patch(`${pollElement.id}/content`, {
+			data: {
+				type: ContentElementType.POLL,
+				content: {
+					title: 'My poll',
+					isAnonymous: false,
+					showResultsLive: true,
+					pollStatus: PollStatus.CLOSED,
+					questions: [
+						{
+							id: 'question-1',
+							text: 'Which one?',
+							answerMode: PollAnswerMode.SINGLE,
+							chartType: PollChartType.BAR,
+							options: [
+								{ id: 'option-a', text: 'Option A' },
+								{ id: 'option-b', text: 'Option B' },
+							],
+						},
+					],
+				},
+			},
+		});
+		expect(closeResponse.statusCode).toEqual(HttpStatus.OK);
+
+		const closedEntity = await em.findOneOrFail(BoardNodeEntity, pollElement.id);
+		expect(closedEntity.resultSnapshot?.participantCount).toBe(2);
+	});
 });

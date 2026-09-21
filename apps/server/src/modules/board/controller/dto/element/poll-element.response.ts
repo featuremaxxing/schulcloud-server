@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
-import { ContentElementType, PollAnswerMode, PollChartType, PollStatus } from '../../../domain';
+import { BoardRoles } from '../../../domain/board-node-authorizable.do';
+import { ContentElementType, PollAnswerMode, PollAudience, PollChartType, PollStatus } from '../../../domain';
 import { TimestampsResponse } from '../timestamps.response';
 
 export class PollOptionResponse {
@@ -102,6 +103,8 @@ export class PollElementContent {
 		this.pollStatus = props.pollStatus;
 		this.closesAt = props.closesAt;
 		this.resultSnapshot = props.resultSnapshot;
+		this.audience = props.audience;
+		this.audienceRoles = props.audienceRoles;
 	}
 
 	@ApiPropertyOptional()
@@ -124,6 +127,17 @@ export class PollElementContent {
 
 	@ApiPropertyOptional({ type: PollResultSnapshotResponse, nullable: true })
 	resultSnapshot?: PollResultSnapshotResponse | null;
+
+	@ApiProperty({ enum: PollAudience, enumName: 'PollAudience', description: 'who is eligible to vote' })
+	audience: PollAudience;
+
+	@ApiPropertyOptional({
+		enum: BoardRoles,
+		enumName: 'BoardRoles',
+		isArray: true,
+		description: 'only meaningful when audience is CUSTOM',
+	})
+	audienceRoles?: BoardRoles[];
 }
 
 export class PollElementResponse {
