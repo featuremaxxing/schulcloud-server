@@ -23,19 +23,19 @@ describe(RoomBoardContext.name, () => {
 
 	describe('getUsersWithBoardRoles', () => {
 		describe('when room has no members', () => {
-			it('should return empty array', () => {
+			it('should return empty array', async () => {
 				const room = roomFactory.build();
 				const roomAuthorizable = new RoomAuthorizable(room.id, [], room.schoolId);
 
 				const context = new RoomBoardContext(room, roomAuthorizable);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([]);
 			});
 		});
 
 		describe('when room has members with ROOM_LIST_CONTENT permission', () => {
-			it('should return users with READER role', () => {
+			it('should return users with READER role', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
@@ -48,7 +48,7 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 
 				const context = new RoomBoardContext(room, roomAuthorizable);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -60,7 +60,7 @@ describe(RoomBoardContext.name, () => {
 		});
 
 		describe('when the resolver provides user names', () => {
-			it('should attach first and last name to the board roles', () => {
+			it('should attach first and last name to the board roles', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
@@ -73,8 +73,8 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 				const userNames = new Map([[userId, { firstName: 'Anna', lastName: 'Admin' }]]);
 
-				const context = new RoomBoardContext(room, roomAuthorizable, userNames);
-				const result = context.getUsersWithBoardRoles();
+				const context = new RoomBoardContext(room, roomAuthorizable, () => Promise.resolve(userNames));
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result[0].firstName).toBe('Anna');
 				expect(result[0].lastName).toBe('Admin');
@@ -82,7 +82,7 @@ describe(RoomBoardContext.name, () => {
 		});
 
 		describe('when the resolver provides school role names', () => {
-			it('should attach the school role names to the board roles', () => {
+			it('should attach the school role names to the board roles', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				// a teacher who is only a room viewer here - board role and school role diverge
@@ -96,8 +96,8 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 				const userInfo = new Map([[userId, { schoolRoleNames: [RoleName.TEACHER] }]]);
 
-				const context = new RoomBoardContext(room, roomAuthorizable, userInfo);
-				const result = context.getUsersWithBoardRoles();
+				const context = new RoomBoardContext(room, roomAuthorizable, () => Promise.resolve(userInfo));
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result[0].roles).toEqual([BoardRoles.READER]);
 				expect(result[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
@@ -105,7 +105,7 @@ describe(RoomBoardContext.name, () => {
 		});
 
 		describe('when room has members with ROOM_EDIT_CONTENT permission', () => {
-			it('should return users with EDITOR role', () => {
+			it('should return users with EDITOR role', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				const role = roleFactory.build({ permissions: [Permission.ROOM_EDIT_CONTENT] });
@@ -118,7 +118,7 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 
 				const context = new RoomBoardContext(room, roomAuthorizable);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -130,7 +130,7 @@ describe(RoomBoardContext.name, () => {
 		});
 
 		describe('when room has members with ROOM_ADD_MEMBERS permission', () => {
-			it('should return users with EDITOR and ADMIN roles', () => {
+			it('should return users with EDITOR and ADMIN roles', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				const role = roleFactory.build({ permissions: [Permission.ROOM_ADD_MEMBERS] });
@@ -143,7 +143,7 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 
 				const context = new RoomBoardContext(room, roomAuthorizable);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -155,7 +155,7 @@ describe(RoomBoardContext.name, () => {
 		});
 
 		describe('when room has members with ROOM_CHANGE_OWNER permission', () => {
-			it('should return users with EDITOR and ADMIN roles', () => {
+			it('should return users with EDITOR and ADMIN roles', async () => {
 				const userId = new ObjectId().toHexString();
 				const schoolId = new ObjectId().toHexString();
 				const role = roleFactory.build({ permissions: [Permission.ROOM_CHANGE_OWNER] });
@@ -168,7 +168,7 @@ describe(RoomBoardContext.name, () => {
 				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
 
 				const context = new RoomBoardContext(room, roomAuthorizable);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{

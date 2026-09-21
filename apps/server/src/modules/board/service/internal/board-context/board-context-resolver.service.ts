@@ -1,4 +1,5 @@
 import { CourseService } from '@modules/course';
+import { RoleName } from '@modules/role';
 import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
 import { UserService } from '@modules/user';
@@ -26,8 +27,9 @@ export class BoardContextResolverService {
 	) {}
 
 	/**
-	 * Resolves a board's external reference into a PreparedBoardContext.
-	 * Fetches all required data upfront so subsequent operations are synchronous.
+	 * Resolves a board's external reference into a PreparedBoardContext. Fetches the data every
+	 * operation needs upfront (board configuration, membership/roles); data only some operations
+	 * need (user names/school roles, for a Room context) is deferred - see resolveRoomContext.
 	 */
 	public async resolve(contextRef: BoardExternalReference): Promise<PreparedBoardContext> {
 		switch (contextRef.type) {
@@ -52,24 +54,32 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
-		// room memberships carry no user names or school roles - load them for the board
-		// authorizable consumers (e.g. the assignment teacher overview shows student names;
-		// isStudentMember/isTeacherMember need the school role to tell a teacher who is only
-		// a room viewer apart from an actual student)
-		const memberIds = roomAuthorizable.members.map((member) => member.userId);
-		const users = memberIds.length > 0 ? await this.userService.getUserEntitiesWithRoles(memberIds) : [];
-		const userInfo = new Map(
-			users.map((user) => [
-				user.id,
-				{
-					firstName: user.firstName,
-					lastName: user.lastName,
-					schoolRoleNames: user.roles.getItems().map((role) => role.name),
-				},
-			])
-		);
+		// Room memberships carry no user names or school roles (e.g. the assignment teacher
+		// overview shows student names; isStudentMember/isTeacherMember need the school role to
+		// tell a teacher who is only a room viewer apart from an actual student). Loading them is
+		// a separate DB round-trip that resolve() used to pay on every single call, even for the
+		// (large majority of) board operations that never read a name or school role - deferred
+		// into this closure instead, which RoomBoardContext calls at most once, only if its
+		// getUsersWithBoardRoles() is actually invoked.
+		const loadUserInfo = async (): Promise<
+			Map<string, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
+		> => {
+			const memberIds = roomAuthorizable.members.map((member) => member.userId);
+			const users = memberIds.length > 0 ? await this.userService.getUserEntitiesWithRoles(memberIds) : [];
 
-		return new RoomBoardContext(room, roomAuthorizable, userInfo);
+			return new Map(
+				users.map((user) => [
+					user.id,
+					{
+						firstName: user.firstName,
+						lastName: user.lastName,
+						schoolRoleNames: user.roles.getItems().map((role) => role.name),
+					},
+				])
+			);
+		};
+
+		return new RoomBoardContext(room, roomAuthorizable, loadUserInfo);
 	}
 
 	private async resolveCourseContext(courseId: string): Promise<CourseBoardContext> {

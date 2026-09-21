@@ -37,8 +37,8 @@ export class CourseBoardContext implements PreparedBoardContext {
 		this.hasTeachers = data.teachers.length > 0;
 	}
 
-	public getUsersWithBoardRoles(): UserWithBoardRoles[] {
-		return this.usersWithBoardRoles;
+	public getUsersWithBoardRoles(): Promise<UserWithBoardRoles[]> {
+		return Promise.resolve(this.usersWithBoardRoles);
 	}
 
 	public getBoardConfiguration(_rootNode: MediaBoard | ColumnBoard): BoardConfiguration {

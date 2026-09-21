@@ -102,6 +102,36 @@ describe(BoardContextResolverService.name, () => {
 				expect(result.type).toBe(BoardExternalReferenceType.Room);
 			});
 
+			it('should not load member names until getUsersWithBoardRoles is actually called, and only once', async () => {
+				const student = userFactory.buildWithId();
+				const room = roomFactory.build();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const roomAuthorizable = new RoomAuthorizable(
+					room.id,
+					[{ userId: student.id, userSchoolId: student.school.id, roles: [role] }],
+					room.schoolId
+				);
+				const contextRef: BoardExternalReference = {
+					id: room.id,
+					type: BoardExternalReferenceType.Room,
+				};
+
+				roomService.getSingleRoom.mockResolvedValue(room);
+				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([student]);
+
+				const result = await service.resolve(contextRef);
+				// resolve() itself must not pay for the user lookup - most board operations
+				// (e.g. every generic write via BoardNodeRule) never call getUsersWithBoardRoles()
+				// at all
+				expect(userService.getUserEntitiesWithRoles).not.toHaveBeenCalled();
+
+				await result.getUsersWithBoardRoles();
+				await result.getUsersWithBoardRoles();
+
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledTimes(1);
+			});
+
 			it('should load the member names and pass them to the context', async () => {
 				const student = userFactory.buildWithId({ firstName: 'Anna', lastName: 'Admin' });
 				const room = roomFactory.build();
@@ -121,7 +151,7 @@ describe(BoardContextResolverService.name, () => {
 				userService.getUserEntitiesWithRoles.mockResolvedValue([student]);
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([student.id]);
 				expect(users[0].firstName).toBe('Anna');
@@ -147,7 +177,7 @@ describe(BoardContextResolverService.name, () => {
 				userService.getUserEntitiesWithRoles.mockResolvedValue([teacher]);
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
 			});
@@ -195,7 +225,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, teacher, substitutionTeacher, student } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(3);
 				expect(users.find((u) => u.userId === teacher.id)).toBeDefined();
@@ -238,7 +268,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, userId } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(1);
 				expect(users[0].userId).toBe(userId);
