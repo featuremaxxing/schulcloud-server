@@ -753,6 +753,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: true,
 					updateBoardTitle: true,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: true,
 
 					// column
 					copyColumn: true,
@@ -844,6 +845,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: true,
 					updateBoardTitle: true,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: true,
 
 					// column
 					copyColumn: true,
@@ -936,6 +938,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: false,
 					updateBoardTitle: false,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: false,
 
 					// column
 					copyColumn: false,
@@ -1011,6 +1014,24 @@ describe(BoardNodeRule.name, () => {
 
 					expect(res.updateBoardTitle).toEqual(false);
 				});
+
+				// Regression test: a reader on a readersCanEdit board gets updateElement: true
+				// (readersCanEdit's whole point), but isBoardEditor must stay false regardless -
+				// the client uses isBoardEditor, not updateElement, to decide whether a poll
+				// element's teacher/manage view should render for this user (see
+				// PollContentElement.vue canManagePoll).
+				it('should still report isBoardEditor as false, even though updateElement becomes true', () => {
+					const { user, boardNodeAuthorizable } = setup({
+						canReadersEdit: true,
+						canEditorsManageVideoconference: true,
+						isLocked: false,
+					});
+
+					const res = boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
+
+					expect(res.updateElement).toEqual(true);
+					expect(res.isBoardEditor).toEqual(false);
+				});
 			});
 		});
 
@@ -1044,6 +1065,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: false,
 					updateBoardTitle: false,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: false,
 
 					// column
 					copyColumn: false,

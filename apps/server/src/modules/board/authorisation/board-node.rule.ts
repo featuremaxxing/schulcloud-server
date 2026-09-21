@@ -26,6 +26,9 @@ export const BoardOperationValues = [
 	'updateBoardLayout',
 	'updateBoardTitle',
 	'updateReadersCanEditSetting',
+	// True board-edit permission, independent of the readersCanEdit collaboration toggle - see
+	// isBoardEditor below and the poll carve-out in _canEditBoard/hasPermission().
+	'isBoardEditor',
 
 	// column
 	'copyColumn',
@@ -178,6 +181,7 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			updateBoardLayout: _canManageBoard,
 			updateBoardTitle: canEditBoardTitle,
 			updateReadersCanEditSetting: canUpdateReadersCanEditSetting,
+			isBoardEditor: _isBoardEditor,
 
 			// column
 			copyColumn: _canEditBoard,
@@ -313,6 +317,24 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 const hasBoardRole = (user: User, authorizable: BoardNodeAuthorizable, role: BoardRoles): boolean => {
 	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
 	return userWithBoardRoles?.roles.includes(role) ?? false;
+};
+
+// Whether the caller holds real board-edit permission, independent of the readersCanEdit
+// collaboration toggle. Exposed as its own BoardOperation (evaluated against the *board's own*
+// authorizable, unlike managePoll/updateElement) because the client cannot derive this from
+// allowedOperations.updateElement alone: that one is board-wide and already folds a
+// reader-with-readersCanEdit into "can edit", which is exactly the case a poll element's
+// client-side manage/teacher view must not treat as "can manage" (see the matching carve-outs
+// below and in hasPermission()). A per-element permission check would give the right answer too,
+// but would need a separate authorizable per element; this is the same answer without the extra
+// loads, since the underlying check (hasEditPermission) never varies by element anyway.
+const _isBoardEditor = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const permissions = authorizable.getUserPermissions(user.id);
+	return permissions.includes(Permission.BOARD_EDIT);
 };
 
 const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
