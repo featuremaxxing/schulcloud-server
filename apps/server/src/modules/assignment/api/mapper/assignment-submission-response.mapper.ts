@@ -35,6 +35,8 @@ export class AssignmentSubmissionResponseMapper {
 			fileVersions: mapFileVersions(entry.fileVersions),
 			criterionPoints: mapCriterionPoints(entry.submission?.criterionPoints),
 			peerReviews: entry.peerReviews ? new AssignmentPeerReviewSummaryResponse(entry.peerReviews) : null,
+			gradedByFirstName: entry.gradedBy?.firstName,
+			gradedByLastName: entry.gradedBy?.lastName,
 		});
 	}
 

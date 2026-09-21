@@ -1,3 +1,4 @@
+import { RoleName } from '@modules/role';
 import {
 	type BoardConfiguration,
 	BoardExternalReferenceType,
@@ -50,12 +51,16 @@ export class CourseBoardContext implements PreparedBoardContext {
 	}
 
 	private computeUsersWithBoardRoles(): UserWithBoardRoles[] {
+		// Course membership determines the school role unambiguously here (unlike rooms,
+		// where a member's board role and school role can diverge) - teachers and
+		// substitution teachers are always RoleName.TEACHER, students RoleName.STUDENT.
 		const teacherRoles: UserWithBoardRoles[] = this.data.teachers.map((user) => {
 			return {
 				userId: user.userId,
 				firstName: user.firstName,
 				lastName: user.lastName,
 				roles: [BoardRoles.EDITOR, BoardRoles.ADMIN],
+				schoolRoleNames: [RoleName.TEACHER],
 			};
 		});
 
@@ -65,6 +70,7 @@ export class CourseBoardContext implements PreparedBoardContext {
 				firstName: user.firstName,
 				lastName: user.lastName,
 				roles: [BoardRoles.EDITOR, BoardRoles.ADMIN],
+				schoolRoleNames: [RoleName.TEACHER],
 			};
 		});
 
@@ -74,6 +80,7 @@ export class CourseBoardContext implements PreparedBoardContext {
 				firstName: user.firstName,
 				lastName: user.lastName,
 				roles: [BoardRoles.READER],
+				schoolRoleNames: [RoleName.STUDENT],
 			};
 		});
 

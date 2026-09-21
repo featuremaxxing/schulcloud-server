@@ -65,6 +65,8 @@ export class AssignmentSubmissionResponse {
 		this.fileVersions = props.fileVersions;
 		this.criterionPoints = props.criterionPoints;
 		this.peerReviews = props.peerReviews;
+		this.gradedByFirstName = props.gradedByFirstName;
+		this.gradedByLastName = props.gradedByLastName;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -139,4 +141,16 @@ export class AssignmentSubmissionResponse {
 		description: 'advisory summary of student peer reviews - only present for the teacher view',
 	})
 	peerReviews?: AssignmentPeerReviewSummaryResponse | null;
+
+	@ApiPropertyOptional({
+		description:
+			'first name of the teacher who graded this submission - relevant when a room has more than one teacher; only present for the teacher view, never for the submission owner',
+	})
+	gradedByFirstName?: string;
+
+	@ApiPropertyOptional({
+		description:
+			'last name of the teacher who graded this submission - only present for the teacher view, never for the submission owner',
+	})
+	gradedByLastName?: string;
 }

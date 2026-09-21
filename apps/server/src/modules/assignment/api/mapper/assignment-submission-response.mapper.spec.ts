@@ -106,6 +106,17 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 				['feedback-img-1.png', 1],
 			]);
 		});
+
+		it('should never include which teacher graded the submission', () => {
+			const entry = buildEntry({
+				gradedBy: { userId: new ObjectId().toHexString(), firstName: 'Ada', lastName: 'Lovelace' },
+			});
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.gradedByFirstName).toBeUndefined();
+			expect(response.gradedByLastName).toBeUndefined();
+		});
 	});
 
 	describe('mapForTeacher', () => {
@@ -133,6 +144,26 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
 
 			expect(response.feedbackFiles).toHaveLength(2);
+		});
+
+		it('should include the grading teacher name when the entry carries one', () => {
+			const entry = buildEntry({
+				gradedBy: { userId: new ObjectId().toHexString(), firstName: 'Ada', lastName: 'Lovelace' },
+			});
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.gradedByFirstName).toBe('Ada');
+			expect(response.gradedByLastName).toBe('Lovelace');
+		});
+
+		it('should leave the grading teacher name unset when the entry has none', () => {
+			const entry = buildEntry({});
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.gradedByFirstName).toBeUndefined();
+			expect(response.gradedByLastName).toBeUndefined();
 		});
 	});
 

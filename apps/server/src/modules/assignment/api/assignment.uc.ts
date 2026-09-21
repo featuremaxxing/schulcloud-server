@@ -14,10 +14,11 @@ import {
 	BoardNodeRule,
 	BoardNodeService,
 	BoardPublicApiConfig,
-	BoardRoles,
 	isAssignmentElement,
+	isStudentMember,
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
+import { RoleName } from '@modules/role';
 import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
 import { RoomContentService } from '@modules/room';
 import {
@@ -62,6 +63,10 @@ export interface AssignmentSubmissionEntry {
 	fileVersions?: FileDto[];
 	// advisory student peer reviews, teacher view only - see AssignmentUc.buildPeerReviewSummary
 	peerReviews?: PeerReviewSummary;
+	// which teacher graded this submission - relevant once a room has more than one
+	// teacher; teacher view only, never sent to the submission's owner (see
+	// AssignmentSubmissionResponseMapper.mapForOwner)
+	gradedBy?: { userId: EntityId; firstName?: string; lastName?: string };
 }
 
 export interface AssignmentSubmissionsListResult {
@@ -115,6 +120,13 @@ export class AssignmentUc {
 		const rooms = await this.roomMembershipService.getRoomAuthorizablesByUserId(userId);
 		const relevantRooms = roomId ? rooms.filter((room) => room.roomId === roomId) : rooms;
 
+		// A caller who is neither a room editor (isTeacher below) nor a school-level student
+		// (e.g. a colleague added as a room viewer) must not be shown the student view either -
+		// they'd see a submission prompt for an assignment the server would then reject a
+		// submission for.
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const isStudentSchoolRole = user.getRoles().some((role) => role.name === RoleName.STUDENT);
+
 		const entries: AssignmentListEntry[] = [];
 		for (const room of relevantRooms) {
 			// only boards the room actually references (its "Lerninhalt") - the database can
@@ -125,6 +137,10 @@ export class AssignmentUc {
 			}
 
 			const isTeacher = this.isRoomEditor(room, userId);
+			if (!isTeacher && !isStudentSchoolRole) {
+				continue;
+			}
+
 			const elements = await this.boardNodeService.findAssignmentElementsByBoardIds(boardIds, {
 				// draft boards (isVisible=false) are unreachable for students - offering a
 				// deep link would 404 the board page for them
@@ -190,13 +206,16 @@ export class AssignmentUc {
 		const submissions = element.getChildrenOfType(AssignmentSubmission);
 
 		if (isTeacher) {
-			const students = boardNodeAuthorizable.users.filter(isPlainStudent);
+			const students = boardNodeAuthorizable.users.filter(isStudentMember);
 			const allReviews = await this.assignmentReviewRepo.findByElementId(element.id);
 
 			const entries = await Promise.all(
 				students.map(async (student): Promise<AssignmentSubmissionEntry> => {
 					const submission = submissions.find((s) => s.userId === student.userId);
 					const files = submission ? await this.getSubmissionFiles(submission.id) : {};
+					const gradedByUser = submission?.gradedBy
+						? boardNodeAuthorizable.users.find((candidate) => candidate.userId === submission.gradedBy)
+						: undefined;
 
 					return {
 						userId: student.userId,
@@ -208,6 +227,13 @@ export class AssignmentUc {
 						feedbackFiles: files.feedbackFiles,
 						fileVersions: files.fileVersions,
 						peerReviews: submission ? this.buildPeerReviewSummary(allReviews, submission.id) : undefined,
+						gradedBy: submission?.gradedBy
+							? {
+									userId: submission.gradedBy,
+									firstName: gradedByUser?.firstName,
+									lastName: gradedByUser?.lastName,
+								}
+							: undefined,
 					};
 				})
 			);
@@ -598,13 +624,6 @@ export class AssignmentUc {
 		return !!role?.permissions?.includes(Permission.ROOM_EDIT_CONTENT);
 	}
 }
-
-const isPlainStudent = (student: { userId: EntityId; roles: BoardRoles[] }): boolean => {
-	const isReader = student.roles.includes(BoardRoles.READER);
-	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => student.roles.includes(role));
-
-	return isReader && !isStaff;
-};
 
 // A submission parent holds several kinds of files: the student's submission document,
 // the teacher's audio recording and the teacher's annotated corrections (PDF/image).

@@ -221,6 +221,12 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			manageVideoConference: canManageVideoConference,
 
 			// element / assignmentElement
+			// Deliberately room-role-based, not per-teacher-ownership: every teacher with
+			// board-edit rights in the room is equally entitled to see and grade every
+			// submission (covers co-teaching and substitution without a second rights
+			// model). Accountability when a room has multiple teachers comes from
+			// recording+displaying who graded a submission (AssignmentSubmissionEntry.gradedBy),
+			// not from restricting access.
 			viewAssignmentSubmissions: _canViewBoard,
 			createOwnAssignmentSubmission: _isPlainBoardReader,
 			updateOwnAssignmentSubmission: _isOwnAssignmentSubmission,

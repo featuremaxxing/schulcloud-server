@@ -19,6 +19,8 @@ import { roomMembershipEntityFactory } from '@modules/room-membership/testing';
 import { BoardNodeEntity } from '@modules/board/repo/entity/board-node.entity';
 import { roomEntityFactory } from '@modules/room/testing';
 import { RoomRolesTestFactory } from '@modules/room/testing/room-roles.test.factory';
+import { RoleName } from '@modules/role';
+import { roleFactory } from '@modules/role/testing';
 import { schoolEntityFactory } from '@modules/school/testing';
 import { ServerTestModule } from '@modules/server/server.app.module';
 import { userFactory } from '@modules/user/testing';
@@ -85,13 +87,19 @@ describe('assignment submission flow (api)', () => {
 		// included. This owner is not otherwise used by the tests below.
 		const ownerUser = userFactory.buildWithId({ school });
 
-		const teacherUser = userFactory.buildWithId({ school });
+		// listAssignments() gates the caller's view on the school-level role (see
+		// assignment.uc.ts isStudentSchoolRole), not just the room role - a room viewer with
+		// no STUDENT/TEACHER role at all sees neither the teacher nor the student list.
+		const teacherSchoolRole = roleFactory.buildWithId({ name: RoleName.TEACHER });
+		const studentSchoolRole = roleFactory.buildWithId({ name: RoleName.STUDENT });
+
+		const teacherUser = userFactory.buildWithId({ school, roles: [teacherSchoolRole] });
 		const teacherAccount = accountFactory.withUser(teacherUser).build();
 
-		const studentUser = userFactory.buildWithId({ school });
+		const studentUser = userFactory.buildWithId({ school, roles: [studentSchoolRole] });
 		const studentAccount = accountFactory.withUser(studentUser).build();
 
-		const otherStudentUser = userFactory.buildWithId({ school });
+		const otherStudentUser = userFactory.buildWithId({ school, roles: [studentSchoolRole] });
 		const otherStudentAccount = accountFactory.withUser(otherStudentUser).build();
 
 		const { roomOwnerRole, roomEditorRole, roomViewerRole } = RoomRolesTestFactory.createRoomRoles();
@@ -120,6 +128,8 @@ describe('assignment submission flow (api)', () => {
 				studentUser,
 				otherStudentAccount,
 				otherStudentUser,
+				teacherSchoolRole,
+				studentSchoolRole,
 				roomOwnerRole,
 				roomEditorRole,
 				roomViewerRole,
@@ -150,6 +160,7 @@ describe('assignment submission flow (api)', () => {
 
 		return {
 			teacherAccount,
+			teacherUser,
 			studentAccount,
 			otherStudentAccount,
 			studentUser,
@@ -249,6 +260,114 @@ describe('assignment submission flow (api)', () => {
 			const ownEntryAfterReturn = (ownListAfterReturn.body as AssignmentSubmissionListResponse).submissions[0];
 			expect(ownEntryAfterReturn.points).toEqual(9);
 			expect(ownEntryAfterReturn.feedbackComment).toEqual('well done');
+		});
+	});
+
+	describe('multiple teachers in the same room', () => {
+		it('should show who graded a submission', async () => {
+			const { teacherAccount, teacherUser, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			await teacherClient.patch(`submissions/${submissionId}/grade`, { points: 7 });
+
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			expect(teacherEntry?.gradedByFirstName).toEqual(teacherUser.firstName);
+			expect(teacherEntry?.gradedByLastName).toEqual(teacherUser.lastName);
+
+			// the student's own view must never reveal who graded it
+			const ownList = await studentClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownEntry = (ownList.body as AssignmentSubmissionListResponse).submissions[0];
+			expect(ownEntry.gradedByFirstName).toBeUndefined();
+			expect(ownEntry.gradedByLastName).toBeUndefined();
+		});
+
+		it('should not treat a colleague added as a room viewer as a student', async () => {
+			// a teacher who was only given viewing rights in this room (e.g. to sit in on a
+			// co-taught class) must not show up in the submission list as if they were a
+			// student expected to hand something in - see assignment.uc.ts isStudentMember
+			const school = schoolEntityFactory.buildWithId();
+			const ownerUser = userFactory.buildWithId({ school });
+			const teacherUser = userFactory.buildWithId({
+				school,
+				roles: [roleFactory.buildWithId({ name: RoleName.TEACHER })],
+			});
+			const teacherAccount = accountFactory.withUser(teacherUser).build();
+			const colleagueUser = userFactory.buildWithId({
+				school,
+				roles: [roleFactory.buildWithId({ name: RoleName.TEACHER })],
+			});
+			const colleagueAccount = accountFactory.withUser(colleagueUser).build();
+
+			const { roomOwnerRole, roomEditorRole, roomViewerRole } = RoomRolesTestFactory.createRoomRoles();
+
+			const userGroup = groupEntityFactory.buildWithId({
+				type: GroupEntityTypes.ROOM,
+				users: [
+					{ user: ownerUser, role: roomOwnerRole },
+					{ user: teacherUser, role: roomEditorRole },
+					// the colleague is a plain room viewer, same board role a student would have -
+					// only the TEACHER school role tells them apart
+					{ user: colleagueUser, role: roomViewerRole },
+				],
+				organization: school,
+			});
+
+			const room = roomEntityFactory.buildWithId({ schoolId: school.id });
+			const roomMembership = roomMembershipEntityFactory.build({ roomId: room.id, userGroupId: userGroup.id });
+
+			await em
+				.persist([
+					school,
+					ownerUser,
+					teacherAccount,
+					teacherUser,
+					colleagueAccount,
+					colleagueUser,
+					roomOwnerRole,
+					roomEditorRole,
+					roomViewerRole,
+					userGroup,
+					room,
+					roomMembership,
+				])
+				.flush();
+
+			const columnBoardNode = columnBoardEntityFactory.build({
+				context: { id: room.id, type: BoardExternalReferenceType.Room },
+			});
+			const columnNode = columnEntityFactory.withParent(columnBoardNode).build();
+			const cardNode = cardEntityFactory.withParent(columnNode).build();
+			const assignmentElementNode = assignmentElementEntityFactory
+				.withParent(cardNode)
+				.build({ dueDate: undefined, graceMinutes: undefined, maxPoints: 10 });
+			const roomContent = roomContentEntityFactory.build({
+				roomId: room.id,
+				items: [{ id: columnBoardNode.id, type: RoomContentType.BOARD }],
+			});
+			await em.persist([columnBoardNode, columnNode, cardNode, assignmentElementNode, roomContent]).flush();
+			em.clear();
+
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+			const colleagueClient = await new TestApiClientBuilder(app, baseRouteName).build(colleagueAccount);
+
+			// the colleague, despite being a room "viewer", must not be offered a submission
+			// prompt - the assignments list must be empty for them
+			const colleagueAssignmentsList = await colleagueClient.get('');
+			expect((colleagueAssignmentsList.body as AssignmentListResponse).assignments).toHaveLength(0);
+
+			// and the teacher's submission overview must not list the colleague as a student
+			// expected to submit something
+			const teacherSubmissions = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const entries = (teacherSubmissions.body as AssignmentSubmissionListResponse).submissions;
+			expect(entries.find((entry) => entry.userId === colleagueUser.id)).toBeUndefined();
 		});
 	});
 

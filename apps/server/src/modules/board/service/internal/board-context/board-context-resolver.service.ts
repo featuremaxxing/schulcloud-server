@@ -52,13 +52,24 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
-		// room memberships carry no user names - load them for the board authorizable
-		// consumers (e.g. the assignment teacher overview shows student names)
+		// room memberships carry no user names or school roles - load them for the board
+		// authorizable consumers (e.g. the assignment teacher overview shows student names;
+		// isStudentMember/isTeacherMember need the school role to tell a teacher who is only
+		// a room viewer apart from an actual student)
 		const memberIds = roomAuthorizable.members.map((member) => member.userId);
 		const users = memberIds.length > 0 ? await this.userService.getUserEntitiesWithRoles(memberIds) : [];
-		const userNames = new Map(users.map((user) => [user.id, { firstName: user.firstName, lastName: user.lastName }]));
+		const userInfo = new Map(
+			users.map((user) => [
+				user.id,
+				{
+					firstName: user.firstName,
+					lastName: user.lastName,
+					schoolRoleNames: user.roles.getItems().map((role) => role.name),
+				},
+			])
+		);
 
-		return new RoomBoardContext(room, roomAuthorizable, userNames);
+		return new RoomBoardContext(room, roomAuthorizable, userInfo);
 	}
 
 	private async resolveCourseContext(courseId: string): Promise<CourseBoardContext> {

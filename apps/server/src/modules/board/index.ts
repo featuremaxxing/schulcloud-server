@@ -27,6 +27,9 @@ export {
 	isAssignmentElement,
 	isAssignmentSubmission,
 	isColumnBoard,
+	// modules/assignment/api/assignment.uc.ts
+	isStudentMember,
+	isTeacherMember,
 	// @modules/tool/tool-launch/service/auto-parameter-strategy/auto-context-name.strategy.ts
 	MediaBoard,
 } from './domain';

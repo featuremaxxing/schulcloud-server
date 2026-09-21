@@ -1,4 +1,5 @@
 import { ObjectId } from '@mikro-orm/mongodb';
+import { RoleName } from '@modules/role';
 import { BoardExternalReferenceType, BoardRoles } from '../../../domain';
 import { columnBoardFactory } from '../../../testing';
 import { CourseBoardContext, type CourseBoardContextData } from './course-board-context';
@@ -52,6 +53,7 @@ describe(CourseBoardContext.name, () => {
 						firstName: 'John',
 						lastName: 'Doe',
 						roles: [BoardRoles.EDITOR, BoardRoles.ADMIN],
+						schoolRoleNames: [RoleName.TEACHER],
 					},
 				]);
 			});
@@ -75,6 +77,7 @@ describe(CourseBoardContext.name, () => {
 						firstName: 'Jane',
 						lastName: 'Smith',
 						roles: [BoardRoles.EDITOR, BoardRoles.ADMIN],
+						schoolRoleNames: [RoleName.TEACHER],
 					},
 				]);
 			});
@@ -98,6 +101,7 @@ describe(CourseBoardContext.name, () => {
 						firstName: 'Student',
 						lastName: 'One',
 						roles: [BoardRoles.READER],
+						schoolRoleNames: [RoleName.STUDENT],
 					},
 				]);
 			});

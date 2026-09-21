@@ -13,6 +13,7 @@ import { UserService } from '@modules/user';
 import { userFactory } from '@modules/user/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
+import { RoleName } from '@modules/role';
 import { type BoardExternalReference, BoardExternalReferenceType } from '../../../domain';
 import { BoardContextResolverService } from './board-context-resolver.service';
 import { CourseBoardContext } from './course-board-context';
@@ -125,6 +126,30 @@ describe(BoardContextResolverService.name, () => {
 				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([student.id]);
 				expect(users[0].firstName).toBe('Anna');
 				expect(users[0].lastName).toBe('Admin');
+			});
+
+			it('should load the member school role names and pass them to the context', async () => {
+				const teacher = userFactory.buildWithId({ roles: [roleFactory.buildWithId({ name: RoleName.TEACHER })] });
+				const room = roomFactory.build();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const roomAuthorizable = new RoomAuthorizable(
+					room.id,
+					[{ userId: teacher.id, userSchoolId: teacher.school.id, roles: [role] }],
+					room.schoolId
+				);
+				const contextRef: BoardExternalReference = {
+					id: room.id,
+					type: BoardExternalReferenceType.Room,
+				};
+
+				roomService.getSingleRoom.mockResolvedValue(room);
+				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([teacher]);
+
+				const result = await service.resolve(contextRef);
+				const users = result.getUsersWithBoardRoles();
+
+				expect(users[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
 			});
 		});
 

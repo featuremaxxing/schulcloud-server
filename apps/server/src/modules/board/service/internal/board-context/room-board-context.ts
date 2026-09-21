@@ -29,9 +29,13 @@ export class RoomBoardContext implements PreparedBoardContext {
 	constructor(
 		private readonly room: Room,
 		private readonly roomAuthorizable: RoomAuthorizable,
-		// room memberships carry no user names - the resolver loads them separately
-		// so consumers (e.g. the assignment teacher overview) can display them
-		private readonly userNames: Map<EntityId, { firstName?: string; lastName?: string }> = new Map()
+		// room memberships carry no user names or school roles - the resolver loads them
+		// separately so consumers (e.g. the assignment teacher overview, isStudentMember) can
+		// use them
+		private readonly userInfo: Map<
+			EntityId,
+			{ firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }
+		> = new Map()
 	) {
 		this.usersWithBoardRoles = this.computeUsersWithBoardRoles();
 		this.hasOwner = this.computeHasOwner();
@@ -57,9 +61,10 @@ export class RoomBoardContext implements PreparedBoardContext {
 		return this.roomAuthorizable.members.map((member) => {
 			return {
 				userId: member.userId,
-				firstName: this.userNames.get(member.userId)?.firstName,
-				lastName: this.userNames.get(member.userId)?.lastName,
+				firstName: this.userInfo.get(member.userId)?.firstName,
+				lastName: this.userInfo.get(member.userId)?.lastName,
 				roles: this.getBoardRolesFromRoomMembership(member),
+				schoolRoleNames: this.userInfo.get(member.userId)?.schoolRoleNames,
 			};
 		});
 	}
