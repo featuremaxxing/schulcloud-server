@@ -33,6 +33,7 @@ import {
 	type MediaExternalToolElement,
 	type MediaLine,
 	PollElement,
+	PollStatus,
 	PollVote,
 	RichTextElement,
 	VideoConferenceElement,
@@ -531,13 +532,20 @@ export class BoardNodeCopyService {
 	// Deliberately does NOT call copyChildrenOf: a copied poll is copied without its votes
 	// and without its frozen resultSnapshot - a copy starts as an empty, unopened poll.
 	// Carrying votes into a copied room/board would leak identifiable participation of
-	// users who never joined the copy's target context.
+	// users who never joined the copy's target context. pollStatus/closesAt are reset for
+	// the same reason the comment promises ("an empty, unopened poll") - without this a copy
+	// of a currently-open poll would immediately start accepting votes, and a copy of a
+	// closed poll would be closed with no snapshot (aggregateResults would then fall back to
+	// counting the copy's own, empty vote list instead), and a copied deadline could already
+	// be in the past.
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	public copyPollElement(original: PollElement, context: CopyContext): Promise<CopyStatus> {
 		const copy = new PollElement({
 			...original.getProps(),
 			...this.buildSpecificProps([]),
 			resultSnapshot: undefined,
+			pollStatus: PollStatus.DRAFT,
+			closesAt: undefined,
 		});
 
 		const result: CopyStatus = {

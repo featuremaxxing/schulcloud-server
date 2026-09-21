@@ -1,5 +1,5 @@
 import { ObjectId } from '@mikro-orm/mongodb';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { sanitizeRichText } from '@shared/controller/transformer';
 import { InputFormat } from '@shared/domain/types';
 import {
@@ -11,6 +11,7 @@ import {
 	H5pContentBody,
 	LinkContentBody,
 	PollContentBody,
+	type PollQuestionBody,
 	RichTextContentBody,
 	VideoConferenceContentBody,
 } from '../../controller/dto';
@@ -162,6 +163,17 @@ export class ContentElementUpdateService {
 			throw new ConflictException("Cannot change a poll's audience once votes have been cast");
 		}
 
+		// Same reasoning as the audience lock above, for the questions/options themselves: an
+		// existing PollVote's answers reference question/option ids directly (see
+		// normalizePollAnswers), so removing/adding one or changing a question's answerMode once
+		// votes exist would either orphan those answers or silently reinterpret them (e.g. a
+		// SINGLE-turned-MULTIPLE question's old single answer now aggregated as if it always
+		// allowed several). Editing the *text* of an existing question/option, or its chartType,
+		// stays free - neither is referenced by a stored answer.
+		if (hasVotes) {
+			this.assertPollStructureUnchanged(element, content.questions);
+		}
+
 		element.title = content.title ? sanitizeRichText(content.title, InputFormat.PLAIN_TEXT) : undefined;
 		element.questions = content.questions.map((question): PollQuestion => {
 			return {
@@ -181,6 +193,15 @@ export class ContentElementUpdateService {
 		element.showResultsLive = content.showResultsLive;
 		element.pollStatus = content.pollStatus;
 		element.closesAt = content.closesAt ? new Date(content.closesAt) : undefined;
+		// A CUSTOM audience with no roles selected would open (isEligibleVoter checks
+		// `(element.audienceRoles ?? []).some(...)`, which is always false for an empty array)
+		// but accept no one's vote at all - saved successfully, with no error anywhere telling
+		// the teacher why nobody can vote. Caught here rather than left to be discovered as a
+		// silent, unexplained "0 of 0 voted".
+		if (newAudience === PollAudience.CUSTOM && (content.audienceRoles ?? []).length === 0) {
+			throw new UnprocessableEntityException('At least one role must be selected for a custom poll audience.');
+		}
+
 		element.audience = newAudience;
 		element.audienceRoles = newAudience === PollAudience.CUSTOM ? content.audienceRoles : undefined;
 
@@ -200,6 +221,42 @@ export class ContentElementUpdateService {
 		const isReopeningNow = wasClosed && element.pollStatus !== PollStatus.CLOSED;
 		if (isReopeningNow) {
 			element.resultSnapshot = undefined;
+		}
+	}
+
+	// Rejects a question/option-structure change once the poll has votes - see updatePollElement.
+	// A question or option without an id is a brand-new one (see the id ?? new ObjectId()
+	// fallback below), which counts as "added" here exactly like an id that doesn't match an
+	// existing one; conversely, an existing id missing from the new list counts as "removed".
+	private assertPollStructureUnchanged(element: PollElement, questions: PollQuestionBody[]): void {
+		const existingQuestionIds = new Set(element.questions.map((question) => question.id));
+		const newQuestionIds = questions.map((question) => question.id);
+
+		if (
+			newQuestionIds.length !== existingQuestionIds.size ||
+			newQuestionIds.some((id) => id === undefined || !existingQuestionIds.has(id))
+		) {
+			throw new ConflictException("Cannot add or remove a poll's questions once votes have been cast");
+		}
+
+		for (const questionBody of questions) {
+			const existingQuestion = element.questions.find((question) => question.id === questionBody.id);
+			/* istanbul ignore next - unreachable: every id here was just verified to exist above */
+			if (!existingQuestion) continue;
+
+			if (existingQuestion.answerMode !== questionBody.answerMode) {
+				throw new ConflictException("Cannot change a poll question's answer mode once votes have been cast");
+			}
+
+			const existingOptionIds = new Set(existingQuestion.options.map((option) => option.id));
+			const newOptionIds = questionBody.options.map((option) => option.id);
+
+			if (
+				newOptionIds.length !== existingOptionIds.size ||
+				newOptionIds.some((id) => id === undefined || !existingOptionIds.has(id))
+			) {
+				throw new ConflictException("Cannot add or remove a poll question's options once votes have been cast");
+			}
 		}
 	}
 

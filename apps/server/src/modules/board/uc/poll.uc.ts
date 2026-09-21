@@ -8,6 +8,7 @@ import {
 	BoardNodeFactory,
 	countEligibleVoters,
 	isPollElement,
+	normalizePollAnswers,
 	PollAnswer,
 	PollAnswerMode,
 	PollElement,
@@ -60,6 +61,12 @@ export class PollUc {
 			throw new ForbiddenException('This poll is not open for votes');
 		}
 
+		// Validated against the poll's actual questions/options before it is stored - see
+		// normalizePollAnswers: the message params only bound sizes, not content, so a raw
+		// payload could otherwise select every option of a single-choice question, answer the
+		// same question twice, or reference an id that doesn't belong to this poll.
+		const normalizedAnswers = normalizePollAnswers(element, answers);
+
 		const existingVotes = await this.boardNodeService.findPollVotesByParentIds([elementId], userId);
 		const existingVote = existingVotes[0];
 
@@ -67,7 +74,7 @@ export class PollUc {
 			const authorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(existingVote);
 			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnPollVote', user, authorizable));
 
-			existingVote.answers = answers;
+			existingVote.answers = normalizedAnswers;
 			existingVote.votedAt = now;
 			await this.boardNodeService.save(existingVote);
 		} else {
@@ -75,7 +82,7 @@ export class PollUc {
 			throwForbiddenIfFalse(this.boardNodeRule.can('createOwnPollVote', user, elementAuthorizable));
 
 			const vote: PollVote = this.boardNodeFactory.buildPollVote(userId);
-			vote.answers = answers;
+			vote.answers = normalizedAnswers;
 			vote.votedAt = now;
 
 			await this.boardNodeService.addToParent(element, vote);

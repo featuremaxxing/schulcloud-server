@@ -164,6 +164,27 @@ describe('poll vote flow (api)', () => {
 		expect(results.myVote).toEqual([{ questionId: 'question-1', selectedOptionIds: ['option-b'] }]);
 	});
 
+	// Regression test: a single-choice question's stored answer must never carry more than one
+	// option, and must never reference an option/question the poll doesn't actually have - see
+	// normalizePollAnswers/PollUc.vote. Without it, one vote selecting every option of a
+	// SINGLE-choice question would increment every option's count in aggregateResults.
+	it('should not store more than one option for a single-choice question, and should drop unknown ids', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+
+		await pollUc.vote(studentUserId, pollElementId, [
+			{ questionId: 'question-1', selectedOptionIds: ['option-a', 'option-b', 'does-not-exist'] },
+			{ questionId: 'unknown-question', selectedOptionIds: ['option-a'] },
+		]);
+
+		const results = await pollUc.getResults(studentUserId, pollElementId);
+		expect(results.myVote).toEqual([{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const aggregated = results.results?.find((question) => question.questionId === 'question-1');
+		const totalCount = aggregated?.counts.reduce((sum, entry) => sum + entry.count, 0) ?? 0;
+		expect(totalCount).toBe(1); // not 2 - the vote must not count towards both options
+	});
+
 	// Regression test: participantCount must reflect how many students are actually eligible to
 	// vote (the room roster), not how many already have - votes.length would make the status bar
 	// read "1 von 1 abgestimmt" for every poll, no matter the class size (see PollUc.getResults).

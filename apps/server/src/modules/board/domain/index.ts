@@ -16,6 +16,7 @@ export * from './link-element.do';
 export * from './media-board';
 export * from './member-role';
 export * from './path-utils';
+export * from './poll-answer';
 export * from './poll-audience';
 export * from './poll-element.do';
 export * from './poll-vote.do';

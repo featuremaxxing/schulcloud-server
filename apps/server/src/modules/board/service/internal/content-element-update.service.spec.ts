@@ -384,7 +384,14 @@ describe('ContentElementUpdateService', () => {
 				audience: PollAudience.STUDENTS,
 				children: [vote],
 			});
-			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+			// keeping the same question/option ids: closing a poll must not be blocked by the
+			// question-structure lock, only an actual structural change should be (see below)
+			const content = buildContent({
+				pollStatus: PollStatus.CLOSED,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options] };
+				}),
+			});
 			const users: UserWithBoardRoles[] = [
 				{ userId: 'student-1', roles: [BoardRoles.READER] },
 				{ userId: 'student-2', roles: [BoardRoles.READER] },
@@ -407,11 +414,66 @@ describe('ContentElementUpdateService', () => {
 		it('should allow keeping the same audience once votes have been cast', async () => {
 			const vote = pollVoteFactory.build();
 			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
-			const content = buildContent({ audience: PollAudience.STUDENTS, title: 'updated title' });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				title: 'updated title',
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options] };
+				}),
+			});
 
 			await service.updateContent(element, content);
 
 			expect(element.title).toBe('updated title');
+		});
+
+		it('should reject removing a question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			// buildContent's default questions carry freshly generated ids, unrelated to the
+			// element's own questions - exactly the "removed every existing question and added a
+			// new one" case the structure lock exists for
+			const content = buildContent({ audience: PollAudience.STUDENTS });
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it("should reject changing an existing question's answer mode once votes have been cast", async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return {
+						...question,
+						options: [...question.options],
+						answerMode: PollAnswerMode.MULTIPLE,
+					};
+				}),
+			});
+			// the fixture's default question is SINGLE - guard against the fixture changing under us
+			expect(element.questions[0].answerMode).not.toBe(PollAnswerMode.MULTIPLE);
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it("should allow editing a question's text once votes have been cast", async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return {
+						...question,
+						text: 'edited question text',
+						options: [...question.options],
+					};
+				}),
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions[0].text).toBe('edited question text');
 		});
 
 		it('should allow changing the audience before any vote has been cast', async () => {
