@@ -344,7 +344,12 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 		const isOwner = submission.userId === userWithBoardRoles.userId;
 
 		if (context.action === Action.read) {
-			return isOwner || this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles);
+			// A peer reviewer is neither the owner nor a board editor/admin, but needs to read the
+			// file they were assigned to review - see BoardNodeAuthorizableProps.peerReviewerIds.
+			const isAssignedReviewer = authorizable.peerReviewerIds?.includes(userWithBoardRoles.userId) ?? false;
+			return (
+				isOwner || this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles) || isAssignedReviewer
+			);
 		}
 
 		// Feedback audio upload: an editor-only create, deliberately unconditional on

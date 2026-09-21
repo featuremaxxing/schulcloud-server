@@ -247,6 +247,26 @@ describe('peer review flow (api)', () => {
 			expect(tasksResponse.body as PeerReviewTaskResponse[]).toHaveLength(1);
 			expect((tasksResponse.body as PeerReviewTaskResponse[])[0].submissionId).toEqual(submissionId);
 		});
+
+		it('does not duplicate the assignment when the same pairing is submitted twice', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentBClient = await new TestApiClientBuilder(app, baseRouteName).build(studentBAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const assignBody = { assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }] };
+			const firstResponse = await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, assignBody);
+			const secondResponse = await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, assignBody);
+
+			expect(firstResponse.status).toEqual(200);
+			expect(secondResponse.status).toEqual(200);
+
+			const tasksResponse = await studentBClient.get('peer-review/my-tasks');
+			expect(tasksResponse.body as PeerReviewTaskResponse[]).toHaveLength(1);
+		});
 	});
 
 	describe('the review task', () => {

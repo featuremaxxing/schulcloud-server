@@ -2,6 +2,9 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentReviewAssignmentMode,
+	AssignmentReviewEntity,
+	AssignmentReviewRepo,
 	AssignmentSubmission,
 	BOARD_PUBLIC_API_CONFIG_TOKEN,
 	BoardNodeAuthorizable,
@@ -22,7 +25,6 @@ import {
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { EntityId } from '@shared/domain/types';
 import { AssignmentFilesStorageErrorLoggable } from './loggable/assignment-files-storage-error.loggable';
-import { AssignmentReviewAssignmentMode, AssignmentReviewEntity, AssignmentReviewRepo } from '../repo';
 
 export interface PeerReviewSettingsBody {
 	enabled: boolean;
@@ -44,6 +46,11 @@ export interface PeerReviewTaskResult {
 	review: AssignmentReviewEntity;
 	file?: FileDto;
 }
+
+// Effectively "everyone reviews everyone" for a very large class - not a real assignment
+// scenario, just a sane upper bound so a stray large value cannot make autoAssign fan out
+// n*count review rows for an element with many submissions.
+const MAX_PEER_REVIEW_COUNT = 20;
 
 @Injectable()
 export class PeerReviewUc {
@@ -72,7 +79,10 @@ export class PeerReviewUc {
 			element.peerReviewMode = body.mode;
 		}
 		if (body.count !== undefined) {
-			element.peerReviewCount = body.count;
+			// autoAssign clamps this again against the actual submission count at assignment time
+			// (there may be fewer than count+1 submissions yet), but a negative or absurdly high
+			// value has no valid meaning here regardless of submission count.
+			element.peerReviewCount = Math.max(1, Math.min(body.count, MAX_PEER_REVIEW_COUNT));
 		}
 		await this.boardNodeService.save(element);
 
@@ -102,6 +112,13 @@ export class PeerReviewUc {
 			for (let i = 0; i < submissions.length; i += 1) {
 				const reviewer = submissions[i];
 				const target = submissions[(i + offset) % submissions.length];
+
+				// Guaranteed unreachable by the offset bound above (effectiveCount <= submissions.length
+				// - 1) as long as every submission belongs to a distinct student - kept as an explicit
+				// check anyway so the invariant doesn't rely on that assumption holding elsewhere.
+				if (reviewer.userId === target.userId) {
+					continue;
+				}
 
 				reviews.push(
 					new AssignmentReviewEntity({
@@ -154,6 +171,17 @@ export class PeerReviewUc {
 			});
 		});
 
+		// Delete-then-insert on exactly this batch's pairings, not the whole element (that would
+		// also wipe out unrelated manual assignments and any already-submitted review feedback) -
+		// makes re-submitting the same assignment (e.g. a double click) idempotent instead of
+		// creating duplicate rows. The unique index on the entity is the backstop for anything this
+		// misses.
+		await this.assignmentReviewRepo.deleteByPairs(
+			elementId,
+			assignments.map((pair) => {
+				return { submissionId: pair.submissionId, reviewerUserId: pair.reviewerUserId };
+			})
+		);
 		await this.assignmentReviewRepo.saveAll(reviews);
 
 		return { assignedCount: reviews.length };

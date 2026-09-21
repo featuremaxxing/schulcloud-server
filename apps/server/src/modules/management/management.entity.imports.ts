@@ -1,6 +1,5 @@
 import { AccountEntity } from '@modules/account/repo';
-import { AssignmentReviewEntity } from '@modules/assignment/repo';
-import { BoardNodeEntity } from '@modules/board/repo/entity';
+import { AssignmentReviewEntity, BoardNodeEntity } from '@modules/board/repo/entity';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity } from '@modules/course/repo/course.entity';
 import { CourseGroupEntity } from '@modules/course/repo/coursegroup.entity';

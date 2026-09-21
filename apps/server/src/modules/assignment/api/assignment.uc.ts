@@ -2,6 +2,8 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentReviewEntity,
+	AssignmentReviewRepo,
 	AssignmentRubricCriterion,
 	AssignmentStatus,
 	AssignmentSubmission,
@@ -30,8 +32,8 @@ import {
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { Permission } from '@shared/domain/interface';
 import { EntityId } from '@shared/domain/types';
+import { AssignmentBatchReturnErrorLoggable } from './loggable/assignment-batch-return-error.loggable';
 import { AssignmentFilesStorageErrorLoggable } from './loggable/assignment-files-storage-error.loggable';
-import { AssignmentReviewEntity, AssignmentReviewRepo } from '../repo';
 
 export interface PeerReviewSummary {
 	averagePoints: number | null;
@@ -333,7 +335,7 @@ export class AssignmentUc {
 		const { submission, element } = await this.loadOwnedSubmissionForGrading(userId, submissionId);
 
 		this.applyPoints(element, submission, body);
-		submission.feedbackComment = body.feedbackComment;
+		submission.feedbackComment = normalizeFeedbackComment(body.feedbackComment);
 		submission.gradedBy = userId;
 		await this.boardNodeService.save(submission);
 
@@ -379,6 +381,11 @@ export class AssignmentUc {
 	// Best-effort: a submission that cannot be returned (not graded yet, not owned by the
 	// caller, unknown id) is reported in `failed` instead of aborting the whole batch, so the
 	// teacher still gets everyone else returned from a single "return all graded" click.
+	//
+	// Deliberately does NOT call getSubmissionFiles per submission here: that is a File-Storage
+	// AMQP round-trip per item, run strictly sequentially in this loop, and the only caller (the
+	// client's batch-return button) discards the returned submissions' file data and reloads the
+	// whole list afterwards anyway - see AssignmentSubmissionsOverlay.vue onBatchReturn.
 	public async returnSubmissionsBatch(
 		userId: EntityId,
 		submissionIds: EntityId[]
@@ -400,20 +407,31 @@ export class AssignmentUc {
 				this.applyReturn(submission, userId, {});
 				await this.boardNodeService.save(submission);
 
-				const files = await this.getSubmissionFiles(submission.id);
-				returned.push({
-					submission,
-					file: files.submissionFile,
-					feedbackAudio: files.feedbackAudio,
-					feedbackFiles: files.feedbackFiles,
-					fileVersions: files.fileVersions,
-				});
+				returned.push({ submission });
 			} catch (error) {
-				failed.push({ submissionId, reason: error instanceof Error ? error.message : 'Unknown error.' });
+				failed.push({ submissionId, reason: this.toBatchFailureReason(submissionId, error) });
 			}
 		}
 
 		return { returned, failed };
+	}
+
+	// Maps to one of the two failure reasons a caller can actually act on; anything else (a
+	// forbidden/not-found/internal error's raw message) must not leak past the API boundary, so
+	// it is logged instead and reported as a generic reason.
+	private toBatchFailureReason(submissionId: EntityId, error: unknown): string {
+		if (error instanceof ForbiddenException) {
+			return 'This submission cannot be returned by you.';
+		}
+		if (error instanceof NotFoundException) {
+			return 'This submission could not be found.';
+		}
+
+		this.logger.warning(
+			new AssignmentBatchReturnErrorLoggable(submissionId, error instanceof Error ? error : new Error(String(error)))
+		);
+
+		return 'This submission could not be returned.';
 	}
 
 	// Shared by returnSubmission and returnSubmissionsBatch. The batch path calls this with an
@@ -422,8 +440,9 @@ export class AssignmentUc {
 	// (flat or per-criterion) are handled separately by applyPoints, called before this when
 	// the body actually carries a points update.
 	private applyReturn(submission: AssignmentSubmission, gradedBy: EntityId, body: { feedbackComment?: string }): void {
-		if (body.feedbackComment !== undefined) {
-			submission.feedbackComment = body.feedbackComment;
+		const feedbackComment = normalizeFeedbackComment(body.feedbackComment);
+		if (feedbackComment !== undefined) {
+			submission.feedbackComment = feedbackComment;
 		}
 		submission.gradedBy = gradedBy;
 		submission.returnedAt = new Date();
@@ -609,6 +628,15 @@ const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 
 	return sorted[0];
 };
+
+// GradeBody types feedbackComment as string | undefined, but that is only a compile-time
+// promise: class-validator's @IsOptional() lets a literal `null` in the JSON body straight
+// through untouched. AssignmentSubmission.getStatus() reads `feedbackComment !== undefined` to
+// decide a submission is graded, and `null !== undefined` - so an unnormalized null would mark
+// an otherwise-untouched submission as graded, making it eligible for a batch return it was
+// never actually given a comment or points for.
+const normalizeFeedbackComment = (feedbackComment: string | null | undefined): string | undefined =>
+	feedbackComment ?? undefined;
 
 const pickLatestSubmissionFile = (files: FileDto[]): FileDto | undefined =>
 	pickLatestFile(files.filter((file) => !isFeedbackFile(file)));

@@ -12,7 +12,6 @@ import { RoomModule } from '@modules/room';
 import { RoomMembershipModule } from '@modules/room-membership';
 import { Module } from '@nestjs/common';
 import { AssignmentController, AssignmentUc, PeerReviewController, PeerReviewUc } from './api';
-import { AssignmentReviewRepo } from './repo';
 
 @Module({
 	imports: [
@@ -30,6 +29,6 @@ import { AssignmentReviewRepo } from './repo';
 		}),
 	],
 	controllers: [AssignmentController, PeerReviewController],
-	providers: [AssignmentUc, PeerReviewUc, AssignmentReviewRepo],
+	providers: [AssignmentUc, PeerReviewUc],
 })
 export class AssignmentApiModule {}

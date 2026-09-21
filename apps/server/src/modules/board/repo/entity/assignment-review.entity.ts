@@ -1,4 +1,4 @@
-import { Entity, Index, Property } from '@mikro-orm/core';
+import { Entity, Index, Property, Unique } from '@mikro-orm/core';
 import { ObjectIdType } from '@shared/repo/types/object-id.type';
 import { BaseEntityWithTimestamps } from '@shared/domain/entity/base.entity';
 import { EntityId } from '@shared/domain/types';
@@ -25,7 +25,11 @@ export interface AssignmentReviewEntityProps {
 // as one would mean touching the BoardNode type union, factory and repo mapper for a construct
 // that needs none of that machinery. See AssignmentUc/PeerReviewUc for authorization, done by
 // hand here (room-membership + submission ownership) rather than via BoardNodeRule.
+// One reviewer reviews one submission at most once - autoAssign/manualAssign both delete-then-
+// insert to stay idempotent (see PeerReviewUc), but this index is the hard backstop against a
+// duplicate pairing however it might arise (e.g. a retried request).
 @Entity({ tableName: 'assignmentreviews' })
+@Unique({ properties: ['elementId', 'submissionId', 'reviewerUserId'] })
 export class AssignmentReviewEntity extends BaseEntityWithTimestamps {
 	@Property({ type: ObjectIdType })
 	@Index()

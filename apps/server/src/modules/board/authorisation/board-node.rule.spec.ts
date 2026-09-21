@@ -820,6 +820,63 @@ describe(BoardNodeRule.name, () => {
 
 					expect(res).toBe(false);
 				});
+
+				it('should allow a student assigned as peer reviewer to read the submission file', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const submission = assignmentSubmissionFactory.build({ userId: owner.id });
+					const element = assignmentElementFactory.build({ children: [submission] });
+					const columnBoard = columnBoardFactory.build();
+					const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+						boardNode: submission,
+						parentNode: element,
+						rootNode: columnBoard,
+						boardConfiguration: { isLocked: false },
+						peerReviewerIds: [reviewer.id],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow a student not assigned as peer reviewer to read the submission file', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const notAssigned = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const submission = assignmentSubmissionFactory.build({ userId: owner.id });
+					const element = assignmentElementFactory.build({ children: [submission] });
+					const columnBoard = columnBoardFactory.build();
+					const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: notAssigned.id, roles: [BoardRoles.READER] },
+						],
+						boardNode: submission,
+						parentNode: element,
+						rootNode: columnBoard,
+						boardConfiguration: { isLocked: false },
+						peerReviewerIds: [reviewer.id],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(notAssigned, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(false);
+				});
 			});
 
 			describe('when required permissions include FILESTORAGE_CREATE (uploading the file)', () => {
