@@ -38,7 +38,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		const parentNode = await this.boardNodeService.findParent(boardNode, 1);
 
 		const preparedContext = await this.resolveContext(rootNode);
-		const users = preparedContext.getUsersWithBoardRoles();
+		const users = await preparedContext.getUsersWithBoardRoles();
 		const boardConfiguration = preparedContext.getBoardConfiguration(rootNode as MediaBoard | ColumnBoard);
 
 		const boardNodeAuthorizable = new BoardNodeAuthorizable({
@@ -69,7 +69,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		}
 
 		const preparedContext = await this.resolveContext(rootNodes[0]);
-		const users = preparedContext.getUsersWithBoardRoles();
+		const users = await preparedContext.getUsersWithBoardRoles();
 
 		const boardNodeAuthorizables = boardNodes.map((boardNode) => {
 			const currentRootNode = boardNodeMap[boardNode.rootId];
@@ -94,7 +94,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		if (!rootNode || !('context' in rootNode)) {
 			return {
 				type: undefined as never,
-				getUsersWithBoardRoles: () => [],
+				getUsersWithBoardRoles: () => Promise.resolve([]),
 				getBoardConfiguration: (): BoardConfiguration => {
 					return {};
 				},

@@ -133,10 +133,16 @@ describe(BoardContextResolverService.name, () => {
 				return { contextRef, member };
 			};
 
-			it('should batch-load the member names once', async () => {
+			it('should batch-load the member names once, only once getUsersWithBoardRoles is actually called', async () => {
 				const { contextRef, member } = setup();
 
-				await service.resolve(contextRef);
+				const result = await service.resolve(contextRef);
+				// resolve() itself must not pay for the user lookup - most board operations
+				// never call getUsersWithBoardRoles() at all (see RoomBoardContext)
+				expect(userService.getUserEntitiesWithRoles).not.toHaveBeenCalled();
+
+				await result.getUsersWithBoardRoles();
+				await result.getUsersWithBoardRoles();
 
 				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledTimes(1);
 				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([member.id]);
@@ -146,7 +152,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, member } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toEqual([
 					expect.objectContaining({
@@ -176,7 +182,7 @@ describe(BoardContextResolverService.name, () => {
 				userService.getUserEntitiesWithRoles.mockResolvedValue([teacher]);
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
 			});
@@ -224,7 +230,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, teacher, substitutionTeacher, student } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(3);
 				expect(users.find((u) => u.userId === teacher.id)).toBeDefined();
@@ -267,7 +273,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, userId } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(1);
 				expect(users[0].userId).toBe(userId);

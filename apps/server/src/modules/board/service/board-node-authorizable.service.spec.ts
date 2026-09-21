@@ -115,7 +115,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 			const boardConfiguration = { canEditorsManageVideoconference: true };
 			const preparedContext: PreparedBoardContext = {
 				type: columnBoard.context.type,
-				getUsersWithBoardRoles: () => usersWithRoles,
+				getUsersWithBoardRoles: () => Promise.resolve(usersWithRoles),
 				getBoardConfiguration: () => boardConfiguration,
 			};
 			boardContextResolverService.resolve.mockResolvedValue(preparedContext);
@@ -168,7 +168,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 				const boardConfiguration = { canEditorsManageVideoconference: true };
 				const preparedContext: PreparedBoardContext = {
 					type: columnBoard.context.type,
-					getUsersWithBoardRoles: () => usersWithRoles,
+					getUsersWithBoardRoles: () => Promise.resolve(usersWithRoles),
 					getBoardConfiguration: () => boardConfiguration,
 				};
 				boardContextResolverService.resolve.mockResolvedValue(preparedContext);
@@ -234,7 +234,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 				const boardConfiguration = {};
 				const preparedContext: PreparedBoardContext = {
 					type: columnBoard.context.type,
-					getUsersWithBoardRoles: () => usersWithRoles,
+					getUsersWithBoardRoles: () => Promise.resolve(usersWithRoles),
 					getBoardConfiguration: () => boardConfiguration,
 				};
 				boardContextResolverService.resolve.mockResolvedValue(preparedContext);
