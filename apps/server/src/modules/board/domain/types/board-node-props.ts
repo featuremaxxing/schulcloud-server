@@ -86,6 +86,9 @@ export interface PollElementProps extends BoardNodeProps {
 	isAnonymous: boolean;
 	showResultsLive: boolean;
 	pollStatus: PollStatus;
+	// When the poll starts accepting votes - undefined means "no gate, open immediately once
+	// pollStatus is OPEN" (see PollElement.isOpen), matching how closesAt already behaves.
+	opensAt?: Date;
 	closesAt?: Date;
 	resultSnapshot?: PollResultSnapshot;
 	// Who is eligible to vote - defaults to STUDENTS (see PollElement.audience getter) so
@@ -93,6 +96,11 @@ export interface PollElementProps extends BoardNodeProps {
 	audience?: PollAudience;
 	// Only meaningful when audience is CUSTOM.
 	audienceRoles?: BoardRoles[];
+	// Whether a voter may revise an already-submitted answer to an already-answered question.
+	// Defaults to false (see PollElement.allowVoteChange getter) - a question the voter hasn't
+	// answered yet (skipped, or added after they voted) stays answerable either way, this only
+	// locks answers that already exist. See poll-answer.ts mergePollAnswers.
+	allowVoteChange?: boolean;
 }
 
 export interface PollVoteProps extends BoardNodeProps {

@@ -165,13 +165,16 @@ export class ContentElementUpdateService {
 
 		// Same reasoning as the audience lock above, for the questions/options themselves: an
 		// existing PollVote's answers reference question/option ids directly (see
-		// normalizePollAnswers), so removing/adding one or changing a question's answerMode once
-		// votes exist would either orphan those answers or silently reinterpret them (e.g. a
+		// normalizePollAnswers), so removing an existing one or changing a question's answerMode
+		// once votes exist would either orphan those answers or silently reinterpret them (e.g. a
 		// SINGLE-turned-MULTIPLE question's old single answer now aggregated as if it always
 		// allowed several). Editing the *text* of an existing question/option, or its chartType,
-		// stays free - neither is referenced by a stored answer.
+		// stays free - neither is referenced by a stored answer. Appending a brand-new question or
+		// option is free too, even with votes already cast: nothing existing is renumbered or
+		// reinterpreted, and PollUc.vote's mergePollAnswers lets a voter fill in exactly such a
+		// newly-added question without touching their earlier, locked-in answers.
 		if (hasVotes) {
-			this.assertPollStructureUnchanged(element, content.questions);
+			this.assertPollStructureOnlyGrew(element, content.questions);
 		}
 
 		element.title = content.title ? sanitizeRichText(content.title, InputFormat.PLAIN_TEXT) : undefined;
@@ -192,7 +195,17 @@ export class ContentElementUpdateService {
 		element.isAnonymous = content.isAnonymous;
 		element.showResultsLive = content.showResultsLive;
 		element.pollStatus = content.pollStatus;
-		element.closesAt = content.closesAt ? new Date(content.closesAt) : undefined;
+		element.allowVoteChange = content.allowVoteChange ?? false;
+
+		const opensAt = content.opensAt ? new Date(content.opensAt) : undefined;
+		const closesAt = content.closesAt ? new Date(content.closesAt) : undefined;
+		// Otherwise the poll would never actually be open, with no error anywhere telling the
+		// teacher why - the same "silent 0 of 0" concern as the empty-CUSTOM-audience check below.
+		if (opensAt && closesAt && opensAt.getTime() >= closesAt.getTime()) {
+			throw new UnprocessableEntityException('A poll must open before it closes.');
+		}
+		element.opensAt = opensAt;
+		element.closesAt = closesAt;
 		// A CUSTOM audience with no roles selected would open (isEligibleVoter checks
 		// `(element.audienceRoles ?? []).some(...)`, which is always false for an empty array)
 		// but accept no one's vote at all - saved successfully, with no error anywhere telling
@@ -224,38 +237,32 @@ export class ContentElementUpdateService {
 		}
 	}
 
-	// Rejects a question/option-structure change once the poll has votes - see updatePollElement.
+	// Rejects removing an existing question/option, or changing an existing question's answer
+	// mode, once the poll has votes - see updatePollElement. Appending brand-new ones is fine.
 	// A question or option without an id is a brand-new one (see the id ?? new ObjectId()
-	// fallback below), which counts as "added" here exactly like an id that doesn't match an
-	// existing one; conversely, an existing id missing from the new list counts as "removed".
-	private assertPollStructureUnchanged(element: PollElement, questions: PollQuestionBody[]): void {
+	// fallback below); conversely, an existing id missing from the new list counts as "removed".
+	private assertPollStructureOnlyGrew(element: PollElement, questions: PollQuestionBody[]): void {
 		const existingQuestionIds = new Set(element.questions.map((question) => question.id));
-		const newQuestionIds = questions.map((question) => question.id);
+		const newQuestionIds = new Set(questions.map((question) => question.id).filter((id): id is string => !!id));
 
-		if (
-			newQuestionIds.length !== existingQuestionIds.size ||
-			newQuestionIds.some((id) => id === undefined || !existingQuestionIds.has(id))
-		) {
-			throw new ConflictException("Cannot add or remove a poll's questions once votes have been cast");
+		if ([...existingQuestionIds].some((id) => !newQuestionIds.has(id))) {
+			throw new ConflictException("Cannot remove a poll's questions once votes have been cast");
 		}
 
-		for (const questionBody of questions) {
-			const existingQuestion = element.questions.find((question) => question.id === questionBody.id);
+		for (const existingQuestion of element.questions) {
+			const questionBody = questions.find((question) => question.id === existingQuestion.id);
 			/* istanbul ignore next - unreachable: every id here was just verified to exist above */
-			if (!existingQuestion) continue;
+			if (!questionBody) continue;
 
 			if (existingQuestion.answerMode !== questionBody.answerMode) {
 				throw new ConflictException("Cannot change a poll question's answer mode once votes have been cast");
 			}
 
 			const existingOptionIds = new Set(existingQuestion.options.map((option) => option.id));
-			const newOptionIds = questionBody.options.map((option) => option.id);
+			const newOptionIds = new Set(questionBody.options.map((option) => option.id).filter((id): id is string => !!id));
 
-			if (
-				newOptionIds.length !== existingOptionIds.size ||
-				newOptionIds.some((id) => id === undefined || !existingOptionIds.has(id))
-			) {
-				throw new ConflictException("Cannot add or remove a poll question's options once votes have been cast");
+			if ([...existingOptionIds].some((id) => !newOptionIds.has(id))) {
+				throw new ConflictException("Cannot remove a poll question's options once votes have been cast");
 			}
 		}
 	}

@@ -545,6 +545,7 @@ export class BoardNodeCopyService {
 			...this.buildSpecificProps([]),
 			resultSnapshot: undefined,
 			pollStatus: PollStatus.DRAFT,
+			opensAt: undefined,
 			closesAt: undefined,
 		});
 

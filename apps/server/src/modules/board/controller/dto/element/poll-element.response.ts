@@ -101,10 +101,12 @@ export class PollElementContent {
 		this.isAnonymous = props.isAnonymous;
 		this.showResultsLive = props.showResultsLive;
 		this.pollStatus = props.pollStatus;
+		this.opensAt = props.opensAt;
 		this.closesAt = props.closesAt;
 		this.resultSnapshot = props.resultSnapshot;
 		this.audience = props.audience;
 		this.audienceRoles = props.audienceRoles;
+		this.allowVoteChange = props.allowVoteChange;
 	}
 
 	@ApiPropertyOptional()
@@ -123,6 +125,9 @@ export class PollElementContent {
 	pollStatus: PollStatus;
 
 	@ApiPropertyOptional({ type: String, nullable: true })
+	opensAt?: string | null;
+
+	@ApiPropertyOptional({ type: String, nullable: true })
 	closesAt?: string | null;
 
 	@ApiPropertyOptional({ type: PollResultSnapshotResponse, nullable: true })
@@ -138,6 +143,9 @@ export class PollElementContent {
 		description: 'only meaningful when audience is CUSTOM',
 	})
 	audienceRoles?: BoardRoles[];
+
+	@ApiProperty({ description: 'whether a voter may revise an already-submitted answer' })
+	allowVoteChange: boolean;
 }
 
 export class PollElementResponse {

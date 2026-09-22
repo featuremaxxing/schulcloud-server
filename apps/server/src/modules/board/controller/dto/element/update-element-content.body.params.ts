@@ -252,6 +252,11 @@ export class PollContentBody {
 	@IsDateString()
 	@IsOptional()
 	@ApiPropertyOptional()
+	opensAt?: string;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
 	closesAt?: string;
 
 	@IsEnum(PollAudience)
@@ -265,6 +270,11 @@ export class PollContentBody {
 	@ArrayMaxSize(3)
 	@ApiPropertyOptional({ enum: BoardRoles, enumName: 'BoardRoles', isArray: true })
 	audienceRoles?: BoardRoles[];
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional()
+	allowVoteChange?: boolean;
 }
 
 export class PollElementContentBody extends ElementContentBody {

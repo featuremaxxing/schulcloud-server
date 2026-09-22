@@ -484,6 +484,91 @@ describe('ContentElementUpdateService', () => {
 
 			expect(element.audience).toBe(PollAudience.TEACHERS);
 		});
+
+		it('should reject removing an option once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [question.options[0]] };
+				}),
+			});
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it('should allow appending a new question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: [
+					...element.questions.map((question) => {
+						return { ...question, options: [...question.options] };
+					}),
+					{
+						id: new ObjectId().toHexString(),
+						text: 'a new question',
+						answerMode: PollAnswerMode.SINGLE,
+						chartType: PollChartType.BAR,
+						options: [
+							{ id: new ObjectId().toHexString(), text: 'x' },
+							{ id: new ObjectId().toHexString(), text: 'y' },
+						],
+					},
+				],
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions).toHaveLength(2);
+			expect(element.questions[1].text).toBe('a new question');
+		});
+
+		it('should allow appending a new option to an existing question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options, { id: new ObjectId().toHexString(), text: 'c' }] };
+				}),
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions[0].options).toHaveLength(3);
+		});
+
+		it('should update opensAt and allowVoteChange', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ opensAt: '2026-01-10T10:00:00.000Z', allowVoteChange: true });
+
+			await service.updateContent(element, content);
+
+			expect(element.opensAt).toEqual(new Date('2026-01-10T10:00:00.000Z'));
+			expect(element.allowVoteChange).toBe(true);
+		});
+
+		it('should default allowVoteChange to false when not provided', async () => {
+			const element = pollElementFactory.build({ allowVoteChange: true });
+			const content = buildContent();
+
+			await service.updateContent(element, content);
+
+			expect(element.allowVoteChange).toBe(false);
+		});
+
+		it('should reject an opensAt that is not before closesAt', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({
+				opensAt: '2026-01-10T11:00:00.000Z',
+				closesAt: '2026-01-10T10:00:00.000Z',
+			});
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
 	});
 
 	describe('when the element is unkown', () => {

@@ -8,6 +8,7 @@ import {
 	BoardNodeFactory,
 	countEligibleVoters,
 	isPollElement,
+	mergePollAnswers,
 	normalizePollAnswers,
 	PollAnswer,
 	PollAnswerMode,
@@ -74,7 +75,24 @@ export class PollUc {
 			const authorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(existingVote);
 			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnPollVote', user, authorizable));
 
-			existingVote.answers = normalizedAnswers;
+			// Whether a *question* is still changeable is separate from the updateOwnPollVote
+			// authorisation check above (ownership + continued audience eligibility): it depends
+			// on the poll's allowVoteChange setting and, per question, whether it was already
+			// answered - state the rule has no visibility into (see mergePollAnswers). Rejecting
+			// is based on the *merged* outcome, not the raw payload: a payload that also answers a
+			// newly-added question must still go through even if it additionally (and silently)
+			// tries to change an old, locked answer - only a payload that changes nothing at all,
+			// while clearly trying to (differs from what's stored), is treated as an error rather
+			// than a no-op.
+			const mergedAnswers = mergePollAnswers(element, existingVote.answers, normalizedAnswers);
+			const triedButNothingChanged =
+				this.answersMatchAll(existingVote.answers, mergedAnswers) &&
+				!this.answersMatchAll(existingVote.answers, normalizedAnswers);
+			if (!element.allowVoteChange && triedButNothingChanged) {
+				throw new ForbiddenException('Answers can no longer be changed for this poll');
+			}
+
+			existingVote.answers = mergedAnswers;
 			existingVote.votedAt = now;
 			await this.boardNodeService.save(existingVote);
 		} else {
@@ -150,6 +168,27 @@ export class PollUc {
 		const votes = await this.boardNodeService.findPollVotesByParentIds([elementId]);
 
 		return votes.length;
+	}
+
+	// Whether two answer sets are equivalent question-by-question (order-independent). Used by
+	// vote() to tell "nothing actually got written" from "something did" - see there.
+	private answersMatchAll(a: PollAnswer[], b: PollAnswer[]): boolean {
+		if (a.length !== b.length) {
+			return false;
+		}
+
+		return a.every((answerA) => {
+			const answerB = b.find((candidate) => candidate.questionId === answerA.questionId);
+			return !!answerB && this.answersMatch(answerA, answerB);
+		});
+	}
+
+	private answersMatch(a: PollAnswer, b: PollAnswer): boolean {
+		const optionsA = [...a.selectedOptionIds].sort();
+		const optionsB = [...b.selectedOptionIds].sort();
+		const optionsMatch = optionsA.length === optionsB.length && optionsA.every((id, index) => id === optionsB[index]);
+
+		return optionsMatch && (a.textAnswer ?? '') === (b.textAnswer ?? '');
 	}
 
 	// A closed poll always reports its frozen resultSnapshot (numbers no longer depend on

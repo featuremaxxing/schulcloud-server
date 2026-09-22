@@ -45,6 +45,14 @@ export class PollElement extends BoardNode<PollElementProps> {
 		this.props.pollStatus = value;
 	}
 
+	get opensAt(): Date | undefined {
+		return this.props.opensAt;
+	}
+
+	set opensAt(value: Date | undefined) {
+		this.props.opensAt = value;
+	}
+
 	get closesAt(): Date | undefined {
 		return this.props.closesAt;
 	}
@@ -79,10 +87,24 @@ export class PollElement extends BoardNode<PollElementProps> {
 		this.props.audienceRoles = value;
 	}
 
-	// A poll only ever accepts votes while explicitly opened and, if a deadline is set,
-	// before it passes. Closing (or never opening) always wins over a future closesAt.
+	// Defaults to false - every poll created before this field existed keeps behaving exactly
+	// as before: once a vote is cast, it's final unless a teacher explicitly opts back in.
+	get allowVoteChange(): boolean {
+		return this.props.allowVoteChange ?? false;
+	}
+
+	set allowVoteChange(value: boolean) {
+		this.props.allowVoteChange = value;
+	}
+
+	// A poll only ever accepts votes while explicitly opened and, if a start/deadline is set,
+	// within that window. Closing (or never opening) always wins over opensAt/closesAt.
 	public isOpen(now: Date): boolean {
 		if (this.pollStatus !== PollStatus.OPEN) {
+			return false;
+		}
+
+		if (this.opensAt && now.getTime() < this.opensAt.getTime()) {
 			return false;
 		}
 

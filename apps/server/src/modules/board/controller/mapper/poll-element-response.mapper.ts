@@ -42,9 +42,11 @@ export class PollElementResponseMapper implements BaseResponseMapper {
 				isAnonymous: element.isAnonymous,
 				showResultsLive: element.showResultsLive,
 				pollStatus: element.pollStatus,
+				opensAt: element.opensAt?.toISOString() ?? null,
 				closesAt: element.closesAt?.toISOString() ?? null,
 				audience: element.audience,
 				audienceRoles: element.audienceRoles,
+				allowVoteChange: element.allowVoteChange,
 				resultSnapshot: element.resultSnapshot
 					? new PollResultSnapshotResponse({
 							frozenAt: element.resultSnapshot.frozenAt.toISOString(),

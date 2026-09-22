@@ -140,6 +140,9 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	pollStatus: PollStatus | undefined;
 
 	@Property({ type: 'Date', nullable: true })
+	opensAt: Date | undefined;
+
+	@Property({ type: 'Date', nullable: true })
 	closesAt: Date | undefined;
 
 	@Embedded(() => PollResultSnapshotEmbeddable, { nullable: true, object: true })
@@ -150,6 +153,9 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 
 	@Enum({ nullable: true, array: true })
 	audienceRoles: BoardRoles[] | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	allowVoteChange: boolean | undefined;
 
 	// PollVote
 	// --------------------------------------------------------------------------

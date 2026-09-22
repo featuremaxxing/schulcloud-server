@@ -111,7 +111,11 @@ describe('poll vote flow (api)', () => {
 		};
 	};
 
-	const openPoll = (client: TestApiClient, elementId: string) =>
+	const openPoll = (
+		client: TestApiClient,
+		elementId: string,
+		overrides: { allowVoteChange?: boolean; opensAt?: string; questions?: unknown[] } = {}
+	) =>
 		client.patch(`${elementId}/content`, {
 			data: {
 				type: ContentElementType.POLL,
@@ -120,7 +124,7 @@ describe('poll vote flow (api)', () => {
 					isAnonymous: false,
 					showResultsLive: true,
 					pollStatus: PollStatus.OPEN,
-					questions: [
+					questions: overrides.questions ?? [
 						{
 							id: 'question-1',
 							text: 'Which one?',
@@ -132,6 +136,8 @@ describe('poll vote flow (api)', () => {
 							],
 						},
 					],
+					allowVoteChange: overrides.allowVoteChange,
+					opensAt: overrides.opensAt,
 				},
 			},
 		});
@@ -146,9 +152,9 @@ describe('poll vote flow (api)', () => {
 		expect(result.pollStatus).toEqual(PollStatus.OPEN);
 	});
 
-	it('should let the student vote once opened, then change their vote', async () => {
+	it('should let the student vote once opened, then change their vote when allowVoteChange is on', async () => {
 		const { teacherClient, pollElementId, studentUserId } = await setup();
-		await openPoll(teacherClient, pollElementId);
+		await openPoll(teacherClient, pollElementId, { allowVoteChange: true });
 
 		const firstVote = await pollUc.vote(studentUserId, pollElementId, [
 			{ questionId: 'question-1', selectedOptionIds: ['option-a'] },
@@ -162,6 +168,96 @@ describe('poll vote flow (api)', () => {
 
 		const results = await pollUc.getResults(studentUserId, pollElementId);
 		expect(results.myVote).toEqual([{ questionId: 'question-1', selectedOptionIds: ['option-b'] }]);
+	});
+
+	// The gap this closes: previously, adding a question after votes existed was rejected
+	// outright by the server (structure lock), and even if it hadn't been, a student who had
+	// already voted had no way back into the answered question. Both are fixed now: the
+	// structure lock allows appending, and mergePollAnswers lets a student answer only the new
+	// question while their original answer stays untouched.
+	it('should let the student answer a question added after they already voted, keeping their earlier answer', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		const reopenWithNewQuestion = await openPoll(teacherClient, pollElementId, {
+			questions: [
+				{
+					id: 'question-1',
+					text: 'Which one?',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: 'option-a', text: 'Option A' },
+						{ id: 'option-b', text: 'Option B' },
+					],
+				},
+				{
+					id: 'question-2',
+					text: 'A new question',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: 'option-c', text: 'Option C' },
+						{ id: 'option-d', text: 'Option D' },
+					],
+				},
+			],
+		});
+		expect(reopenWithNewQuestion.statusCode).toEqual(HttpStatus.OK);
+
+		await pollUc.vote(studentUserId, pollElementId, [
+			{ questionId: 'question-1', selectedOptionIds: ['option-b'] }, // attempted change, must be ignored
+			{ questionId: 'question-2', selectedOptionIds: ['option-c'] },
+		]);
+
+		const results = await pollUc.getResults(studentUserId, pollElementId);
+		expect(results.myVote).toEqual([
+			{ questionId: 'question-1', selectedOptionIds: ['option-a'] }, // unchanged
+			{ questionId: 'question-2', selectedOptionIds: ['option-c'] },
+		]);
+	});
+
+	it('should reject an attempt to change an already-answered question when allowVoteChange is off', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		await expect(
+			pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-b'] }])
+		).rejects.toThrow(ForbiddenException);
+	});
+
+	it('should not reject resubmitting the same, unchanged answer when allowVoteChange is off', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		await openPoll(teacherClient, pollElementId);
+		await pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }]);
+
+		await expect(
+			pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }])
+		).resolves.toBeDefined();
+	});
+
+	it('should reject a vote before opensAt', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		const opensAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // one hour from now
+		await openPoll(teacherClient, pollElementId, { opensAt });
+
+		await expect(
+			pollUc.vote(studentUserId, pollElementId, [{ questionId: 'question-1', selectedOptionIds: ['option-a'] }])
+		).rejects.toThrow(ForbiddenException);
+	});
+
+	it('should allow a vote once opensAt has passed', async () => {
+		const { teacherClient, pollElementId, studentUserId } = await setup();
+		const opensAt = new Date(Date.now() - 60 * 1000).toISOString(); // one minute ago
+		await openPoll(teacherClient, pollElementId, { opensAt });
+
+		const result = await pollUc.vote(studentUserId, pollElementId, [
+			{ questionId: 'question-1', selectedOptionIds: ['option-a'] },
+		]);
+
+		expect(result.totalVotes).toBe(1);
 	});
 
 	// Regression test: a single-choice question's stored answer must never carry more than one

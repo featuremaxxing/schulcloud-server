@@ -1,4 +1,4 @@
-import { normalizePollAnswers } from './poll-answer';
+import { isAnsweredPollQuestion, mergePollAnswers, normalizePollAnswers } from './poll-answer';
 import { pollElementFactory } from '../testing';
 import { PollAnswerMode, PollChartType } from './types';
 
@@ -116,5 +116,84 @@ describe(normalizePollAnswers.name, () => {
 		const element = buildElement();
 
 		expect(normalizePollAnswers(element, [])).toEqual([]);
+	});
+
+	describe(isAnsweredPollQuestion.name, () => {
+		it('should be false for undefined', () => {
+			expect(isAnsweredPollQuestion(undefined)).toBe(false);
+		});
+
+		it('should be false for an answer with no selected options and no text', () => {
+			expect(isAnsweredPollQuestion({ questionId: 'q', selectedOptionIds: [] })).toBe(false);
+		});
+
+		it('should be false for an answer with only whitespace text', () => {
+			expect(isAnsweredPollQuestion({ questionId: 'q', selectedOptionIds: [], textAnswer: '   ' })).toBe(false);
+		});
+
+		it('should be true for an answer with at least one selected option', () => {
+			expect(isAnsweredPollQuestion({ questionId: 'q', selectedOptionIds: ['a'] })).toBe(true);
+		});
+
+		it('should be true for an answer with non-empty text', () => {
+			expect(isAnsweredPollQuestion({ questionId: 'q', selectedOptionIds: [], textAnswer: 'hi' })).toBe(true);
+		});
+	});
+
+	describe(mergePollAnswers.name, () => {
+		it('should let the incoming answer win outright when allowVoteChange is true', () => {
+			const element = buildElement();
+			element.allowVoteChange = true;
+			const existing = [{ questionId: 'single-question', selectedOptionIds: ['single-a'] }];
+			const incoming = [{ questionId: 'single-question', selectedOptionIds: ['single-b'] }];
+
+			expect(mergePollAnswers(element, existing, incoming)).toEqual(incoming);
+		});
+
+		it('should keep the existing answer for an already-answered question when allowVoteChange is false', () => {
+			const element = buildElement();
+			element.allowVoteChange = false;
+			const existing = [{ questionId: 'single-question', selectedOptionIds: ['single-a'] }];
+			const incoming = [{ questionId: 'single-question', selectedOptionIds: ['single-b'] }];
+
+			const result = mergePollAnswers(element, existing, incoming);
+
+			expect(result.find((a) => a.questionId === 'single-question')).toEqual(existing[0]);
+		});
+
+		it('should take the incoming answer for a question that was not answered yet', () => {
+			const element = buildElement();
+			element.allowVoteChange = false;
+			const existing = [{ questionId: 'single-question', selectedOptionIds: [] }];
+			const incoming = [{ questionId: 'single-question', selectedOptionIds: ['single-a'] }];
+
+			const result = mergePollAnswers(element, existing, incoming);
+
+			expect(result.find((a) => a.questionId === 'single-question')).toEqual(incoming[0]);
+		});
+
+		it('should fill in a question the existing vote has no entry for at all (newly added question)', () => {
+			const element = buildElement();
+			element.allowVoteChange = false;
+			const existing = [{ questionId: 'single-question', selectedOptionIds: ['single-a'] }];
+			const incoming = [
+				{ questionId: 'single-question', selectedOptionIds: ['single-a'] },
+				{ questionId: 'multiple-question', selectedOptionIds: ['multi-a'] },
+			];
+
+			const result = mergePollAnswers(element, existing, incoming);
+
+			expect(result.find((a) => a.questionId === 'multiple-question')).toEqual({
+				questionId: 'multiple-question',
+				selectedOptionIds: ['multi-a'],
+			});
+		});
+
+		it('should return one entry per question on the element', () => {
+			const element = buildElement();
+			const result = mergePollAnswers(element, [], []);
+
+			expect(result.map((a) => a.questionId)).toEqual(['single-question', 'multiple-question', 'text-question']);
+		});
 	});
 });

@@ -124,6 +124,8 @@ describe(BoardNodeCopyService.name, () => {
 			const element = pollElementFactory.build({
 				children: [vote],
 				resultSnapshot: { frozenAt: new Date(), participantCount: 1, perQuestion: [] },
+				opensAt: new Date(),
+				allowVoteChange: true,
 			});
 
 			return { copyContext, element, vote };
@@ -146,6 +148,24 @@ describe(BoardNodeCopyService.name, () => {
 
 			const copy = result.copyEntity as PollElement;
 			expect(copy.resultSnapshot).toBeUndefined();
+		});
+
+		it('should copy the poll element without its opensAt', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.opensAt).toBeUndefined();
+		});
+
+		it('should carry over the allowVoteChange configuration', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.allowVoteChange).toBe(true);
 		});
 
 		it('should report copy success and never enter the vote copy case', async () => {
