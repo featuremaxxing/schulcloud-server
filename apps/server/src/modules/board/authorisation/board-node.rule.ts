@@ -4,9 +4,12 @@ import { type User } from '@modules/user/repo';
 import { Injectable } from '@nestjs/common';
 import { Permission } from '@shared/domain/interface';
 import {
+	type AssignmentSubmission,
 	BoardNodeAuthorizable,
 	BoardRoles,
 	ColumnBoard,
+	isAssignmentElement,
+	isAssignmentSubmission,
 	isDrawingElement,
 	isVideoConferenceElement,
 	MediaBoard,
@@ -58,6 +61,13 @@ export const BoardOperationValues = [
 
 	// element / videoConferenceElement
 	'manageVideoConference',
+
+	// element / assignmentElement
+	'viewAssignmentSubmissions',
+	'createOwnAssignmentSubmission',
+	'updateOwnAssignmentSubmission',
+	'deleteOwnAssignmentSubmission',
+	'gradeAssignmentSubmission',
 
 	// mediaBoard
 	'collapseMediaBoard',
@@ -124,11 +134,25 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			return this.hasPermissionForVideoConferenceElement(userWithBoardRoles, context, authorizable);
 		}
 
+		if (this.shouldProcessAssignmentSubmissionFile(authorizable, context)) {
+			return this.hasPermissionForAssignmentSubmissionFile(userWithBoardRoles, authorizable, context);
+		}
+
 		if (context.action === Action.write) {
 			const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
 			const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
 
-			const requiredBoardPermission = isReader && readersCanEdit ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
+			// Same reasoning as the carve-out in _canEditBoard below: assignments carry a due
+			// date, grace period and points, so the readersCanEdit collaboration toggle must
+			// never let a student write here. This is a SEPARATE relaxation from the one in
+			// _canEditBoard - hasPermission() is its own Rule-interface entry point (used by
+			// e.g. file-storage's generic checkPermissionsByReference), not routed through
+			// _canEditBoard, so it needs its own guard.
+			const isAssignmentNode =
+				isAssignmentElement(authorizable.boardNode) || isAssignmentSubmission(authorizable.boardNode);
+
+			const requiredBoardPermission =
+				isReader && readersCanEdit && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
 			const writePermissions = Array.from(new Set([requiredBoardPermission, ...context.requiredPermissions]));
 			return this.hasAllPermissions(user, authorizable, writePermissions);
 		}
@@ -195,6 +219,19 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 			// element / videoConferenceElement
 			manageVideoConference: canManageVideoConference,
+
+			// element / assignmentElement
+			// Deliberately room-role-based, not per-teacher-ownership: every teacher with
+			// board-edit rights in the room is equally entitled to see and grade every
+			// submission (covers co-teaching and substitution without a second rights
+			// model). Accountability when a room has multiple teachers comes from
+			// recording+displaying who graded a submission (AssignmentSubmissionEntry.gradedBy),
+			// not from restricting access.
+			viewAssignmentSubmissions: _canViewBoard,
+			createOwnAssignmentSubmission: _isPlainBoardReader,
+			updateOwnAssignmentSubmission: _isOwnAssignmentSubmission,
+			deleteOwnAssignmentSubmission: _isOwnAssignmentSubmission,
+			gradeAssignmentSubmission: _canEditBoard,
 
 			// mediaBoard
 			collapseMediaBoard: _canManageBoard,
@@ -284,6 +321,71 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 		return this.isBoardReader(userWithBoardRoles);
 	}
+
+	private shouldProcessAssignmentSubmissionFile(
+		boardNodeAuthorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		const requiresFileStoragePermission =
+			context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_VIEW) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
+
+		return isAssignmentSubmission(boardNodeAuthorizable.boardNode) && requiresFileStoragePermission;
+	}
+
+	// The submission's file is the one place a plain reader (student) needs write access to
+	// a node they do not own the containing board of - mirrors hasPermissionForDrawingElementFile.
+	// The owning student may write their file, and only while the assignment is still
+	// accepting submissions. Since the teacher's audio feedback was introduced, board
+	// editors may additionally ADD files (the feedback recording) to the same parent -
+	// but they must not remove or replace the student's file via the file storage REST
+	// paths; removing happens only through the student's withdrawal or the node delete hook.
+	private hasPermissionForAssignmentSubmissionFile(
+		userWithBoardRoles: UserWithBoardRoles,
+		authorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		const submission = authorizable.boardNode as AssignmentSubmission;
+		const isOwner = submission.userId === userWithBoardRoles.userId;
+
+		if (context.action === Action.read) {
+			// A peer reviewer is neither the owner nor a board editor/admin, but needs to read the
+			// file they were assigned to review - see BoardNodeAuthorizableProps.peerReviewerIds.
+			const isAssignedReviewer = authorizable.peerReviewerIds?.includes(userWithBoardRoles.userId) ?? false;
+			return (
+				isOwner || this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles) || isAssignedReviewer
+			);
+		}
+
+		// Feedback audio upload: an editor-only create, deliberately unconditional on
+		// returnedAt/submittable - a teacher may also attach audio after returning.
+		// Falls through to the owner logic otherwise (student uploads, withdrawals).
+		const isFileCreate = context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE);
+		const isFileRemove = context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
+		if (
+			isFileCreate &&
+			!isFileRemove &&
+			(this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles))
+		) {
+			return true;
+		}
+
+		if (!isOwner) {
+			return false;
+		}
+
+		if (submission.returnedAt) {
+			return false;
+		}
+
+		const assignment = authorizable.parentNode;
+		if (!isAssignmentElement(assignment)) {
+			return false;
+		}
+
+		return assignment.isSubmittable(new Date());
+	}
 }
 
 const hasBoardRole = (user: User, authorizable: BoardNodeAuthorizable, role: BoardRoles): boolean => {
@@ -305,6 +407,16 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 
 	const isReader = hasBoardRole(user, authorizable, BoardRoles.READER);
 	const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
+
+	if (isAssignmentElement(authorizable.boardNode) || isAssignmentSubmission(authorizable.boardNode)) {
+		// Assignments carry a due date, a grace period and (once graded) points - configuration
+		// and grading with real consequences for a student. The readersCanEdit collaboration
+		// toggle must never grant a student write access here, same reasoning as the board
+		// title carve-out below. Note this only closes the generic updateElement/deleteElement/
+		// moveElement path; a submission's own file has its own, narrower rule (see
+		// hasPermissionForAssignmentSubmissionFile), and grading goes through this same function.
+		return false;
+	}
 
 	return isReader && readersCanEdit;
 };
@@ -433,4 +545,39 @@ const canShareBoardNode = (user: User, authorizable: BoardNodeAuthorizable): boo
 	const canShareBoard = permissions.includes(Permission.BOARD_SHARE_BOARD);
 
 	return isBoard && canShareBoard;
+};
+
+// "student" in a room: has the READER role and none of the roles that imply staff-level
+// rights. A room owner/admin can also carry the READER role (e.g. via multiple permission
+// grants), so this is deliberately not just "isBoardReader && !isBoardEditor".
+const _isPlainBoardReader = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
+	if (!userWithBoardRoles) {
+		return false;
+	}
+
+	const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
+	const isStaff = [BoardRoles.EDITOR, BoardRoles.ADMIN].some((role) => userWithBoardRoles.roles.includes(role));
+
+	return isReader && !isStaff;
+};
+
+// Deliberately checks ownership only - business-rule checks that need "now" (deadline,
+// already returned) are the assignment use case's job, not the rule's, so they can throw
+// specific, clearly-worded exceptions (see AssignmentUc).
+const _isOwnAssignmentSubmission = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode } = authorizable;
+	if (!isAssignmentSubmission(boardNode)) {
+		return false;
+	}
+
+	return boardNode.userId === user.id;
 };

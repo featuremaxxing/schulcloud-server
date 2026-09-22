@@ -11,6 +11,7 @@ import {
 	WsException,
 } from '@nestjs/websockets';
 import { EntityId } from '@shared/domain/types';
+import { LegacyLogger } from '@infra/logger';
 import { Server } from 'socket.io';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
 import { AnyContentElementResponse } from '../controller/dto';
@@ -78,6 +79,7 @@ export class BoardCollaborationGateway implements OnGatewayConnection, OnGateway
 		private readonly cardUc: CardUc,
 		private readonly elementUc: ElementUc,
 		private readonly metricsService: MetricsService,
+		private readonly logger: LegacyLogger,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly boardConfig: BoardConfig
 	) {
 		websocketOptions.cors.origin = this.boardConfig.hostUrl;
@@ -270,7 +272,13 @@ export class BoardCollaborationGateway implements OnGatewayConnection, OnGateway
 			const responsePayload = BoardResponseMapper.mapToResponse(board, features, allowedOperations);
 			await emitter.joinRoom(board);
 			emitter.emitSuccess(responsePayload);
-		} catch {
+		} catch (error) {
+			// swallowed failures here surface as a generic 404 page in the client - without
+			// this log they are undiagnosable (missing permission vs. missing board)
+			this.logger.error(
+				`fetch-board failed for userId=${userId} boardId=${data.boardId}: ${(error as Error)?.message ?? 'unknown'}`,
+				'BoardCollaborationGateway'
+			);
 			emitter.emitFailure(data);
 		}
 	}

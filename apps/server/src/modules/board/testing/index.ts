@@ -1,3 +1,5 @@
+export * from './assignment-element.factory';
+export * from './assignment-submission.factory';
 export * from './board-node-authorizable.factory';
 export * from './card.factory';
 export * from './collaborative-text-editor.factory';

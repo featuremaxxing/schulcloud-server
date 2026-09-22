@@ -3,6 +3,7 @@ import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
 import { DecodeHtmlEntities } from '@shared/controller/transformer';
 import {
 	AnyContentElementResponse,
+	AssignmentElementResponse,
 	CollaborativeTextEditorElementResponse,
 	DeletedElementResponse,
 	DrawingElementResponse,
@@ -28,7 +29,8 @@ import { Colors } from '../../../domain';
 	DeletedElementResponse,
 	VideoConferenceElementResponse,
 	FileFolderElementResponse,
-	H5pElementResponse
+	H5pElementResponse,
+	AssignmentElementResponse
 )
 export class CardResponse {
 	constructor({ id, title, backgroundColor, height, elements, visibilitySettings, timestamps }: CardResponse) {
@@ -70,6 +72,7 @@ export class CardResponse {
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(FileFolderElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
+				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},
 	})

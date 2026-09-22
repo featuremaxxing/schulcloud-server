@@ -48,6 +48,43 @@ describe('FilesStorageClientMapper', () => {
 			});
 
 			it.todo('Should use FileStorageClientMapper.mapStringToPartenType for map parentTypes');
+
+			// The AMQP payload is JSON, so the timestamps really arrive as strings here although
+			// the interface types them as Date - consumers call Date methods on them.
+			it('Should revive timestamps that arrive as ISO strings', () => {
+				const result = FilesStorageClientMapper.mapFileRecordResponseToFileDto({
+					...record,
+					createdAt: '2026-09-20T10:39:03.945Z' as unknown as Date,
+					updatedAt: '2026-09-21T11:00:00.000Z' as unknown as Date,
+				});
+
+				expect(result.createdAt).toEqual(new Date('2026-09-20T10:39:03.945Z'));
+				expect(result.updatedAt).toEqual(new Date('2026-09-21T11:00:00.000Z'));
+			});
+
+			it('Should keep timestamps that already are dates', () => {
+				const createdAt = new Date('2026-09-20T10:39:03.945Z');
+
+				const result = FilesStorageClientMapper.mapFileRecordResponseToFileDto({ ...record, createdAt });
+
+				expect(result.createdAt).toStrictEqual(createdAt);
+			});
+
+			it('Should map an unparsable timestamp to undefined', () => {
+				const result = FilesStorageClientMapper.mapFileRecordResponseToFileDto({
+					...record,
+					createdAt: 'not a date' as unknown as Date,
+				});
+
+				expect(result.createdAt).toBeUndefined();
+			});
+
+			it('Should leave a missing timestamp undefined', () => {
+				const result = FilesStorageClientMapper.mapFileRecordResponseToFileDto(record);
+
+				expect(result.createdAt).toBeUndefined();
+				expect(result.updatedAt).toBeUndefined();
+			});
 		});
 
 		describe('mapStringToPartenType', () => {

@@ -1,6 +1,7 @@
 import { type AuthorizableObject, DomainObject } from '@shared/domain/domain-object';
 import { Permission } from '@shared/domain/interface';
 import { type EntityId } from '@shared/domain/types';
+import { type RoleName } from '@modules/role';
 import { type AnyBoardNode } from './types';
 
 export enum BoardRoles {
@@ -14,6 +15,12 @@ export interface UserWithBoardRoles {
 	lastName?: string;
 	roles: BoardRoles[];
 	userId: EntityId;
+	// School-level role (STUDENT/TEACHER/...), independent of the board role above - a
+	// board reader can be a teacher who only has viewing rights in this particular room.
+	// Undefined for contexts that don't resolve school roles (e.g. MediaBoard/User context);
+	// consumers must fall back to the board role heuristic in that case (see
+	// isStudentMember/isTeacherMember in ./member-role).
+	schoolRoleNames?: RoleName[];
 }
 
 export interface BoardNodeAuthorizableProps extends AuthorizableObject {
@@ -23,6 +30,11 @@ export interface BoardNodeAuthorizableProps extends AuthorizableObject {
 	rootNode: AnyBoardNode;
 	parentNode?: AnyBoardNode;
 	boardConfiguration: BoardConfiguration;
+	// Only populated when boardNode is an AssignmentSubmission - the userIds assigned to peer-review
+	// this specific submission (see BoardNodeAuthorizableService.getBoardAuthorizable and
+	// BoardNodeRule.hasPermissionForAssignmentSubmissionFile). A peer reviewer needs read access to
+	// the submission's file without being its owner or a board editor.
+	peerReviewerIds?: EntityId[];
 }
 
 export interface BoardConfiguration {
@@ -61,6 +73,10 @@ export class BoardNodeAuthorizable extends DomainObject<BoardNodeAuthorizablePro
 
 	get boardConfiguration(): BoardConfiguration {
 		return this.props.boardConfiguration;
+	}
+
+	get peerReviewerIds(): EntityId[] | undefined {
+		return this.props.peerReviewerIds;
 	}
 
 	public getUserPermissions(userId: EntityId): Permission[] {

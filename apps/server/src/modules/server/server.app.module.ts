@@ -10,6 +10,7 @@ import { ALERT_PUBLIC_API_CONFIG, AlertModule, AlertPublicApiConfig } from '@mod
 import { AuthenticationApiModule } from '@modules/authentication/authentication-api.module';
 import { AuthorizationReferenceApiModule } from '@modules/authorization-reference/authorization-reference.api.module';
 import { AuthorizationRulesModule } from '@modules/authorization-rules';
+import { AssignmentApiModule } from '@modules/assignment/assignment-api.module';
 import { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from '@modules/board';
 import { BOARD_CONTEXT_PUBLIC_API_CONFIG, BoardContextPublicApiConfig } from '@modules/board-context';
 import { BoardApiModule } from '@modules/board/board-api.module';
@@ -137,6 +138,7 @@ const serverModules = [
 	ToolApiModule,
 	UserLoginMigrationApiModule,
 	BoardApiModule,
+	AssignmentApiModule,
 	GroupApiModule,
 	TeamApiModule,
 	MetaTagExtractorApiModule,

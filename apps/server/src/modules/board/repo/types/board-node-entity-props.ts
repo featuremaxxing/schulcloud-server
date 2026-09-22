@@ -1,5 +1,7 @@
 import type {
 	AnyBoardNodeProps,
+	AssignmentElementProps,
+	AssignmentSubmissionProps,
 	BoardNodeProps,
 	BoardNodeType,
 	CardProps,
@@ -42,6 +44,8 @@ export interface BoardNodeEntityProps
 	extends
 		BoardNodeProps,
 		TypeProps,
+		ComponentProps<AssignmentElementProps>,
+		ComponentProps<AssignmentSubmissionProps>,
 		ComponentProps<ColumnBoardProps>,
 		ComponentProps<ColumnProps>,
 		ComponentProps<CollaborativeTextEditorElementProps>,

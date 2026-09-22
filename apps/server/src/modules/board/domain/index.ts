@@ -1,3 +1,6 @@
+export * from './assignment-element.do';
+export * from './assignment-status.enum';
+export * from './assignment-submission.do';
 export * from './board-node-authorizable.do';
 export * from './board-node.do';
 export * from './board-node.factory';
@@ -14,6 +17,7 @@ export * from './file-folder-element.do';
 export * from './h5p-element.do';
 export * from './link-element.do';
 export * from './media-board';
+export * from './member-role';
 export * from './path-utils';
 export * from './rich-text-element.do';
 export * from './type-mapping';

@@ -78,6 +78,49 @@ export interface H5pElementProps extends BoardNodeProps {
 	contentId?: string;
 }
 
+export interface AssignmentRubricCriterion {
+	id: string;
+	name: string;
+	maxPoints: number;
+}
+
+export interface AssignmentElementProps extends BoardNodeProps {
+	title: string;
+	text: string;
+	inputFormat: InputFormat;
+	startDate?: Date;
+	dueDate?: Date;
+	graceMinutes?: number;
+	maxPoints?: number;
+	// when set (non-empty), grading uses one point value per criterion instead of the single
+	// flat maxPoints/points fields - see AssignmentUc.gradeSubmission
+	criteria?: AssignmentRubricCriterion[];
+	// peer review settings - reviews themselves live in the separate AssignmentReviewEntity
+	// (not a BoardNode), see PeerReviewUc
+	peerReviewEnabled?: boolean;
+	peerReviewMode?: 'manual' | 'auto';
+	peerReviewCount?: number;
+}
+
+export interface AssignmentSubmissionCriterionPoints {
+	criterionId: string;
+	points: number;
+}
+
+export interface AssignmentSubmissionProps extends BoardNodeProps {
+	userId: EntityId;
+	submittedAt?: Date;
+	isLate?: boolean;
+	points?: number;
+	feedbackComment?: string;
+	returnedAt?: Date;
+	gradedBy?: EntityId;
+	comment?: string;
+	// only set when the parent element has rubric criteria; `points` is still the derived,
+	// authoritative total, written alongside this by the use case
+	criterionPoints?: AssignmentSubmissionCriterionPoints[];
+}
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -99,6 +142,8 @@ export interface MediaLineProps extends BoardNodeProps {
 type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | MediaLineProps;
 
 export type AnyBoardNodeProps =
+	| AssignmentElementProps
+	| AssignmentSubmissionProps
 	| CardProps
 	| CollaborativeTextEditorElementProps
 	| ColumnBoardProps
