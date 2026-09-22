@@ -1,9 +1,10 @@
 import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { AuthorizableReferenceType, AuthorizationInjectionService } from '@modules/authorization';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { ObjectId } from '@mikro-orm/mongodb';
 import { BoardNodeAuthorizable, BoardRoles, joinPath, type UserWithBoardRoles } from '../domain';
-import { BoardNodeRepo } from '../repo';
-import { cardFactory, columnBoardFactory, columnFactory } from '../testing';
+import { AssignmentReviewAssignmentMode, AssignmentReviewEntity, AssignmentReviewRepo, BoardNodeRepo } from '../repo';
+import { assignmentSubmissionFactory, cardFactory, columnBoardFactory, columnFactory } from '../testing';
 import { BoardNodeAuthorizableService } from './board-node-authorizable.service';
 import { BoardNodeService } from './board-node.service';
 import { BoardContextResolverService, type PreparedBoardContext } from './internal/board-context';
@@ -15,6 +16,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 	let boardNodeRepo: DeepMocked<BoardNodeRepo>;
 	let boardNodeService: DeepMocked<BoardNodeService>;
 	let boardContextResolverService: DeepMocked<BoardContextResolverService>;
+	let assignmentReviewRepo: DeepMocked<AssignmentReviewRepo>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -36,6 +38,10 @@ describe(BoardNodeAuthorizableService.name, () => {
 					provide: AuthorizationInjectionService,
 					useValue: createMock<AuthorizationInjectionService>(),
 				},
+				{
+					provide: AssignmentReviewRepo,
+					useValue: createMock<AssignmentReviewRepo>(),
+				},
 			],
 		}).compile();
 
@@ -44,6 +50,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 		boardNodeRepo = module.get(BoardNodeRepo);
 		boardNodeService = module.get(BoardNodeService);
 		boardContextResolverService = module.get(BoardContextResolverService);
+		assignmentReviewRepo = module.get(AssignmentReviewRepo);
 	});
 
 	afterEach(() => {
@@ -153,6 +160,56 @@ describe(BoardNodeAuthorizableService.name, () => {
 			});
 
 			expect(result).toEqual(expected);
+		});
+
+		describe('when the board node is an assignment submission', () => {
+			const setup = () => {
+				const reviewerId = new ObjectId().toHexString();
+				const submission = assignmentSubmissionFactory.build();
+				const columnBoard = columnBoardFactory.build({ children: [] });
+
+				boardNodeService.findParent.mockResolvedValueOnce(columnBoard);
+				boardNodeService.findRoot.mockResolvedValueOnce(columnBoard);
+				const preparedContext: PreparedBoardContext = {
+					type: columnBoard.context.type,
+					getUsersWithBoardRoles: () => Promise.resolve([]),
+					getBoardConfiguration: () => {
+						return {};
+					},
+				};
+				boardContextResolverService.resolve.mockResolvedValue(preparedContext);
+				assignmentReviewRepo.findBySubmissionId.mockResolvedValueOnce([
+					new AssignmentReviewEntity({
+						elementId: new ObjectId().toHexString(),
+						submissionId: submission.id,
+						reviewerUserId: reviewerId,
+						assignmentMode: AssignmentReviewAssignmentMode.AUTO,
+						assignedAt: new Date(),
+					}),
+				]);
+
+				return { submission, reviewerId };
+			};
+
+			it('should populate peerReviewerIds from the review repo', async () => {
+				const { submission, reviewerId } = setup();
+
+				const result = await service.getBoardAuthorizable(submission);
+
+				expect(assignmentReviewRepo.findBySubmissionId).toHaveBeenCalledWith(submission.id);
+				expect(result.peerReviewerIds).toEqual([reviewerId]);
+			});
+		});
+
+		describe('when the board node is not an assignment submission', () => {
+			it('should not query the review repo and leave peerReviewerIds undefined', async () => {
+				const { column } = setup();
+
+				const result = await service.getBoardAuthorizable(column);
+
+				expect(assignmentReviewRepo.findBySubmissionId).not.toHaveBeenCalled();
+				expect(result.peerReviewerIds).toBeUndefined();
+			});
 		});
 	});
 

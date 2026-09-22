@@ -2,6 +2,7 @@ import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import { EntityId } from '@shared/domain/types';
 import { BoardExternalReferenceType, ElementReferenceType, ParentNodeType } from '../../../domain';
 import { AnyContentElementResponse } from './any-content-element.response';
+import { AssignmentElementResponse } from './assignment-element.response';
 import { CollaborativeTextEditorElementResponse } from './collaborative-text-editor-element.response';
 import { DeletedElementResponse } from './deleted-element.response';
 import { DrawingElementResponse } from './drawing-element.response';
@@ -47,7 +48,8 @@ export class ParentNodeInfoResponse {
 	FileFolderElementResponse,
 	ParentNodeInfoResponse,
 	H5pElementResponse,
-	PollElementResponse
+	PollElementResponse,
+	AssignmentElementResponse
 )
 export class ElementWithParentHierarchyResponse {
 	constructor(props: ElementWithParentHierarchyResponse) {
@@ -69,6 +71,7 @@ export class ElementWithParentHierarchyResponse {
 			{ $ref: getSchemaPath(FileFolderElementResponse) },
 			{ $ref: getSchemaPath(H5pElementResponse) },
 			{ $ref: getSchemaPath(PollElementResponse) },
+			{ $ref: getSchemaPath(AssignmentElementResponse) },
 		],
 	})
 	element: AnyContentElementResponse;

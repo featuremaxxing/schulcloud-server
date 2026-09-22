@@ -12,6 +12,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { EntityId } from '@shared/domain/types';
 import {
 	type AnyBoardNode,
+	AssignmentElement,
+	AssignmentSubmission,
 	BoardNodeType,
 	Card,
 	CollaborativeTextEditorElement,
@@ -32,6 +34,7 @@ import {
 	type MediaBoard,
 	type MediaExternalToolElement,
 	type MediaLine,
+	type PinnedCard,
 	PollElement,
 	PollStatus,
 	PollVote,
@@ -114,6 +117,15 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.POLL_VOTE:
 				result = this.copyPollVote(boardNode as PollVote);
+				break;
+			case BoardNodeType.ASSIGNMENT_ELEMENT:
+				result = await this.copyAssignmentElement(boardNode as AssignmentElement, context);
+				break;
+			case BoardNodeType.ASSIGNMENT_SUBMISSION:
+				result = this.copyAssignmentSubmission(boardNode as AssignmentSubmission);
+				break;
+			case BoardNodeType.PINNED_CARD:
+				result = this.copyPinnedCard(boardNode as PinnedCard);
 				break;
 			default:
 				/* istanbul ignore next */
@@ -487,6 +499,55 @@ export class BoardNodeCopyService {
 			type: CopyElementType.H5P_ELEMENT,
 			status: CopyStatusEnum.SUCCESS,
 			elements: [],
+		};
+
+		return result;
+	}
+
+	// Deliberately does NOT call copyChildrenOf: a copied assignment is copied without its
+	// submissions. Carrying student submissions (files, points, feedback) into a copied
+	// room/board would leak personal data of students who never joined the copy's target
+	// context - see copyAssignmentSubmission below for the matching NOT_DOING case.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	public copyAssignmentElement(original: AssignmentElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new AssignmentElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.ASSIGNMENT_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	// A submission never gets copied - see copyAssignmentElement. This case only exists so
+	// the type switch in copy() stays exhaustive; it must never be reached in practice
+	// because copyAssignmentElement skips its children.
+	/**
+	 * Pinned cards are personal pointers into someone's learning room. Copying one
+	 * would carry a reference into a context its new owner may not be allowed to
+	 * see, so it is never copied - same reasoning as assignment submissions.
+	 */
+	public copyPinnedCard(original: PinnedCard): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.PINNED_CARD,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
+	public copyAssignmentSubmission(original: AssignmentSubmission): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.ASSIGNMENT_SUBMISSION,
+			status: CopyStatusEnum.NOT_DOING,
 		};
 
 		return result;

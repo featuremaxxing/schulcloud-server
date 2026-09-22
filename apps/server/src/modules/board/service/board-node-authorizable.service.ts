@@ -5,8 +5,15 @@ import {
 } from '@modules/authorization';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { type EntityId } from '@shared/domain/types';
-import { AnyBoardNode, BoardConfiguration, BoardNodeAuthorizable, ColumnBoard, MediaBoard } from '../domain';
-import { BoardNodeRepo } from '../repo';
+import {
+	AnyBoardNode,
+	BoardConfiguration,
+	BoardNodeAuthorizable,
+	ColumnBoard,
+	isAssignmentSubmission,
+	MediaBoard,
+} from '../domain';
+import { AssignmentReviewRepo, BoardNodeRepo } from '../repo';
 import { BoardNodeService } from './board-node.service';
 import { BoardContextResolverService } from './internal/board-context/board-context-resolver.service';
 import { PreparedBoardContext } from './internal/board-context/prepared-board-context.interface';
@@ -17,6 +24,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		@Inject(forwardRef(() => BoardNodeRepo)) private readonly boardNodeRepo: BoardNodeRepo,
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardContextResolverService: BoardContextResolverService,
+		private readonly assignmentReviewRepo: AssignmentReviewRepo,
 		injectionService: AuthorizationInjectionService
 	) {
 		injectionService.injectReferenceLoader(AuthorizableReferenceType.BoardNode, this);
@@ -40,6 +48,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		const preparedContext = await this.resolveContext(rootNode);
 		const users = await preparedContext.getUsersWithBoardRoles();
 		const boardConfiguration = preparedContext.getBoardConfiguration(rootNode as MediaBoard | ColumnBoard);
+		const peerReviewerIds = await this.getPeerReviewerIds(boardNode);
 
 		const boardNodeAuthorizable = new BoardNodeAuthorizable({
 			users,
@@ -48,6 +57,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 			rootNode,
 			parentNode,
 			boardConfiguration,
+			peerReviewerIds,
 		});
 
 		return boardNodeAuthorizable;
@@ -88,6 +98,20 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		});
 
 		return boardNodeAuthorizables;
+	}
+
+	// See BoardNodeAuthorizableProps.peerReviewerIds - only meaningful for an AssignmentSubmission,
+	// undefined otherwise (the file-permission check in BoardNodeRule only reads this branch when
+	// boardNode is a submission, but returning undefined for every other node type keeps this
+	// service from doing a review lookup on every single board node access).
+	private async getPeerReviewerIds(boardNode: AnyBoardNode): Promise<EntityId[] | undefined> {
+		if (!isAssignmentSubmission(boardNode)) {
+			return undefined;
+		}
+
+		const reviews = await this.assignmentReviewRepo.findBySubmissionId(boardNode.id);
+
+		return reviews.map((review) => review.reviewerUserId);
 	}
 
 	private async resolveContext(rootNode: AnyBoardNode): Promise<PreparedBoardContext> {

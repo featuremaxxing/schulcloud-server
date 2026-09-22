@@ -1,5 +1,5 @@
 import { AccountEntity } from '@modules/account/repo';
-import { BoardNodeEntity } from '@modules/board/repo';
+import { AssignmentReviewEntity, BoardNodeEntity } from '@modules/board/repo';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { DeletionBatchEntity, DeletionLogEntity, DeletionRequestEntity } from '@modules/deletion/repo/entity';
@@ -48,6 +48,7 @@ export const ENTITIES = [
 	ExternalToolPseudonymEntity,
 	RegistrationPinEntity,
 	LtiDeepLinkTokenEntity,
+	AssignmentReviewEntity,
 	BoardNodeEntity,
 	RoomMembershipEntity,
 	Task,

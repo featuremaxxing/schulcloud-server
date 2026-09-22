@@ -6,6 +6,8 @@ import {
 	AnyBoardNode,
 	AnyContentElement,
 	AnyMediaElement,
+	AssignmentElement,
+	AssignmentSubmission,
 	BoardExternalReferenceType,
 	ColumnBoard,
 	isAnyMediaElement,
@@ -46,6 +48,20 @@ export class BoardNodeService {
 		parent.addChild(child, position);
 
 		await this.boardNodeRepo.save(parent);
+	}
+
+	public findAssignmentElementsByBoardIds(
+		boardIds: EntityId[],
+		options: { onlyVisible?: boolean } = {}
+	): Promise<AssignmentElement[]> {
+		return this.boardNodeRepo.findAssignmentElementsByBoardIds(boardIds, options);
+	}
+
+	public findAssignmentSubmissionsByParentIds(
+		parentIds: EntityId[],
+		userId?: EntityId
+	): Promise<AssignmentSubmission[]> {
+		return this.boardNodeRepo.findAssignmentSubmissionsByParentIds(parentIds, userId);
 	}
 
 	public async updateTitle<T extends WithTitle<AnyBoardNode>>(node: T, title: T['title']): Promise<void> {
@@ -92,9 +108,9 @@ export class BoardNodeService {
 		return this.boardNodeRepo.findPollVotesByParentIds(parentIds, userId);
 	}
 
-	// Generic escape hatch for callers (e.g. PollUc) that mutate a node's props directly via
-	// its domain object setters, or add a freshly built child node, instead of going through
-	// one of the typed update* methods above.
+	// Generic escape hatch for callers (e.g. PollUc, the assignment module) that mutate a
+	// node's props directly via its domain object setters, or add a freshly built child node,
+	// instead of going through one of the typed update* methods above.
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.boardNodeRepo.save(boardNode);
 	}

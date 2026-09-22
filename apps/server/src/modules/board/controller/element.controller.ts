@@ -16,6 +16,8 @@ import { ApiValidationError } from '@shared/common/error';
 import { CardUc, ElementUc } from '../uc';
 import {
 	AnyContentElementResponse,
+	AssignmentElementContentBody,
+	AssignmentElementResponse,
 	ContentElementUrlParams,
 	DrawingElementContentBody,
 	DrawingElementResponse,
@@ -106,7 +108,8 @@ export class ElementController {
 		VideoConferenceElementContentBody,
 		FileFolderElementContentBody,
 		H5pElementContentBody,
-		PollElementContentBody
+		PollElementContentBody,
+		AssignmentElementContentBody
 	)
 	@ApiResponse({
 		status: 200,
@@ -121,6 +124,7 @@ export class ElementController {
 				{ $ref: getSchemaPath(FileFolderElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
 				{ $ref: getSchemaPath(PollElementResponse) },
+				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},
 	})

@@ -4,6 +4,8 @@ import { EntityId, InputFormat } from '@shared/domain/types';
 import { ObjectIdType } from '@shared/repo/types/object-id.type';
 import {
 	AnyBoardNode,
+	AssignmentRubricCriterion,
+	AssignmentSubmissionCriterionPoints,
 	BoardLayout,
 	BoardNodeType,
 	BoardRoles,
@@ -157,7 +159,40 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: 'boolean', nullable: true })
 	allowVoteChange: boolean | undefined;
 
-	// PollVote
+	// PinnedCard
+	// --------------------------------------------------------------------------
+	@Index()
+	@Property({ type: ObjectIdType, nullable: true })
+	referencedCardId: EntityId | undefined;
+
+	// AssignmentElement
+	// --------------------------------------------------------------------------
+	@Property({ type: 'Date', nullable: true })
+	startDate: Date | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	dueDate: Date | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	graceMinutes: number | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	maxPoints: number | undefined;
+
+	// the rubric, when the teacher configured one - see AssignmentRubricCriterion
+	@Property({ nullable: true })
+	criteria: AssignmentRubricCriterion[] | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	peerReviewEnabled: boolean | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	peerReviewMode: 'manual' | 'auto' | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	peerReviewCount: number | undefined;
+
+	// PollVote, AssignmentSubmission
 	// --------------------------------------------------------------------------
 	@Property({ type: ObjectIdType, nullable: true })
 	userId: EntityId | undefined;
@@ -169,4 +204,30 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// natively, so unlike a relational DB there is no need for a 'json' column type here.
 	@Property({ nullable: true })
 	answers: PollAnswer[] | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	submittedAt: Date | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	isLate: boolean | undefined;
+
+	// the submitting student's optional note, sent along with a (re)submit
+	@Property({ type: 'string', nullable: true })
+	comment: string | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	points: number | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	feedbackComment: string | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	returnedAt: Date | undefined;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	gradedBy: EntityId | undefined;
+
+	// per-criterion points when the parent element has a rubric - see AssignmentSubmissionCriterionPoints
+	@Property({ nullable: true })
+	criterionPoints: AssignmentSubmissionCriterionPoints[] | undefined;
 }

@@ -9,6 +9,7 @@ import { ContextExternalToolService } from '@modules/tool/context-external-tool'
 import { contextExternalToolFactory } from '@modules/tool/context-external-tool/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
+	assignmentSubmissionFactory,
 	collaborativeTextEditorFactory,
 	drawingElementFactory,
 	externalToolElementFactory,
@@ -268,6 +269,24 @@ describe(BoardNodeDeleteHooksService.name, () => {
 
 				expect(filesStorageClientAdapterService.deleteFilesOfParent).not.toHaveBeenCalledWith(boardNode.id);
 				expect(h5pEditorProducer.deleteContent).not.toHaveBeenCalledWith({ contentId: boardNode.id });
+			});
+		});
+
+		// Regression guard for the assignment tool: a deleted submission must always take
+		// its attached files with it (student's document and teacher's feedback audio).
+		describe('when called with assignment submission', () => {
+			const setup = () => {
+				const boardNode = assignmentSubmissionFactory.build();
+
+				return { boardNode };
+			};
+
+			it('should delete all files of the submission', async () => {
+				const { boardNode } = setup();
+
+				await service.afterDelete(boardNode);
+
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
 			});
 		});
 	});

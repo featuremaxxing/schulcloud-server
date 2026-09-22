@@ -55,12 +55,13 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
-		// Room memberships carry no user names or school roles (e.g. isStudentMember needs the
-		// school role to tell a teacher who is only a room viewer apart from an actual student).
-		// Loading them is a separate DB round-trip that resolve() used to pay on every single
-		// call, even for the (large majority of) board operations that never read a name or
-		// school role - deferred into this closure instead, which RoomBoardContext calls at most
-		// once, only if its getUsersWithBoardRoles() is actually invoked.
+		// Room memberships carry no user names or school roles (e.g. isStudentMember/
+		// isTeacherMember need the school role to tell a teacher who is only a room viewer
+		// apart from an actual student, and the assignment teacher overview shows student
+		// names). Loading them is a separate DB round-trip that resolve() used to pay on every
+		// single call, even for the (large majority of) board operations that never read a
+		// name or school role - deferred into this closure instead, which RoomBoardContext
+		// calls at most once, only if its getUsersWithBoardRoles() is actually invoked.
 		const loadUserInfo = async (): Promise<
 			Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
 		> => {

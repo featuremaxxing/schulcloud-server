@@ -1,4 +1,5 @@
 import { type EntityId } from '@shared/domain/types';
+import { type AssignmentElement, isAssignmentElement } from '../assignment-element.do';
 import { type CollaborativeTextEditorElement, isCollaborativeTextEditorElement } from '../collaborative-text-editor.do';
 import { type DeletedElement, isDeletedElement } from '../deleted-element.do';
 import { type DrawingElement, isDrawingElement } from '../drawing-element.do';
@@ -14,6 +15,7 @@ import { type AnyBoardNode } from './any-board-node';
 import { type BoardExternalReferenceType } from './board-external-reference';
 
 export type AnyContentElement =
+	| AssignmentElement
 	| CollaborativeTextEditorElement
 	| DrawingElement
 	| ExternalToolElement
@@ -28,6 +30,7 @@ export type AnyContentElement =
 
 export const isContentElement = (boardNode: AnyBoardNode): boardNode is AnyContentElement => {
 	const result: boolean =
+		isAssignmentElement(boardNode) ||
 		isCollaborativeTextEditorElement(boardNode) ||
 		isDrawingElement(boardNode) ||
 		isExternalToolElement(boardNode) ||

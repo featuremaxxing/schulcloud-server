@@ -1,6 +1,7 @@
 import { NotImplementedException } from '@nestjs/common';
 import { type AnyBoardNode } from '../../domain';
 import { type AnyContentElementResponse } from '../dto';
+import { AssignmentElementResponseMapper } from './assignment-element-response.mapper';
 import { type BaseResponseMapper } from './base-mapper.interface';
 import { CollaborativeTextEditorElementResponseMapper } from './collaborative-text-editor-element-response.mapper';
 import { DeletedElementResponseMapper } from './deleted-element-response.mapper';
@@ -27,6 +28,7 @@ export class ContentElementResponseFactory {
 		FileFolderElementResponseMapper.getInstance(),
 		H5pElementResponseMapper.getInstance(),
 		PollElementResponseMapper.getInstance(),
+		AssignmentElementResponseMapper.getInstance(),
 	];
 
 	public static mapToResponse(element: AnyBoardNode): AnyContentElementResponse {

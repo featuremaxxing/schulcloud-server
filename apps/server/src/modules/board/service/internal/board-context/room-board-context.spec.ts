@@ -59,6 +59,51 @@ describe(RoomBoardContext.name, () => {
 			});
 		});
 
+		describe('when the resolver provides user names', () => {
+			it('should attach first and last name to the board roles', async () => {
+				const userId = new ObjectId().toHexString();
+				const schoolId = new ObjectId().toHexString();
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const member: UserWithRoomRoles = {
+					userId,
+					userSchoolId: schoolId,
+					roles: [role],
+				};
+				const room = roomFactory.build({ schoolId });
+				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
+				const userNames = new Map([[userId, { firstName: 'Anna', lastName: 'Admin' }]]);
+
+				const context = new RoomBoardContext(room, roomAuthorizable, () => Promise.resolve(userNames));
+				const result = await context.getUsersWithBoardRoles();
+
+				expect(result[0].firstName).toBe('Anna');
+				expect(result[0].lastName).toBe('Admin');
+			});
+		});
+
+		describe('when the resolver provides school role names', () => {
+			it('should attach the school role names to the board roles', async () => {
+				const userId = new ObjectId().toHexString();
+				const schoolId = new ObjectId().toHexString();
+				// a teacher who is only a room viewer here - board role and school role diverge
+				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
+				const member: UserWithRoomRoles = {
+					userId,
+					userSchoolId: schoolId,
+					roles: [role],
+				};
+				const room = roomFactory.build({ schoolId });
+				const roomAuthorizable = new RoomAuthorizable(room.id, [member], room.schoolId);
+				const userInfo = new Map([[userId, { schoolRoleNames: [RoleName.TEACHER] }]]);
+
+				const context = new RoomBoardContext(room, roomAuthorizable, () => Promise.resolve(userInfo));
+				const result = await context.getUsersWithBoardRoles();
+
+				expect(result[0].roles).toEqual([BoardRoles.READER]);
+				expect(result[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
+			});
+		});
+
 		describe('when room has members with ROOM_EDIT_CONTENT permission', () => {
 			it('should return users with EDITOR role', async () => {
 				const userId = new ObjectId().toHexString();

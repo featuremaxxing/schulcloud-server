@@ -1,4 +1,6 @@
 import { NotImplementedException } from '@nestjs/common';
+import { AssignmentElement } from './assignment-element.do';
+import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
@@ -11,6 +13,7 @@ import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
 import { MediaBoard, MediaExternalToolElement, MediaLine } from './media-board';
+import { PinnedCard } from './pinned-card.do';
 import { PollElement } from './poll-element.do';
 import { PollVote } from './poll-vote.do';
 import { RichTextElement } from './rich-text-element.do';
@@ -19,7 +22,10 @@ import { VideoConferenceElement } from './video-conference-element.do';
 
 // register node types
 const BoardNodeTypeToConstructor = {
+	[BoardNodeType.ASSIGNMENT_ELEMENT]: AssignmentElement,
+	[BoardNodeType.ASSIGNMENT_SUBMISSION]: AssignmentSubmission,
 	[BoardNodeType.CARD]: Card,
+	[BoardNodeType.PINNED_CARD]: PinnedCard,
 	[BoardNodeType.COLLABORATIVE_TEXT_EDITOR]: CollaborativeTextEditorElement,
 	[BoardNodeType.COLUMN]: Column,
 	[BoardNodeType.COLUMN_BOARD]: ColumnBoard,

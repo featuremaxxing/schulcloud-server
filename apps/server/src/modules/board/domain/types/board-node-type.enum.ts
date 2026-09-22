@@ -2,6 +2,7 @@ export enum BoardNodeType {
 	COLUMN_BOARD = 'column-board',
 	COLUMN = 'column',
 	CARD = 'card',
+	PINNED_CARD = 'pinned-card',
 	FILE_ELEMENT = 'file-element',
 	FILE_FOLDER_ELEMENT = 'file-folder-element',
 	LINK_ELEMENT = 'link-element',
@@ -14,6 +15,8 @@ export enum BoardNodeType {
 	H5P_ELEMENT = 'h5p-element',
 	POLL_ELEMENT = 'poll-element',
 	POLL_VOTE = 'poll-vote',
+	ASSIGNMENT_ELEMENT = 'assignment-element',
+	ASSIGNMENT_SUBMISSION = 'assignment-submission',
 
 	MEDIA_BOARD = 'media-board',
 	MEDIA_LINE = 'media-line',

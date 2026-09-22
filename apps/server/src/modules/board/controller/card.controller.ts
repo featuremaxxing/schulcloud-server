@@ -20,6 +20,7 @@ import { BOARD_INCOMING_REQUEST_TIMEOUT_COPY_API_KEY } from '../timeout.config';
 import { CardUc, ColumnUc } from '../uc';
 import {
 	AnyContentElementResponse,
+	AssignmentElementResponse,
 	CardIdsParams,
 	CardListResponse,
 	CardResponse,
@@ -177,7 +178,8 @@ export class CardController {
 		DeletedElementResponse,
 		VideoConferenceElementResponse,
 		H5pElementResponse,
-		PollElementResponse
+		PollElementResponse,
+		AssignmentElementResponse
 	)
 	@ApiResponse({
 		status: 201,
@@ -193,6 +195,7 @@ export class CardController {
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
 				{ $ref: getSchemaPath(PollElementResponse) },
+				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},
 	})

@@ -30,6 +30,11 @@ export interface BoardNodeAuthorizableProps extends AuthorizableObject {
 	rootNode: AnyBoardNode;
 	parentNode?: AnyBoardNode;
 	boardConfiguration: BoardConfiguration;
+	// Only populated when boardNode is an AssignmentSubmission - the userIds assigned to peer-review
+	// this specific submission (see BoardNodeAuthorizableService.getBoardAuthorizable and
+	// BoardNodeRule.hasPermissionForAssignmentSubmissionFile). A peer reviewer needs read access to
+	// the submission's file without being its owner or a board editor.
+	peerReviewerIds?: EntityId[];
 }
 
 export interface BoardConfiguration {
@@ -68,6 +73,10 @@ export class BoardNodeAuthorizable extends DomainObject<BoardNodeAuthorizablePro
 
 	get boardConfiguration(): BoardConfiguration {
 		return this.props.boardConfiguration;
+	}
+
+	get peerReviewerIds(): EntityId[] | undefined {
+		return this.props.peerReviewerIds;
 	}
 
 	public getUserPermissions(userId: EntityId): Permission[] {

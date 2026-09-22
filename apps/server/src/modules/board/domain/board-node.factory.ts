@@ -1,6 +1,8 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable, NotImplementedException, UnprocessableEntityException } from '@nestjs/common';
 import { EntityId, InputFormat } from '@shared/domain/types';
+import { AssignmentElement } from './assignment-element.do';
+import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
@@ -11,6 +13,7 @@ import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
+import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
 import { PollElement } from './poll-element.do';
 import { PollVote } from './poll-vote.do';
@@ -46,6 +49,12 @@ export class BoardNodeFactory {
 		const card = new Card({ ...this.getBaseProps(), backgroundColor: Colors.TRANSPARENT, height: 150, children });
 
 		return card;
+	}
+
+	public buildPinnedCard(referencedCardId: EntityId): PinnedCard {
+		const pinnedCard = new PinnedCard({ ...this.getBaseProps(), referencedCardId });
+
+		return pinnedCard;
 	}
 
 	public buildContentElement(type: ContentElementType): AnyContentElement {
@@ -117,6 +126,14 @@ export class BoardNodeFactory {
 					pollStatus: PollStatus.DRAFT,
 				});
 				break;
+			case ContentElementType.ASSIGNMENT:
+				element = new AssignmentElement({
+					...this.getBaseProps(),
+					title: '',
+					text: '',
+					inputFormat: InputFormat.RICH_TEXT_CK5,
+				});
+				break;
 			default:
 				handleNonExhaustiveSwitch(type);
 		}
@@ -138,6 +155,18 @@ export class BoardNodeFactory {
 		});
 
 		return vote;
+	}
+
+	// A submission is not a content element and cannot be created via buildContentElement -
+	// it is created explicitly by the assignment module, once per student, below an
+	// AssignmentElement.
+	public buildAssignmentSubmission(userId: EntityId): AssignmentSubmission {
+		const submission = new AssignmentSubmission({
+			...this.getBaseProps(),
+			userId,
+		});
+
+		return submission;
 	}
 
 	private getBaseProps(): BoardNodeProps {
