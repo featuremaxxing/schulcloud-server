@@ -1,4 +1,5 @@
 import { AuthorizationService } from '@modules/authorization';
+import { BoardContextApiHelperService } from '@modules/board-context';
 
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { FeatureDisabledLoggableException } from '@shared/common/loggable-exception';
@@ -18,6 +19,7 @@ export class LearningRoomUc {
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly learningRoomService: LearningRoomService,
+		private readonly boardContextApiHelperService: BoardContextApiHelperService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig
 	) {}
 
@@ -25,6 +27,7 @@ export class LearningRoomUc {
 		board: ColumnBoard;
 		features: BoardFeature[];
 		allowedOperations: Record<BoardOperation, boolean>;
+		pinnedCardOrigins: Map<EntityId, string>;
 	}> {
 		this.checkFeatureEnabled();
 
@@ -37,7 +40,80 @@ export class LearningRoomUc {
 		// a personal board has no course/room context, so no context driven features
 		const features: BoardFeature[] = [];
 
-		return { board, features, allowedOperations };
+		await this.removeUnreachablePinnedCards(board, userId);
+		const pinnedCardOrigins = await this.resolvePinnedCardOrigins(board);
+
+		return { board, features, allowedOperations, pinnedCardOrigins };
+	}
+
+	/**
+	 * Drops pointers whose card the user can no longer reach - deleted card, board
+	 * gone, or simply removed from the course. Without this they would sit in the
+	 * learning room forever as entries that never load.
+	 */
+	private async removeUnreachablePinnedCards(board: ColumnBoard, userId: EntityId): Promise<void> {
+		const pinnedCards = this.learningRoomService.findPinnedCards(board);
+		if (pinnedCards.length === 0) {
+			return;
+		}
+
+		const referencedIds = pinnedCards.map((node) => node.referencedCardId);
+		const cards = await this.boardNodeService.findByClassAndIds(Card, referencedIds);
+
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(cards);
+		const readableCardIds = new Set(
+			authorizables
+				.filter((authorizable) => this.boardNodeRule.can('findCards', user, authorizable))
+				.map((authorizable) => authorizable.boardNode.id)
+		);
+
+		const unreachable = pinnedCards.filter((node) => !readableCardIds.has(node.referencedCardId));
+		for (const node of unreachable) {
+			await this.boardNodeService.delete(node);
+		}
+	}
+
+	/**
+	 * Maps each remaining pointer to the name of the room or course its card lives
+	 * in, for the origin chip on the card. Resolved once per source board, not per
+	 * card - a learning room usually holds several cards from the same room.
+	 */
+	private async resolvePinnedCardOrigins(board: ColumnBoard): Promise<Map<EntityId, string>> {
+		const pinnedCards = this.learningRoomService.findPinnedCards(board);
+		if (pinnedCards.length === 0) {
+			return new Map();
+		}
+
+		const cards = await this.boardNodeService.findByClassAndIds(
+			Card,
+			pinnedCards.map((node) => node.referencedCardId)
+		);
+		const rootIdByCardId = new Map(cards.map((card) => [card.id, card.rootId]));
+
+		const originByRootId = new Map<EntityId, string>();
+		for (const rootId of new Set(rootIdByCardId.values())) {
+			try {
+				const parents = await this.boardContextApiHelperService.getParentsOfElement(rootId);
+				const origin = parents[0]?.name;
+				if (origin) {
+					originByRootId.set(rootId, origin);
+				}
+			} catch {
+				// a source board we cannot resolve simply gets no chip
+			}
+		}
+
+		const originByPinnedCardId = new Map<EntityId, string>();
+		pinnedCards.forEach((node) => {
+			const rootId = rootIdByCardId.get(node.referencedCardId);
+			const origin = rootId ? originByRootId.get(rootId) : undefined;
+			if (origin) {
+				originByPinnedCardId.set(node.id, origin);
+			}
+		});
+
+		return originByPinnedCardId;
 	}
 
 	/**

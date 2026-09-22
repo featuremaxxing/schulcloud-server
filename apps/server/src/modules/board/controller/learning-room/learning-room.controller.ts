@@ -24,9 +24,11 @@ export class LearningRoomController {
 	@ApiResponse({ status: 403, type: ForbiddenException })
 	@Get()
 	public async getLearningRoom(@CurrentUser() currentUser: ICurrentUser): Promise<BoardResponse> {
-		const { board, features, allowedOperations } = await this.learningRoomUc.getLearningRoom(currentUser.userId);
+		const { board, features, allowedOperations, pinnedCardOrigins } = await this.learningRoomUc.getLearningRoom(
+			currentUser.userId
+		);
 
-		const response = BoardResponseMapper.mapToResponse(board, features, allowedOperations);
+		const response = BoardResponseMapper.mapToResponse(board, features, allowedOperations, pinnedCardOrigins);
 
 		return response;
 	}
