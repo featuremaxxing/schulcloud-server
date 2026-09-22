@@ -33,6 +33,10 @@ export interface CardProps extends BoardNodeProps {
 	height: number;
 }
 
+export interface PinnedCardProps extends BoardNodeProps {
+	referencedCardId: EntityId;
+}
+
 export type CollaborativeTextEditorElementProps = BoardNodeProps;
 
 export interface DrawingElementProps extends BoardNodeProps {
@@ -145,6 +149,7 @@ export type AnyBoardNodeProps =
 	| AssignmentElementProps
 	| AssignmentSubmissionProps
 	| CardProps
+	| PinnedCardProps
 	| CollaborativeTextEditorElementProps
 	| ColumnBoardProps
 	| ColumnProps

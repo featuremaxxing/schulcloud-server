@@ -131,6 +131,9 @@ export class ConfigResponse {
 	FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED: boolean;
 
 	@ApiProperty()
+	FEATURE_PERSONAL_LEARNING_ROOM_ENABLED: boolean;
+
+	@ApiProperty()
 	FEATURE_COLUMN_BOARD_COLLABORA_ENABLED: boolean;
 
 	@ApiProperty()
@@ -380,6 +383,7 @@ export class ConfigResponse {
 		this.ROOM_MEMBER_ADD_EXTERNAL_PERSON_REQUIREMENTS_URL = config.roomMemberAddExternalPersonRequirementsUrl;
 		this.FEATURE_COLUMN_BOARD_H5P_ENABLED = config.featureColumnBoardH5pEnabled;
 		this.FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED = config.featureColumnBoardAssignmentEnabled;
+		this.FEATURE_PERSONAL_LEARNING_ROOM_ENABLED = config.featurePersonalLearningRoomEnabled;
 		this.FEATURE_COLUMN_BOARD_COLLABORA_ENABLED = config.featureColumnBoardCollaboraEnabled;
 	}
 }

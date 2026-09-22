@@ -13,6 +13,7 @@ import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
+import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
 import { RichTextElement } from './rich-text-element.do';
 import { handleNonExhaustiveSwitch } from './type-mapping';
@@ -45,6 +46,12 @@ export class BoardNodeFactory {
 		const card = new Card({ ...this.getBaseProps(), backgroundColor: Colors.TRANSPARENT, height: 150, children });
 
 		return card;
+	}
+
+	public buildPinnedCard(referencedCardId: EntityId): PinnedCard {
+		const pinnedCard = new PinnedCard({ ...this.getBaseProps(), referencedCardId });
+
+		return pinnedCard;
 	}
 
 	public buildContentElement(type: ContentElementType): AnyContentElement {
