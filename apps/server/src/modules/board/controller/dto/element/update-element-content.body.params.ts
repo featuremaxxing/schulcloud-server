@@ -361,7 +361,41 @@ export class AssignmentElementContentBody extends ElementContentBody {
 	content!: AssignmentContentBody;
 }
 
+export class AiQuestionContentBody {
+	@IsString()
+	@MaxLength(10000)
+	@ApiProperty({ description: 'the question the students see and answer' })
+	question!: string;
+
+	@IsString()
+	@MaxLength(10000)
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'guidance for the AI: what to consider, how to phrase the assessment' })
+	aiInstructions?: string;
+
+	@IsString()
+	@MaxLength(10000)
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'the reference answer the AI grades against, never shown to students' })
+	expectedAnswer?: string;
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'whether students may replace their answer; default false (single attempt)' })
+	allowMultipleAttempts?: boolean;
+}
+
+export class AiQuestionElementContentBody extends ElementContentBody {
+	@ApiProperty({ type: () => ContentElementType.AI_QUESTION })
+	type!: ContentElementType.AI_QUESTION;
+
+	@ValidateNested()
+	@ApiProperty()
+	content!: AiQuestionContentBody;
+}
+
 export type AnyElementContentBody =
+	| AiQuestionContentBody
 	| AssignmentContentBody
 	| FileContentBody
 	| DrawingContentBody
@@ -389,6 +423,7 @@ export class UpdateElementContentBodyParams {
 				{ value: H5pElementContentBody, name: ContentElementType.H5P },
 				{ value: PollElementContentBody, name: ContentElementType.POLL },
 				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
+				{ value: AiQuestionElementContentBody, name: ContentElementType.AI_QUESTION },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -405,6 +440,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(H5pElementContentBody) },
 			{ $ref: getSchemaPath(PollElementContentBody) },
 			{ $ref: getSchemaPath(AssignmentElementContentBody) },
+			{ $ref: getSchemaPath(AiQuestionElementContentBody) },
 		],
 	})
 	data!:
@@ -417,5 +453,6 @@ export class UpdateElementContentBodyParams {
 		| FileFolderElementContentBody
 		| H5pElementContentBody
 		| PollElementContentBody
-		| AssignmentElementContentBody;
+		| AssignmentElementContentBody
+		| AiQuestionElementContentBody;
 }

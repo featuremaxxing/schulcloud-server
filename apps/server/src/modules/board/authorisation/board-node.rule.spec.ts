@@ -1575,6 +1575,11 @@ describe(BoardNodeRule.name, () => {
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: true,
 
+					// element / aiQuestionElement
+					manageAiQuestion: true,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
+
 					// mediaBoard
 					collapseMediaBoard: true,
 					updateBoardVisibility: true,
@@ -1672,6 +1677,11 @@ describe(BoardNodeRule.name, () => {
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: true,
+
+					// element / aiQuestionElement
+					manageAiQuestion: true,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: true,
@@ -1774,6 +1784,11 @@ describe(BoardNodeRule.name, () => {
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: false,
+
+					// element / aiQuestionElement
+					manageAiQuestion: false,
+					createOwnAiQuestionAnswer: true,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: false,
@@ -1904,6 +1919,11 @@ describe(BoardNodeRule.name, () => {
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: false,
+
+					// element / aiQuestionElement
+					manageAiQuestion: false,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: false,

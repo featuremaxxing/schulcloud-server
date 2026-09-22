@@ -123,6 +123,14 @@ export class ServerPublicApiConfig {
 	@IsBoolean()
 	public featureAiTutorEnabled = false;
 
+	// featuremaxxing: public visibility of the KI-Fragen feature - the same flag the AI
+	// module's config reads (see modules/ai/ai.config.ts). Only the flag is public; the
+	// provider key never leaves the server environment.
+	@ConfigProperty('FEATURE_AI_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureAiEnabled = false;
+
 	@ConfigProperty('LICENSE_SUMMARY_URL')
 	@IsUrl({ require_tld: false })
 	public licenseSummaryUrl?: string;

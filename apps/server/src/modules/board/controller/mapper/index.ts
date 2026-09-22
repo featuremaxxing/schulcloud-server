@@ -1,3 +1,4 @@
+export * from './ai-question-element-response.mapper';
 export * from './assignment-element-response.mapper';
 export * from './board-response.mapper';
 export * from './card-response.mapper';

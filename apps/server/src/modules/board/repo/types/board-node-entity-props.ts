@@ -1,5 +1,7 @@
 import type {
 	AnyBoardNodeProps,
+	AiQuestionAnswerProps,
+	AiQuestionElementProps,
 	AssignmentElementProps,
 	AssignmentFeedbackProps,
 	AssignmentSubmissionProps,
@@ -48,6 +50,8 @@ export interface BoardNodeEntityProps
 	extends
 		BoardNodeProps,
 		TypeProps,
+		ComponentProps<AiQuestionElementProps>,
+		ComponentProps<AiQuestionAnswerProps>,
 		ComponentProps<AssignmentElementProps>,
 		ComponentProps<AssignmentFeedbackProps>,
 		ComponentProps<AssignmentSubmissionProps>,

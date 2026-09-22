@@ -12,6 +12,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { EntityId } from '@shared/domain/types';
 import {
 	type AnyBoardNode,
+	AiQuestionAnswer,
+	AiQuestionElement,
 	AssignmentElement,
 	AssignmentFeedback,
 	AssignmentSubmission,
@@ -127,6 +129,12 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.ASSIGNMENT_FEEDBACK:
 				result = this.copyAssignmentFeedback(boardNode as AssignmentFeedback);
+				break;
+			case BoardNodeType.AI_QUESTION_ELEMENT:
+				result = await this.copyAiQuestionElement(boardNode as AiQuestionElement, context);
+				break;
+			case BoardNodeType.AI_QUESTION_ANSWER:
+				result = this.copyAiQuestionAnswer(boardNode as AiQuestionAnswer);
 				break;
 			case BoardNodeType.PINNED_CARD:
 				result = this.copyPinnedCard(boardNode as PinnedCard);
@@ -551,6 +559,40 @@ export class BoardNodeCopyService {
 		const result: CopyStatus = {
 			id: original.id,
 			type: CopyElementType.ASSIGNMENT_SUBMISSION,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
+	// Deliberately does NOT call copyChildrenOf: an AI question is copied without its
+	// answers. Carrying student answers (and the AI's judgements of them) into a copied
+	// room/board would leak personal data of students who never joined the copy's target
+	// context - same reasoning as copyAssignmentElement above.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	public copyAiQuestionElement(original: AiQuestionElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new AiQuestionElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.AI_QUESTION_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	// An answer never gets copied - see copyAiQuestionElement. This case only exists so
+	// the type switch in copy() stays exhaustive; it must never be reached in practice
+	// because copyAiQuestionElement skips its children.
+	public copyAiQuestionAnswer(original: AiQuestionAnswer): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.AI_QUESTION_ANSWER,
 			status: CopyStatusEnum.NOT_DOING,
 		};
 

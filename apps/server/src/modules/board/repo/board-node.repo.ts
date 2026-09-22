@@ -6,6 +6,7 @@ import {
 	AnyBoardNode,
 	AssignmentElement,
 	AssignmentSubmission,
+	AiQuestionAnswer,
 	BoardExternalReference,
 	BoardNodeType,
 	getBoardNodeType,
@@ -185,6 +186,26 @@ export class BoardNodeRepo {
 		});
 
 		return submissions.map((entity) => new TreeBuilder().build(entity)) as AssignmentSubmission[];
+	}
+
+	// Direct children of the given AI question elements. Matches paths ending in
+	// ',<elementId>,' - only answers can be direct children of an ai-question element.
+	public async findAiQuestionAnswersByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<AiQuestionAnswer[]> {
+		if (parentIds.length === 0) {
+			return [];
+		}
+
+		// See findAssignmentElementsByBoardIds above for why this is a $or of per-id clauses
+		// rather than one `(a|b|c)` alternation.
+		const answers = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.AI_QUESTION_ANSWER,
+			$or: parentIds.map((parentId) => {
+				return { path: { $re: `,${escapeRegExp(parentId)},$` } };
+			}),
+			...(userId ? { userId } : {}),
+		});
+
+		return answers.map((entity) => new TreeBuilder().build(entity)) as AiQuestionAnswer[];
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

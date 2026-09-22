@@ -1,3 +1,5 @@
+export * from './ai-question-answer.factory';
+export * from './ai-question-element.factory';
 export * from './assignment-element.factory';
 export * from './assignment-feedback.factory';
 export * from './assignment-submission.factory';

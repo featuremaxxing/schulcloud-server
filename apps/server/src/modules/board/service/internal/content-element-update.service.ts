@@ -5,6 +5,7 @@ import { InputFormat } from '@shared/domain/types';
 import {
 	type AnyElementContentBody,
 	AssignmentContentBody,
+	AiQuestionContentBody,
 	DrawingContentBody,
 	ExternalToolContentBody,
 	FileContentBody,
@@ -18,6 +19,7 @@ import {
 } from '../../controller/dto';
 import type {
 	AssignmentElement,
+	AiQuestionElement,
 	AnyContentElement,
 	DrawingElement,
 	ExternalToolElement,
@@ -36,6 +38,7 @@ import {
 	countEligibleVoters,
 	H5pElement,
 	isAssignmentElement,
+	isAiQuestionElement,
 	isDrawingElement,
 	isExternalToolElement,
 	isFileElement,
@@ -86,6 +89,8 @@ export class ContentElementUpdateService {
 			this.updatePollElement(element, content, authorizableUsers ?? []);
 		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
 			this.updateAssignmentElement(element, content);
+		} else if (isAiQuestionElement(element) && content instanceof AiQuestionContentBody) {
+			this.updateAiQuestionElement(element, content);
 		} else {
 			throw new Error(`Cannot update element of type: '${element.constructor.name}'`);
 		}
@@ -318,5 +323,20 @@ export class ContentElementUpdateService {
 		// per-criterion grading logic that actually depends on this
 		element.maxPoints = content.maxPoints;
 		element.criteria = content.criteria;
+	}
+
+	// The full teacher config (instructions, expected answer) reaches the element here, but
+	// must never be broadcast back to students - the element response therefore carries only
+	// question/allowMultipleAttempts, and the editor reads the private parts back through the
+	// AI module's config endpoint (see AiQuestionUc.getConfig).
+	public updateAiQuestionElement(element: AiQuestionElement, content: AiQuestionContentBody): void {
+		element.question = sanitizeRichText(content.question, InputFormat.PLAIN_TEXT);
+		element.aiInstructions = content.aiInstructions
+			? sanitizeRichText(content.aiInstructions, InputFormat.PLAIN_TEXT)
+			: undefined;
+		element.expectedAnswer = content.expectedAnswer
+			? sanitizeRichText(content.expectedAnswer, InputFormat.PLAIN_TEXT)
+			: undefined;
+		element.allowMultipleAttempts = content.allowMultipleAttempts ?? false;
 	}
 }

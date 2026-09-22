@@ -1,4 +1,6 @@
 import { NotImplementedException } from '@nestjs/common';
+import { AiQuestionAnswer } from './ai-question-answer.do';
+import { AiQuestionElement } from './ai-question-element.do';
 import { AssignmentElement } from './assignment-element.do';
 import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
@@ -23,6 +25,8 @@ import { VideoConferenceElement } from './video-conference-element.do';
 
 // register node types
 const BoardNodeTypeToConstructor = {
+	[BoardNodeType.AI_QUESTION_ANSWER]: AiQuestionAnswer,
+	[BoardNodeType.AI_QUESTION_ELEMENT]: AiQuestionElement,
 	[BoardNodeType.ASSIGNMENT_ELEMENT]: AssignmentElement,
 	[BoardNodeType.ASSIGNMENT_FEEDBACK]: AssignmentFeedback,
 	[BoardNodeType.ASSIGNMENT_SUBMISSION]: AssignmentSubmission,

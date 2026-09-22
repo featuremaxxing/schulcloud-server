@@ -9,6 +9,8 @@ export { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from './board.con
 export { BoardModule } from './board.module';
 export {
 	AnyBoardNode,
+	AiQuestionAnswer,
+	AiQuestionElement,
 	AssignmentElement,
 	AssignmentFeedback,
 	AssignmentRubricCriterion,
@@ -28,6 +30,8 @@ export {
 	isAssignmentElement,
 	isAssignmentFeedback,
 	isAssignmentSubmission,
+	isAiQuestionAnswer,
+	isAiQuestionElement,
 	isColumnBoard,
 	// modules/assignment/api/assignment.uc.ts
 	isStudentMember,
