@@ -303,6 +303,80 @@ describe('peer review flow (api)', () => {
 		});
 	});
 
+	describe('assignment list and unassign', () => {
+		it('lists a pairing with the reviewer name, and lets the teacher remove it again', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+
+			const listResponse = await teacherClient.get(`${assignmentElementNode.id}/peer-review/assignments`);
+			expect(listResponse.status).toEqual(200);
+			const assignments = listResponse.body as { submissionId: string; reviewerUserId: string }[];
+			expect(assignments).toHaveLength(1);
+			expect(assignments[0]).toMatchObject({ submissionId, reviewerUserId: studentBAccount.userId });
+
+			const unassignResponse = await teacherClient.delete(
+				`${assignmentElementNode.id}/peer-review/assignments/${submissionId}/${String(studentBAccount.userId)}`
+			);
+			expect(unassignResponse.status).toEqual(204);
+
+			const listAfterResponse = await teacherClient.get(`${assignmentElementNode.id}/peer-review/assignments`);
+			expect(listAfterResponse.body as unknown[]).toHaveLength(0);
+		});
+
+		it('rejects removing a pairing whose review has already been submitted', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentBClient = await new TestApiClientBuilder(app, baseRouteName).build(studentBAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+			const tasksResponse = await studentBClient.get('peer-review/my-tasks');
+			const taskId = (tasksResponse.body as PeerReviewTaskResponse[])[0].id;
+			await studentBClient.patch(`peer-review/${taskId}/submit`, { points: 5 });
+
+			const unassignResponse = await teacherClient.delete(
+				`${assignmentElementNode.id}/peer-review/assignments/${submissionId}/${String(studentBAccount.userId)}`
+			);
+			expect(unassignResponse.status).toEqual(409);
+
+			const listResponse = await teacherClient.get(`${assignmentElementNode.id}/peer-review/assignments`);
+			expect(listResponse.body as unknown[]).toHaveLength(1);
+		});
+
+		it('rejects a student from listing or removing assignments', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+
+			const listResponse = await studentAClient.get(`${assignmentElementNode.id}/peer-review/assignments`);
+			expect(listResponse.status).toEqual(403);
+
+			const unassignResponse = await studentAClient.delete(
+				`${assignmentElementNode.id}/peer-review/assignments/${submissionId}/${String(studentBAccount.userId)}`
+			);
+			expect(unassignResponse.status).toEqual(403);
+		});
+	});
+
 	describe('the review task', () => {
 		it('never reveals the submitting student, and lets the reviewer submit their review', async () => {
 			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();

@@ -1,6 +1,11 @@
 import { type AssignmentElement } from '@modules/board';
-import { PeerReviewSettingsResponse, PeerReviewTaskFileResponse, PeerReviewTaskResponse } from '../dto';
-import { type PeerReviewTaskResult } from '../peer-review.uc';
+import {
+	PeerReviewAssignmentResponse,
+	PeerReviewSettingsResponse,
+	PeerReviewTaskFileResponse,
+	PeerReviewTaskResponse,
+} from '../dto';
+import { type PeerReviewAssignmentListEntry, type PeerReviewTaskResult } from '../peer-review.uc';
 
 export class PeerReviewResponseMapper {
 	public static mapSettings(element: AssignmentElement): PeerReviewSettingsResponse {
@@ -8,6 +13,17 @@ export class PeerReviewResponseMapper {
 			enabled: element.peerReviewEnabled,
 			mode: element.peerReviewMode,
 			count: element.peerReviewCount,
+		});
+	}
+
+	public static mapAssignment(entry: PeerReviewAssignmentListEntry): PeerReviewAssignmentResponse {
+		return new PeerReviewAssignmentResponse({
+			submissionId: entry.submissionId,
+			reviewerUserId: entry.reviewerUserId,
+			reviewerFirstName: entry.reviewerFirstName,
+			reviewerLastName: entry.reviewerLastName,
+			assignmentMode: entry.assignmentMode,
+			submittedAt: entry.submittedAt?.toISOString() ?? null,
 		});
 	}
 

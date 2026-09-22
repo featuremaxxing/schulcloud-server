@@ -1,7 +1,9 @@
 import { CurrentUser, ICurrentUser, JwtAuthentication } from '@infra/auth-guard';
 import {
 	Body,
+	ConflictException,
 	Controller,
+	Delete,
 	ForbiddenException,
 	Get,
 	HttpCode,
@@ -16,12 +18,14 @@ import { PeerReviewUc } from './peer-review.uc';
 import {
 	AssignmentElementUrlParams,
 	PeerReviewAssignBodyParams,
+	PeerReviewAssignmentResponse,
 	PeerReviewAssignResultResponse,
 	PeerReviewSettingsBodyParams,
 	PeerReviewSettingsResponse,
 	PeerReviewSubmitBodyParams,
 	PeerReviewTaskResponse,
 	PeerReviewTaskUrlParams,
+	PeerReviewUnassignUrlParams,
 } from './dto';
 import { PeerReviewResponseMapper } from './mapper';
 
@@ -87,6 +91,40 @@ export class PeerReviewController {
 		);
 
 		return new PeerReviewAssignResultResponse(result);
+	}
+
+	@ApiOperation({
+		summary: 'List every current reviewer<->submission pairing for an assignment, with reviewer identities.',
+	})
+	@ApiResponse({ status: 200, type: [PeerReviewAssignmentResponse] })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@Get(':elementId/peer-review/assignments')
+	public async listAssignments(
+		@Param() urlParams: AssignmentElementUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<PeerReviewAssignmentResponse[]> {
+		const results = await this.peerReviewUc.listAssignments(currentUser.userId, urlParams.elementId);
+
+		return results.map((result) => PeerReviewResponseMapper.mapAssignment(result));
+	}
+
+	@ApiOperation({ summary: 'Remove one reviewer<->submission pairing, as long as it has not been submitted yet.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@ApiResponse({ status: 409, type: ConflictException })
+	@HttpCode(204)
+	@Delete(':elementId/peer-review/assignments/:submissionId/:reviewerUserId')
+	public async unassign(
+		@Param() urlParams: PeerReviewUnassignUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.peerReviewUc.unassign(
+			currentUser.userId,
+			urlParams.elementId,
+			urlParams.submissionId,
+			urlParams.reviewerUserId
+		);
 	}
 
 	@ApiOperation({

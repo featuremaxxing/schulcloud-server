@@ -47,6 +47,15 @@ export interface PeerReviewTaskResult {
 	file?: FileDto;
 }
 
+export interface PeerReviewAssignmentListEntry {
+	submissionId: EntityId;
+	reviewerUserId: EntityId;
+	reviewerFirstName?: string;
+	reviewerLastName?: string;
+	assignmentMode: AssignmentReviewAssignmentMode;
+	submittedAt?: Date;
+}
+
 // Effectively "everyone reviews everyone" for a very large class - not a real assignment
 // scenario, just a sane upper bound so a stray large value cannot make autoAssign fan out
 // n*count review rows for an element with many submissions.
@@ -206,6 +215,57 @@ export class PeerReviewUc {
 		await this.assignmentReviewRepo.saveAll(reviews);
 
 		return { assignedCount: reviews.length };
+	}
+
+	// Teacher-facing view of every current pairing for an assignment, with reviewer identities -
+	// deliberately the opposite of listMyTasks (anonymizes the submission owner from the
+	// reviewer) and of the submission owner's peerReviews summary (anonymizes the reviewer). Only
+	// ever reachable via loadElementForTeacher, i.e. a real board editor.
+	public async listAssignments(userId: EntityId, elementId: EntityId): Promise<PeerReviewAssignmentListEntry[]> {
+		this.checkFeatureEnabled();
+
+		const { boardNodeAuthorizable } = await this.loadElementForTeacher(userId, elementId);
+		const reviews = await this.assignmentReviewRepo.findByElementId(elementId);
+
+		return reviews.map((review) => {
+			const reviewer = boardNodeAuthorizable.users.find((user) => user.userId === review.reviewerUserId);
+
+			return {
+				submissionId: review.submissionId,
+				reviewerUserId: review.reviewerUserId,
+				reviewerFirstName: reviewer?.firstName,
+				reviewerLastName: reviewer?.lastName,
+				assignmentMode: review.assignmentMode,
+				submittedAt: review.submittedAt,
+			};
+		});
+	}
+
+	// Removes exactly one pairing - reuses the same deleteByPairs the batch assignment methods
+	// already rely on for idempotency. A review that was already submitted is refused rather than
+	// silently dropped, so a teacher cannot accidentally make a student's finished work disappear.
+	public async unassign(
+		userId: EntityId,
+		elementId: EntityId,
+		submissionId: EntityId,
+		reviewerUserId: EntityId
+	): Promise<void> {
+		this.checkFeatureEnabled();
+
+		await this.loadElementForTeacher(userId, elementId);
+
+		const reviews = await this.assignmentReviewRepo.findByElementId(elementId);
+		const review = reviews.find(
+			(candidate) => candidate.submissionId === submissionId && candidate.reviewerUserId === reviewerUserId
+		);
+		if (!review) {
+			throw new NotFoundException('This peer review assignment does not exist.');
+		}
+		if (review.submittedAt) {
+			throw new ConflictException('This peer review has already been submitted and cannot be removed.');
+		}
+
+		await this.assignmentReviewRepo.deleteByPairs(elementId, [{ submissionId, reviewerUserId }]);
 	}
 
 	// Anonymized by construction: only the file to review is fetched, never the submission's
