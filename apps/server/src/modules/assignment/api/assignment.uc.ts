@@ -55,6 +55,10 @@ export interface PeerReviewFeedbackEntry {
 	points?: number;
 	feedbackComment?: string;
 	submittedAt?: Date;
+	// the reviewer's AssignmentFeedback container id, if they've uploaded a correction - kept
+	// even in the anonymized owner view (it names no person), so the owner's client can fetch/
+	// download the files listed below the same way the teacher's does.
+	feedbackContainerId?: EntityId;
 	files?: FileDto[];
 }
 
@@ -725,6 +729,7 @@ export class AssignmentUc {
 					points: review.points,
 					feedbackComment: review.feedbackComment,
 					submittedAt: review.submittedAt,
+					feedbackContainerId: container?.id,
 					files,
 				};
 			})

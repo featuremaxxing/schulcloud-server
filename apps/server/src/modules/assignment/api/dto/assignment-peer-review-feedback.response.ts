@@ -26,6 +26,7 @@ export class AssignmentPeerReviewFeedbackResponse {
 		this.points = props.points;
 		this.feedbackComment = props.feedbackComment;
 		this.submittedAt = props.submittedAt;
+		this.feedbackContainerId = props.feedbackContainerId;
 		this.files = props.files;
 	}
 
@@ -50,6 +51,15 @@ export class AssignmentPeerReviewFeedbackResponse {
 		description: 'set once the reviewer has submitted this review',
 	})
 	submittedAt?: string | null;
+
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		pattern: bsonStringPattern,
+		description:
+			'id of the reviewer’s correction container, once one exists - present even in the owner’s view (it names no person) so their client can fetch/download the files below',
+	})
+	feedbackContainerId?: string | null;
 
 	@ApiPropertyOptional({
 		type: [AssignmentPeerReviewFeedbackFileResponse],

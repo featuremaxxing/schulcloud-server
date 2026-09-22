@@ -191,6 +191,8 @@ const mapPeerReviewFeedback = (
 				points: entry.points ?? null,
 				feedbackComment: entry.feedbackComment ?? null,
 				submittedAt: entry.submittedAt?.toISOString() ?? null,
+				// names no person, so this stays present even in the owner's anonymized view
+				feedbackContainerId: entry.feedbackContainerId ?? null,
 				files:
 					entry.files?.map(
 						(file) => new AssignmentPeerReviewFeedbackFileResponse({ fileRecordId: file.id, name: file.name })
