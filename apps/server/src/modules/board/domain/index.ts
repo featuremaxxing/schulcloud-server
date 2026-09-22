@@ -1,4 +1,5 @@
 export * from './assignment-element.do';
+export * from './assignment-feedback.do';
 export * from './assignment-status.enum';
 export * from './assignment-submission.do';
 export * from './board-node-authorizable.do';

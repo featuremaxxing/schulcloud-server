@@ -121,6 +121,9 @@ export interface AssignmentSubmissionProps extends BoardNodeProps {
 	criterionPoints?: AssignmentSubmissionCriterionPoints[];
 }
 
+// No fields of its own - see AssignmentFeedback's doc comment for why the node exists at all.
+export type AssignmentFeedbackProps = BoardNodeProps;
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -141,6 +144,10 @@ export interface MediaLineProps extends BoardNodeProps {
 
 type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | MediaLineProps;
 
+// AssignmentFeedbackProps is deliberately not listed here: it has no fields of its own, so it is
+// structurally identical to BoardNodeProps (and to CollaborativeTextEditorElementProps below,
+// which already carries that shape into the union) - adding it again would just be a duplicate
+// union member.
 export type AnyBoardNodeProps =
 	| AssignmentElementProps
 	| AssignmentSubmissionProps

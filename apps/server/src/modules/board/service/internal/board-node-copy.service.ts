@@ -13,6 +13,7 @@ import type { EntityId } from '@shared/domain/types';
 import {
 	type AnyBoardNode,
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentSubmission,
 	BoardNodeType,
 	Card,
@@ -113,6 +114,9 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.ASSIGNMENT_SUBMISSION:
 				result = this.copyAssignmentSubmission(boardNode as AssignmentSubmission);
+				break;
+			case BoardNodeType.ASSIGNMENT_FEEDBACK:
+				result = this.copyAssignmentFeedback(boardNode as AssignmentFeedback);
 				break;
 			default:
 				/* istanbul ignore next */
@@ -519,6 +523,18 @@ export class BoardNodeCopyService {
 		const result: CopyStatus = {
 			id: original.id,
 			type: CopyElementType.ASSIGNMENT_SUBMISSION,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
+	// Same reasoning as copyAssignmentSubmission above - never reached, exists only to keep
+	// the type switch in copy() exhaustive.
+	public copyAssignmentFeedback(original: AssignmentFeedback): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.ASSIGNMENT_FEEDBACK,
 			status: CopyStatusEnum.NOT_DOING,
 		};
 

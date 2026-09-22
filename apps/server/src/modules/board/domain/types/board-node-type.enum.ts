@@ -14,6 +14,7 @@ export enum BoardNodeType {
 	H5P_ELEMENT = 'h5p-element',
 	ASSIGNMENT_ELEMENT = 'assignment-element',
 	ASSIGNMENT_SUBMISSION = 'assignment-submission',
+	ASSIGNMENT_FEEDBACK = 'assignment-feedback',
 
 	MEDIA_BOARD = 'media-board',
 	MEDIA_LINE = 'media-line',

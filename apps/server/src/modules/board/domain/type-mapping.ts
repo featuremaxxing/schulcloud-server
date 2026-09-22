@@ -1,5 +1,6 @@
 import { NotImplementedException } from '@nestjs/common';
 import { AssignmentElement } from './assignment-element.do';
+import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
@@ -20,6 +21,7 @@ import { VideoConferenceElement } from './video-conference-element.do';
 // register node types
 const BoardNodeTypeToConstructor = {
 	[BoardNodeType.ASSIGNMENT_ELEMENT]: AssignmentElement,
+	[BoardNodeType.ASSIGNMENT_FEEDBACK]: AssignmentFeedback,
 	[BoardNodeType.ASSIGNMENT_SUBMISSION]: AssignmentSubmission,
 	[BoardNodeType.CARD]: Card,
 	[BoardNodeType.COLLABORATIVE_TEXT_EDITOR]: CollaborativeTextEditorElement,
