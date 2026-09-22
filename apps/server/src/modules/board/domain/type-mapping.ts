@@ -14,6 +14,9 @@ import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
 import { MediaBoard, MediaExternalToolElement, MediaLine } from './media-board';
+import { PinnedCard } from './pinned-card.do';
+import { PollElement } from './poll-element.do';
+import { PollVote } from './poll-vote.do';
 import { RichTextElement } from './rich-text-element.do';
 import { type AnyBoardNode, BoardNodeType } from './types';
 import { VideoConferenceElement } from './video-conference-element.do';
@@ -24,6 +27,7 @@ const BoardNodeTypeToConstructor = {
 	[BoardNodeType.ASSIGNMENT_FEEDBACK]: AssignmentFeedback,
 	[BoardNodeType.ASSIGNMENT_SUBMISSION]: AssignmentSubmission,
 	[BoardNodeType.CARD]: Card,
+	[BoardNodeType.PINNED_CARD]: PinnedCard,
 	[BoardNodeType.COLLABORATIVE_TEXT_EDITOR]: CollaborativeTextEditorElement,
 	[BoardNodeType.COLUMN]: Column,
 	[BoardNodeType.COLUMN_BOARD]: ColumnBoard,
@@ -39,6 +43,8 @@ const BoardNodeTypeToConstructor = {
 	[BoardNodeType.VIDEO_CONFERENCE_ELEMENT]: VideoConferenceElement,
 	[BoardNodeType.DELETED_ELEMENT]: DeletedElement,
 	[BoardNodeType.H5P_ELEMENT]: H5pElement,
+	[BoardNodeType.POLL_ELEMENT]: PollElement,
+	[BoardNodeType.POLL_VOTE]: PollVote,
 } as const;
 
 export const getBoardNodeConstructor = <T extends BoardNodeType>(type: T): (typeof BoardNodeTypeToConstructor)[T] =>

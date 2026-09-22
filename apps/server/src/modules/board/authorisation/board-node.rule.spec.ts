@@ -10,7 +10,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { Permission } from '@shared/domain/interface';
 import { setupEntities } from '@testing/database';
 import { studentPermissions, userPermissions } from '@testing/user-role-permissions';
-import { type BoardConfiguration } from '../domain';
+import { type BoardConfiguration, PollAudience } from '../domain';
 import {
 	assignmentElementFactory,
 	assignmentFeedbackFactory,
@@ -19,6 +19,8 @@ import {
 	columnBoardFactory,
 	drawingElementFactory,
 	fileElementFactory,
+	pollElementFactory,
+	pollVoteFactory,
 	videoConferenceElementFactory,
 } from '../testing';
 import { BoardNodeRule, type BoardOperation } from './board-node.rule';
@@ -1561,6 +1563,11 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: true,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: true,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: false,
@@ -1654,6 +1661,11 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: true,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: true,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: false,
@@ -1748,6 +1760,14 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: false,
 
+					// element / pollElement
+					// this fixture's boardNode is a videoConferenceElement, not a poll - a
+					// board reader is not automatically an eligible voter for a node that
+					// isn't a poll at all (see _canVoteInPoll)
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: false,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: true,
@@ -1873,6 +1893,11 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: false,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: false,
+					managePoll: false,
 					// element / assignmentElement
 					viewAssignmentSubmissions: false,
 					createOwnAssignmentSubmission: false,
@@ -1936,6 +1961,225 @@ describe(BoardNodeRule.name, () => {
 			});
 
 			expect(res).toBe(false);
+		});
+	});
+
+	describe('poll operations', () => {
+		describe('createOwnPollVote', () => {
+			it('should allow a plain student reader to create a vote', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a board editor to create a vote via this operation', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should allow a board editor to vote when audience is TEACHERS', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a plain student reader to vote when audience is TEACHERS', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should allow both a reader and an editor to vote when audience is ALL', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.ALL });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: student.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(true);
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should honor audienceRoles when audience is CUSTOM', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({
+					audience: PollAudience.CUSTOM,
+					audienceRoles: [BoardRoles.EDITOR],
+				});
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: student.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow voting on a node that is not a poll element', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					// default boardNode from the factory is a plain column, not a poll element
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('updateOwnPollVote', () => {
+			it('should allow the owning student to update their own vote', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote] });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: owner.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', owner, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a different student to update someone else’s vote', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const otherStudent = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote] });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: otherStudent.id, roles: [BoardRoles.READER] },
+					],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', otherStudent, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should NOT allow updating a vote whose poll no longer has the voter in its audience', () => {
+				// e.g. the poll's audience was changed from ALL to TEACHERS after the vote was
+				// cast (see U-R4: the client locks this once votes exist, this is the server-side
+				// belt to that suspenders)
+				const owner = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote], audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: owner.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', owner, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('managePoll', () => {
+			it('should allow a board editor to manage the poll', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('managePoll', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT let a reader manage the poll even when readersCanEdit is on', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+					boardConfiguration: { canReadersEdit: true },
+				});
+
+				expect(boardNodeRule.can('managePoll', student, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should NOT let a reader manage a poll vote even when readersCanEdit is on', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: student.id });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					rootNode: columnBoard,
+					boardConfiguration: { canReadersEdit: true },
+				});
+
+				expect(boardNodeRule.can('managePoll', student, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('viewPollResults', () => {
+			it('should allow a board reader to view results', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('viewPollResults', student, boardNodeAuthorizable)).toBe(true);
+			});
 		});
 	});
 });

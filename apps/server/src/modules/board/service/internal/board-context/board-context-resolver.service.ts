@@ -4,6 +4,7 @@ import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
 import { UserService } from '@modules/user';
 import { Injectable } from '@nestjs/common';
+import { EntityId } from '@shared/domain/types';
 import { BoardExternalReference, BoardExternalReferenceType } from '../../../domain';
 import { CourseBoardContext, CourseBoardContextData, CourseUserInfo } from './course-board-context';
 import { PreparedBoardContext } from './prepared-board-context.interface';
@@ -54,29 +55,31 @@ export class BoardContextResolverService {
 			this.roomMembershipService.getRoomAuthorizable(roomId),
 		]);
 
-		// Room memberships carry no user names or school roles (e.g. the assignment teacher
-		// overview shows student names; isStudentMember/isTeacherMember need the school role to
-		// tell a teacher who is only a room viewer apart from an actual student). Loading them is
-		// a separate DB round-trip that resolve() used to pay on every single call, even for the
-		// (large majority of) board operations that never read a name or school role - deferred
-		// into this closure instead, which RoomBoardContext calls at most once, only if its
-		// getUsersWithBoardRoles() is actually invoked.
+		// Room memberships carry no user names or school roles (e.g. isStudentMember/
+		// isTeacherMember need the school role to tell a teacher who is only a room viewer
+		// apart from an actual student, and the assignment teacher overview shows student
+		// names). Loading them is a separate DB round-trip that resolve() used to pay on every
+		// single call, even for the (large majority of) board operations that never read a
+		// name or school role - deferred into this closure instead, which RoomBoardContext
+		// calls at most once, only if its getUsersWithBoardRoles() is actually invoked.
 		const loadUserInfo = async (): Promise<
-			Map<string, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
+			Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
 		> => {
 			const memberIds = roomAuthorizable.members.map((member) => member.userId);
-			const users = memberIds.length > 0 ? await this.userService.getUserEntitiesWithRoles(memberIds) : [];
+			const userInfo = new Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>();
 
-			return new Map(
-				users.map((user) => [
-					user.id,
-					{
+			if (memberIds.length > 0) {
+				const users = await this.userService.getUserEntitiesWithRoles(memberIds);
+				users.forEach((user) => {
+					userInfo.set(user.id, {
 						firstName: user.firstName,
 						lastName: user.lastName,
 						schoolRoleNames: user.roles.getItems().map((role) => role.name),
-					},
-				])
-			);
+					});
+				});
+			}
+
+			return userInfo;
 		};
 
 		return new RoomBoardContext(room, roomAuthorizable, loadUserInfo);

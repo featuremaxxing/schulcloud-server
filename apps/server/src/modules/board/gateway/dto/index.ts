@@ -13,6 +13,7 @@ export { MoveCardMessageParams } from './move-card.message.param';
 export { MoveCardToBoardMessageParams } from './move-card-to-board.message.param';
 export { MoveColumnMessageParams } from './move-column.message.param';
 export { MoveContentElementMessageParams } from './move-content-element.message.param';
+export { PollVoteAnswerMessageParam, PollVoteMessageParams } from './poll-vote.message.param';
 export { UpdateBoardLayoutMessageParams } from './update-board-layout.message.param';
 export { UpdateBoardTitleMessageParams } from './update-board-title.message.param';
 export { UpdateBoardVisibilityMessageParams } from './update-board-visibility.message.param';

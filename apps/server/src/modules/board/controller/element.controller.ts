@@ -33,6 +33,8 @@ import {
 	LinkElementContentBody,
 	LinkElementResponse,
 	MoveContentElementBody,
+	PollElementContentBody,
+	PollElementResponse,
 	RichTextElementContentBody,
 	RichTextElementResponse,
 	UpdateElementContentBodyParams,
@@ -106,6 +108,7 @@ export class ElementController {
 		VideoConferenceElementContentBody,
 		FileFolderElementContentBody,
 		H5pElementContentBody,
+		PollElementContentBody,
 		AssignmentElementContentBody
 	)
 	@ApiResponse({
@@ -120,6 +123,7 @@ export class ElementController {
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(FileFolderElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
+				{ $ref: getSchemaPath(PollElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},

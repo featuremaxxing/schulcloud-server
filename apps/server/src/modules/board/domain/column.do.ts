@@ -1,5 +1,6 @@
 import { BoardNode } from './board-node.do';
 import { Card } from './card.do';
+import { PinnedCard } from './pinned-card.do';
 import type { AnyBoardNode, ColumnProps } from './types';
 
 export class Column extends BoardNode<ColumnProps> {
@@ -12,7 +13,7 @@ export class Column extends BoardNode<ColumnProps> {
 	}
 
 	public canHaveChild(childNode: AnyBoardNode): boolean {
-		return childNode instanceof Card;
+		return childNode instanceof Card || childNode instanceof PinnedCard;
 	}
 }
 

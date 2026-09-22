@@ -11,6 +11,7 @@ import { FileElementResponse } from './file-element.response';
 import { FileFolderElementResponse } from './file-folder-element.response';
 import { H5pElementResponse } from './h5p-element.response';
 import { LinkElementResponse } from './link-element.response';
+import { PollElementResponse } from './poll-element.response';
 import { RichTextElementResponse } from './rich-text-element.response';
 import { VideoConferenceElementResponse } from './video-conference-element.response';
 
@@ -47,6 +48,7 @@ export class ParentNodeInfoResponse {
 	FileFolderElementResponse,
 	ParentNodeInfoResponse,
 	H5pElementResponse,
+	PollElementResponse,
 	AssignmentElementResponse
 )
 export class ElementWithParentHierarchyResponse {
@@ -68,6 +70,7 @@ export class ElementWithParentHierarchyResponse {
 			{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 			{ $ref: getSchemaPath(FileFolderElementResponse) },
 			{ $ref: getSchemaPath(H5pElementResponse) },
+			{ $ref: getSchemaPath(PollElementResponse) },
 			{ $ref: getSchemaPath(AssignmentElementResponse) },
 		],
 	})

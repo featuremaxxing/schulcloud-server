@@ -6,6 +6,7 @@ import type {
 	BoardNodeProps,
 	BoardNodeType,
 	CardProps,
+	PinnedCardProps,
 	CollaborativeTextEditorElementProps,
 	ColumnBoardProps,
 	ColumnProps,
@@ -17,6 +18,8 @@ import type {
 	MediaBoardProps,
 	MediaExternalToolElementProps,
 	MediaLineProps,
+	PollElementProps,
+	PollVoteProps,
 	RichTextElementProps,
 } from '../../domain';
 
@@ -52,6 +55,7 @@ export interface BoardNodeEntityProps
 		ComponentProps<ColumnProps>,
 		ComponentProps<CollaborativeTextEditorElementProps>,
 		ComponentProps<CardProps>,
+		ComponentProps<PinnedCardProps>,
 		ComponentProps<RichTextElementProps>,
 		ComponentProps<LinkElementProps>,
 		ComponentProps<FileElementProps>,
@@ -60,4 +64,6 @@ export interface BoardNodeEntityProps
 		ComponentProps<MediaBoardProps>,
 		ComponentProps<MediaExternalToolElementProps>,
 		ComponentProps<MediaLineProps>,
-		ComponentProps<DeletedElementProps> {}
+		ComponentProps<DeletedElementProps>,
+		ComponentProps<PollElementProps>,
+		ComponentProps<PollVoteProps> {}

@@ -27,6 +27,7 @@ import {
 	isH5pElement,
 	isLinkElement,
 	isMediaExternalToolElement,
+	isPollVote,
 	LinkElement,
 	MediaExternalToolElement,
 } from '../../domain';
@@ -64,6 +65,10 @@ export class BoardNodeDeleteHooksService {
 			await this.afterDeleteMediaExternalToolElement(boardNode);
 		} else if (isH5pElement(boardNode)) {
 			await this.afterDeleteH5pElement(boardNode);
+		} else if (isPollVote(boardNode)) {
+			// no-op: a poll vote has no attached files or external resources to clean up.
+			// This branch is kept explicit (instead of falling through) so the case is
+			// visible and intentional rather than accidental.
 		} else if (isAssignmentSubmission(boardNode)) {
 			this.afterDeleteAssignmentSubmission(boardNode);
 		} else if (isAssignmentFeedback(boardNode)) {

@@ -18,6 +18,7 @@ import {
 	fileFolderElementFactory,
 	h5pElementFactory,
 	linkElementFactory,
+	pollVoteFactory,
 } from '../../testing';
 import { BoardNodeDeleteHooksService } from './board-node-delete-hooks.service';
 
@@ -249,6 +250,26 @@ describe(BoardNodeDeleteHooksService.name, () => {
 				await service.afterDelete(boardNode);
 
 				expect(h5pEditorProducer.deleteContent).toHaveBeenCalledWith({ contentId: boardNode.contentId });
+			});
+		});
+
+		// Regression guard for the poll element: a deleted vote has nothing to clean up
+		// (no attached files, no external resources), and must not accidentally trigger any
+		// other hook (e.g. by falling through to a wrong isXyz check).
+		describe('when called with poll vote', () => {
+			const setup = () => {
+				const boardNode = pollVoteFactory.build();
+
+				return { boardNode };
+			};
+
+			it('should not call any cleanup adapter for this node', async () => {
+				const { boardNode } = setup();
+
+				await service.afterDelete(boardNode);
+
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).not.toHaveBeenCalledWith(boardNode.id);
+				expect(h5pEditorProducer.deleteContent).not.toHaveBeenCalledWith({ contentId: boardNode.id });
 			});
 		});
 

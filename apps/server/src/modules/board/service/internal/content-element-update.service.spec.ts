@@ -9,9 +9,18 @@ import {
 	FileFolderContentBody,
 	H5pContentBody,
 	LinkContentBody,
+	PollContentBody,
 	RichTextContentBody,
 	VideoConferenceContentBody,
 } from '../../controller/dto';
+import {
+	BoardRoles,
+	PollAnswerMode,
+	PollAudience,
+	PollChartType,
+	PollStatus,
+	type UserWithBoardRoles,
+} from '../../domain';
 import { BoardNodeRepo } from '../../repo';
 import {
 	drawingElementFactory,
@@ -20,6 +29,8 @@ import {
 	fileFolderElementFactory,
 	h5pElementFactory,
 	linkElementFactory,
+	pollElementFactory,
+	pollVoteFactory,
 	richTextElementFactory,
 	videoConferenceElementFactory,
 } from '../../testing';
@@ -258,6 +269,305 @@ describe('ContentElementUpdateService', () => {
 
 			expect(element.contentId).toBe(contentId);
 			expect(repo.save).toHaveBeenCalledWith(element);
+		});
+	});
+
+	describe('when the element is a PollElement', () => {
+		const buildContent = (overrides: Partial<PollContentBody> = {}): PollContentBody => {
+			const content = new PollContentBody();
+			content.title = 'title';
+			content.questions = [
+				{
+					id: new ObjectId().toHexString(),
+					text: 'question',
+					answerMode: PollAnswerMode.SINGLE,
+					chartType: PollChartType.BAR,
+					options: [
+						{ id: new ObjectId().toHexString(), text: 'a' },
+						{ id: new ObjectId().toHexString(), text: 'b' },
+					],
+				},
+			];
+			content.isAnonymous = false;
+			content.showResultsLive = false;
+			content.pollStatus = PollStatus.OPEN;
+			Object.assign(content, overrides);
+
+			return content;
+		};
+
+		it('should update the poll element', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ title: 'new title' });
+
+			await service.updateContent(element, content);
+
+			expect(element.title).toBe('new title');
+			expect(element.questions).toHaveLength(1);
+			expect(repo.save).toHaveBeenCalledWith(element);
+		});
+
+		it('should freeze a result snapshot when the poll transitions to CLOSED', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.OPEN });
+			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeDefined();
+		});
+
+		it('should not touch an existing result snapshot while the poll stays CLOSED', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			const existingSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			element.resultSnapshot = existingSnapshot;
+			const content = buildContent({ pollStatus: PollStatus.CLOSED });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBe(existingSnapshot);
+		});
+
+		it('should clear a leftover result snapshot when a closed poll is reopened', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			element.resultSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			const content = buildContent({ pollStatus: PollStatus.OPEN });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should clear a leftover result snapshot when a closed poll is set back to DRAFT', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.CLOSED });
+			element.resultSnapshot = { frozenAt: new Date(), participantCount: 3, perQuestion: [] };
+			const content = buildContent({ pollStatus: PollStatus.DRAFT });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should not set a result snapshot for a poll that was never closed', async () => {
+			const element = pollElementFactory.build({ pollStatus: PollStatus.DRAFT });
+			const content = buildContent({ pollStatus: PollStatus.OPEN });
+
+			await service.updateContent(element, content);
+
+			expect(element.resultSnapshot).toBeUndefined();
+		});
+
+		it('should update the audience', async () => {
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await service.updateContent(element, content);
+
+			expect(element.audience).toBe(PollAudience.TEACHERS);
+		});
+
+		it('should keep audienceRoles only when audience is CUSTOM', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ audience: PollAudience.ALL, audienceRoles: [BoardRoles.READER] });
+
+			await service.updateContent(element, content);
+
+			expect(element.audienceRoles).toBeUndefined();
+		});
+
+		it('should freeze the number of eligible voters, not the number of votes cast, into the snapshot', async () => {
+			// U-R3/U1: closing a poll where not everyone eligible has voted must not report
+			// "n of n" - the frozen participantCount is the eligible-voter count, independent
+			// of how many PollVote children actually exist.
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({
+				pollStatus: PollStatus.OPEN,
+				audience: PollAudience.STUDENTS,
+				children: [vote],
+			});
+			// keeping the same question/option ids: closing a poll must not be blocked by the
+			// question-structure lock, only an actual structural change should be (see below)
+			const content = buildContent({
+				pollStatus: PollStatus.CLOSED,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options] };
+				}),
+			});
+			const users: UserWithBoardRoles[] = [
+				{ userId: 'student-1', roles: [BoardRoles.READER] },
+				{ userId: 'student-2', roles: [BoardRoles.READER] },
+				{ userId: 'teacher-1', roles: [BoardRoles.EDITOR] },
+			];
+
+			await service.updateContent(element, content, users);
+
+			expect(element.resultSnapshot?.participantCount).toBe(2);
+		});
+
+		it('should reject changing the audience once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it('should allow keeping the same audience once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				title: 'updated title',
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options] };
+				}),
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.title).toBe('updated title');
+		});
+
+		it('should reject removing a question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			// buildContent's default questions carry freshly generated ids, unrelated to the
+			// element's own questions - exactly the "removed every existing question and added a
+			// new one" case the structure lock exists for
+			const content = buildContent({ audience: PollAudience.STUDENTS });
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it("should reject changing an existing question's answer mode once votes have been cast", async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return {
+						...question,
+						options: [...question.options],
+						answerMode: PollAnswerMode.MULTIPLE,
+					};
+				}),
+			});
+			// the fixture's default question is SINGLE - guard against the fixture changing under us
+			expect(element.questions[0].answerMode).not.toBe(PollAnswerMode.MULTIPLE);
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it("should allow editing a question's text once votes have been cast", async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return {
+						...question,
+						text: 'edited question text',
+						options: [...question.options],
+					};
+				}),
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions[0].text).toBe('edited question text');
+		});
+
+		it('should allow changing the audience before any vote has been cast', async () => {
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [] });
+			const content = buildContent({ audience: PollAudience.TEACHERS });
+
+			await service.updateContent(element, content);
+
+			expect(element.audience).toBe(PollAudience.TEACHERS);
+		});
+
+		it('should reject removing an option once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [question.options[0]] };
+				}),
+			});
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
+		});
+
+		it('should allow appending a new question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: [
+					...element.questions.map((question) => {
+						return { ...question, options: [...question.options] };
+					}),
+					{
+						id: new ObjectId().toHexString(),
+						text: 'a new question',
+						answerMode: PollAnswerMode.SINGLE,
+						chartType: PollChartType.BAR,
+						options: [
+							{ id: new ObjectId().toHexString(), text: 'x' },
+							{ id: new ObjectId().toHexString(), text: 'y' },
+						],
+					},
+				],
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions).toHaveLength(2);
+			expect(element.questions[1].text).toBe('a new question');
+		});
+
+		it('should allow appending a new option to an existing question once votes have been cast', async () => {
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({ audience: PollAudience.STUDENTS, children: [vote] });
+			const content = buildContent({
+				audience: PollAudience.STUDENTS,
+				questions: element.questions.map((question) => {
+					return { ...question, options: [...question.options, { id: new ObjectId().toHexString(), text: 'c' }] };
+				}),
+			});
+
+			await service.updateContent(element, content);
+
+			expect(element.questions[0].options).toHaveLength(3);
+		});
+
+		it('should update opensAt and allowVoteChange', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({ opensAt: '2026-01-10T10:00:00.000Z', allowVoteChange: true });
+
+			await service.updateContent(element, content);
+
+			expect(element.opensAt).toEqual(new Date('2026-01-10T10:00:00.000Z'));
+			expect(element.allowVoteChange).toBe(true);
+		});
+
+		it('should default allowVoteChange to false when not provided', async () => {
+			const element = pollElementFactory.build({ allowVoteChange: true });
+			const content = buildContent();
+
+			await service.updateContent(element, content);
+
+			expect(element.allowVoteChange).toBe(false);
+		});
+
+		it('should reject an opensAt that is not before closesAt', async () => {
+			const element = pollElementFactory.build();
+			const content = buildContent({
+				opensAt: '2026-01-10T11:00:00.000Z',
+				closesAt: '2026-01-10T10:00:00.000Z',
+			});
+
+			await expect(service.updateContent(element, content)).rejects.toThrow();
 		});
 	});
 

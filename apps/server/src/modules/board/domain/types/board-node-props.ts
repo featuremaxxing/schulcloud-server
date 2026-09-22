@@ -4,6 +4,8 @@ import type { AnyBoardNode } from './any-board-node';
 import type { BoardExternalReference } from './board-external-reference';
 import type { BoardLayout } from './board-layout.enum';
 import type { ContentElementType } from './content-element-type.enum';
+import type { BoardRoles } from '../board-node-authorizable.do';
+import type { PollAnswer, PollAudience, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
 
 export interface BoardNodeProps {
 	id: EntityId;
@@ -31,6 +33,10 @@ export interface CardProps extends BoardNodeProps {
 	title?: string;
 	backgroundColor?: Colors;
 	height: number;
+}
+
+export interface PinnedCardProps extends BoardNodeProps {
+	referencedCardId: EntityId;
 }
 
 export type CollaborativeTextEditorElementProps = BoardNodeProps;
@@ -76,6 +82,35 @@ export interface DeletedElementProps extends BoardNodeProps {
 
 export interface H5pElementProps extends BoardNodeProps {
 	contentId?: string;
+}
+
+export interface PollElementProps extends BoardNodeProps {
+	title?: string;
+	questions: PollQuestion[];
+	isAnonymous: boolean;
+	showResultsLive: boolean;
+	pollStatus: PollStatus;
+	// When the poll starts accepting votes - undefined means "no gate, open immediately once
+	// pollStatus is OPEN" (see PollElement.isOpen), matching how closesAt already behaves.
+	opensAt?: Date;
+	closesAt?: Date;
+	resultSnapshot?: PollResultSnapshot;
+	// Who is eligible to vote - defaults to STUDENTS (see PollElement.audience getter) so
+	// existing polls keep behaving exactly as before this field existed.
+	audience?: PollAudience;
+	// Only meaningful when audience is CUSTOM.
+	audienceRoles?: BoardRoles[];
+	// Whether a voter may revise an already-submitted answer to an already-answered question.
+	// Defaults to false (see PollElement.allowVoteChange getter) - a question the voter hasn't
+	// answered yet (skipped, or added after they voted) stays answerable either way, this only
+	// locks answers that already exist. See poll-answer.ts mergePollAnswers.
+	allowVoteChange?: boolean;
+}
+
+export interface PollVoteProps extends BoardNodeProps {
+	userId: EntityId;
+	votedAt?: Date;
+	answers: PollAnswer[];
 }
 
 export interface AssignmentRubricCriterion {
@@ -155,6 +190,7 @@ export type AnyBoardNodeProps =
 	| AssignmentFeedbackProps
 	| AssignmentSubmissionProps
 	| CardProps
+	| PinnedCardProps
 	| CollaborativeTextEditorElementProps
 	| ColumnBoardProps
 	| ColumnProps
@@ -167,4 +203,6 @@ export type AnyBoardNodeProps =
 	| VideoConferenceElementProps
 	| DeletedElementProps
 	| H5pElementProps
+	| PollElementProps
+	| PollVoteProps
 	| MediaBoardNodeProps;

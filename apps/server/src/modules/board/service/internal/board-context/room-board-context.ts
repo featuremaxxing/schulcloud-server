@@ -34,9 +34,9 @@ export class RoomBoardContext implements PreparedBoardContext {
 		// Room memberships carry no user names or school roles - the resolver would otherwise
 		// have to load them (a separate DB round-trip, UserService.getUserEntitiesWithRoles) on
 		// every single board-node access (getBoardAuthorizable runs on every board operation,
-		// including every socket message), even though most callers (e.g. the assignment teacher
-		// overview, isStudentMember) never read names/school roles at all. Deferred to a loader
-		// instead, called at most once, only if getUsersWithBoardRoles() is actually invoked.
+		// including every socket message), even though most callers never read names/school
+		// roles at all (e.g. the assignment teacher overview, isStudentMember, do). Deferred to a
+		// loader instead, called at most once, only if getUsersWithBoardRoles() is actually invoked.
 		private readonly loadUserInfo: () => Promise<
 			Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
 		> = () =>
