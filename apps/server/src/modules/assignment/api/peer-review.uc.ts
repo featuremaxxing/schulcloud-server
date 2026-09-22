@@ -219,8 +219,12 @@ export class PeerReviewUc {
 		return Promise.all(
 			eligibleReviews.map(async (review): Promise<PeerReviewTaskResult> => {
 				try {
+					// Only the submission's own files list under submissionId - teacher feedback
+					// now lives on a separate AssignmentFeedback child node the reviewer has no
+					// access to at all (see board-node.rule.ts's hasPermissionForAssignmentFeedbackFile),
+					// so no filtering by name is needed here any more.
 					const files = await this.filesStorageClientAdapterService.listFilesOfParent(review.submissionId);
-					const file = pickLatestNonFeedbackFile(files);
+					const file = pickLatestFile(files);
 					return { review, file };
 				} catch (error) {
 					this.logger.warning(new AssignmentFilesStorageErrorLoggable(review.submissionId, error as Error));
@@ -318,13 +322,10 @@ export class PeerReviewUc {
 	}
 }
 
-const FEEDBACK_PREFIX = 'feedback-';
-
-const pickLatestNonFeedbackFile = (files: FileDto[]): FileDto | undefined => {
-	const candidates = files.filter((file) => !file.name.startsWith(FEEDBACK_PREFIX));
-	if (candidates.length === 0) {
+const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
+	if (files.length === 0) {
 		return undefined;
 	}
 
-	return [...candidates].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
+	return [...files].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
 };

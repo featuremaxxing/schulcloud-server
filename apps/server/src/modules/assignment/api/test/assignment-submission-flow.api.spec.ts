@@ -702,10 +702,18 @@ describe('assignment submission flow (api)', () => {
 
 			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
 			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
-			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([
-				buildFileDto(submissionId),
-				buildAudioFileDto(submissionId),
-			]);
+
+			// the teacher's audio now lives on its own AssignmentFeedback child node - it must
+			// exist before the teacher can be shown as having attached anything to it
+			const containerResponse = await teacherClient.post(`submissions/${submissionId}/feedback-container`);
+			const { feedbackContainerId } = containerResponse.body as { feedbackContainerId: string };
+
+			filesStorageClientAdapterService.listFilesOfParent.mockImplementation((parentId: string) => {
+				if (parentId === feedbackContainerId) {
+					return Promise.resolve([buildAudioFileDto(feedbackContainerId)]);
+				}
+				return Promise.resolve([buildFileDto(submissionId)]);
+			});
 			await studentClient.patch(`submissions/${submissionId}/submit`);
 
 			// teacher sees both
@@ -729,17 +737,24 @@ describe('assignment submission flow (api)', () => {
 			expect(ownAfter.feedbackAudio?.name).toEqual('feedback-audio-1.webm');
 		});
 
-		it('should reject submitting when only an audio file (no submission document) exists', async () => {
+		// A5 regression: the submission node no longer classifies its own files by name (that
+		// was the bug - a student-chosen name could accidentally, or deliberately, shadow the
+		// teacher's feedback). A student's own upload is accepted regardless of what it is
+		// named, including a name that used to collide with the feedback prefix.
+		it('should accept a submission document even if its name looks like a feedback file', async () => {
 			const { studentAccount, assignmentElementNode } = await setup();
 
 			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
 			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
 			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
 
-			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([buildAudioFileDto(submissionId)]);
+			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([
+				buildAudioFileDto(submissionId, 'feedback-notizen.pdf'),
+			]);
 			const response = await studentClient.patch(`submissions/${submissionId}/submit`);
 
-			expect(response.status).toEqual(409);
+			expect(response.status).toEqual(200);
+			expect((response.body as AssignmentSubmissionResponse).file?.name).toEqual('feedback-notizen.pdf');
 		});
 	});
 
@@ -762,11 +777,19 @@ describe('assignment submission flow (api)', () => {
 
 			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
 			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
-			filesStorageClientAdapterService.listFilesOfParent.mockResolvedValue([
-				buildFileDto(submissionId),
-				buildFeedbackFileDto(submissionId, 'feedback-pdf-1.pdf'),
-				buildFeedbackFileDto(submissionId, 'feedback-img-1.png'),
-			]);
+
+			const containerResponse = await teacherClient.post(`submissions/${submissionId}/feedback-container`);
+			const { feedbackContainerId } = containerResponse.body as { feedbackContainerId: string };
+
+			filesStorageClientAdapterService.listFilesOfParent.mockImplementation((parentId: string) => {
+				if (parentId === feedbackContainerId) {
+					return Promise.resolve([
+						buildFeedbackFileDto(feedbackContainerId, 'feedback-pdf-1.pdf'),
+						buildFeedbackFileDto(feedbackContainerId, 'feedback-img-1.png'),
+					]);
+				}
+				return Promise.resolve([buildFileDto(submissionId)]);
+			});
 			await studentClient.patch(`submissions/${submissionId}/submit`);
 
 			// the teacher sees the corrections immediately, newest first
@@ -791,6 +814,39 @@ describe('assignment submission flow (api)', () => {
 			const ownListAfter = await studentClient.get(`${assignmentElementNode.id}/submissions`);
 			const ownAfter = (ownListAfter.body as AssignmentSubmissionListResponse).submissions[0];
 			expect(ownAfter.feedbackFiles?.map((file) => file.name)).toEqual(['feedback-pdf-1.pdf', 'feedback-img-1.png']);
+		});
+	});
+
+	describe('the feedback container endpoint', () => {
+		it('should be idempotent - repeated calls return the same container', async () => {
+			const { teacherAccount, studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const first = await teacherClient.post(`submissions/${submissionId}/feedback-container`);
+			const second = await teacherClient.post(`submissions/${submissionId}/feedback-container`);
+
+			expect(first.status).toEqual(200);
+			expect(second.status).toEqual(200);
+			expect((second.body as { feedbackContainerId: string }).feedbackContainerId).toEqual(
+				(first.body as { feedbackContainerId: string }).feedbackContainerId
+			);
+		});
+
+		it('should reject a student (non-editor) from creating a feedback container', async () => {
+			const { studentAccount, assignmentElementNode } = await setup();
+
+			const studentClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAccount);
+			const createResponse = await studentClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			const response = await studentClient.post(`submissions/${submissionId}/feedback-container`);
+
+			expect(response.status).toEqual(403);
 		});
 	});
 

@@ -1,4 +1,5 @@
 export * from './assignment-element.url.params';
+export * from './assignment-feedback-container.response';
 export * from './assignment-list.query.params';
 export * from './assignment-list.response';
 export * from './assignment-peer-review-summary.response';

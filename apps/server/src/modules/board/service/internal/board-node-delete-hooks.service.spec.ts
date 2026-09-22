@@ -9,6 +9,7 @@ import { ContextExternalToolService } from '@modules/tool/context-external-tool'
 import { contextExternalToolFactory } from '@modules/tool/context-external-tool/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
+	assignmentFeedbackFactory,
 	assignmentSubmissionFactory,
 	collaborativeTextEditorFactory,
 	drawingElementFactory,
@@ -266,6 +267,24 @@ describe(BoardNodeDeleteHooksService.name, () => {
 				await service.afterDelete(boardNode);
 
 				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
+			});
+		});
+
+		describe('when called with an assignment submission that has an AssignmentFeedback child', () => {
+			const setup = () => {
+				const feedback = assignmentFeedbackFactory.build();
+				const boardNode = assignmentSubmissionFactory.build({ children: [feedback] });
+
+				return { boardNode, feedback };
+			};
+
+			it('should delete the files of both the submission and its feedback child', async () => {
+				const { boardNode, feedback } = setup();
+
+				await service.afterDelete(boardNode);
+
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(feedback.id);
 			});
 		});
 	});

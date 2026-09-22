@@ -1,6 +1,10 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { FileDto, FileRecordParentType } from '@infra/files-storage-amqp-client';
-import { assignmentElementFactory, assignmentSubmissionFactory } from '@modules/board/testing';
+import {
+	assignmentElementFactory,
+	assignmentFeedbackFactory,
+	assignmentSubmissionFactory,
+} from '@modules/board/testing';
 import { AssignmentSubmissionResponseMapper } from './assignment-submission-response.mapper';
 import { type AssignmentSubmissionEntry, type AssignmentSubmissionsListResult } from '../assignment.uc';
 
@@ -141,6 +145,26 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			expect(response.gradedByFirstName).toBeUndefined();
 			expect(response.gradedByLastName).toBeUndefined();
 		});
+
+		it('should withhold the feedback container id before the submission has been returned', () => {
+			const feedback = assignmentFeedbackFactory.build();
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined, children: [feedback] });
+			const entry = buildEntry({ submission });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.feedbackContainerId).toBeNull();
+		});
+
+		it('should reveal the feedback container id once the submission has been returned', () => {
+			const feedback = assignmentFeedbackFactory.build();
+			const submission = assignmentSubmissionFactory.build({ returnedAt: new Date(), children: [feedback] });
+			const entry = buildEntry({ submission });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.feedbackContainerId).toBe(feedback.id);
+		});
 	});
 
 	describe('mapForTeacher', () => {
@@ -188,6 +212,25 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 
 			expect(response.gradedByFirstName).toBeUndefined();
 			expect(response.gradedByLastName).toBeUndefined();
+		});
+
+		it('should include the feedback container id immediately, before any return', () => {
+			const feedback = assignmentFeedbackFactory.build();
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined, children: [feedback] });
+			const entry = buildEntry({ submission });
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.feedbackContainerId).toBe(feedback.id);
+		});
+
+		it('should leave the feedback container id null when no feedback has been attached yet', () => {
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
+			const entry = buildEntry({ submission });
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.feedbackContainerId).toBeNull();
 		});
 	});
 

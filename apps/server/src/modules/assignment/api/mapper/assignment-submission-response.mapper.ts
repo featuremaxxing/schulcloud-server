@@ -1,4 +1,4 @@
-import { AssignmentStatus, type AssignmentSubmissionCriterionPoints } from '@modules/board';
+import { AssignmentStatus, type AssignmentSubmissionCriterionPoints, isAssignmentFeedback } from '@modules/board';
 import { type FileDto } from '@infra/files-storage-amqp-client';
 import {
 	AssignmentCriterionPointsResponse,
@@ -37,6 +37,8 @@ export class AssignmentSubmissionResponseMapper {
 			peerReviews: entry.peerReviews ? new AssignmentPeerReviewSummaryResponse(entry.peerReviews) : null,
 			gradedByFirstName: entry.gradedBy?.firstName,
 			gradedByLastName: entry.gradedBy?.lastName,
+			// always present once it exists - the teacher's own view is never gated
+			feedbackContainerId: feedbackContainerIdOf(entry.submission),
 		});
 	}
 
@@ -65,6 +67,10 @@ export class AssignmentSubmissionResponseMapper {
 			fileVersions: mapFileVersions(entry.fileVersions),
 			// follows the same release rule as the flat points total it sums up to
 			criterionPoints: isReturned ? mapCriterionPoints(entry.submission?.criterionPoints) : null,
+			// same release rule as feedbackAudio/feedbackFiles - the id is meaningless to the
+			// owner before then anyway, since hasPermissionForAssignmentFeedbackFile would
+			// reject a read of it regardless
+			feedbackContainerId: isReturned ? feedbackContainerIdOf(entry.submission) : null,
 		});
 	}
 
@@ -109,6 +115,9 @@ export class AssignmentSubmissionResponseMapper {
 		});
 	}
 }
+
+const feedbackContainerIdOf = (submission: AssignmentSubmissionEntry['submission']): string | null =>
+	submission?.children.find(isAssignmentFeedback)?.id ?? null;
 
 const mapFile = (file: AssignmentSubmissionEntry['file']): AssignmentSubmissionFileResponse | null => {
 	if (!file) {

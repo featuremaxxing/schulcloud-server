@@ -2,6 +2,7 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentReviewEntity,
 	AssignmentReviewRepo,
 	AssignmentRubricCriterion,
@@ -15,6 +16,7 @@ import {
 	BoardNodeService,
 	BoardPublicApiConfig,
 	isAssignmentElement,
+	isAssignmentFeedback,
 	isStudentMember,
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
@@ -194,7 +196,10 @@ export class AssignmentUc {
 		this.checkFeatureEnabled();
 
 		const user = await this.authorizationService.getUserWithPermissions(userId);
-		const element = await this.boardNodeService.findByClassAndId(AssignmentElement, elementId, 1);
+		// depth 2, not 1: submissions are level 1 below the element, and their AssignmentFeedback
+		// child (if any) is level 2 - getSubmissionFiles below needs that child already loaded to
+		// find the teacher's feedback files.
+		const element = await this.boardNodeService.findByClassAndId(AssignmentElement, elementId, 2);
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('viewAssignmentSubmissions', user, boardNodeAuthorizable));
@@ -212,7 +217,7 @@ export class AssignmentUc {
 			const entries = await Promise.all(
 				students.map(async (student): Promise<AssignmentSubmissionEntry> => {
 					const submission = submissions.find((s) => s.userId === student.userId);
-					const files = submission ? await this.getSubmissionFiles(submission.id) : {};
+					const files = submission ? await this.getSubmissionFiles(submission) : {};
 					const gradedByUser = submission?.gradedBy
 						? boardNodeAuthorizable.users.find((candidate) => candidate.userId === submission.gradedBy)
 						: undefined;
@@ -242,7 +247,7 @@ export class AssignmentUc {
 		}
 
 		const ownSubmission = submissions.find((s) => s.userId === userId);
-		const ownFiles = ownSubmission ? await this.getSubmissionFiles(ownSubmission.id) : {};
+		const ownFiles = ownSubmission ? await this.getSubmissionFiles(ownSubmission) : {};
 
 		return {
 			element,
@@ -301,9 +306,9 @@ export class AssignmentUc {
 		const now = new Date();
 		this.assertSubmittable(element, now);
 
-		let files: FileDto[];
+		let submissionFiles: FileDto[];
 		try {
-			files = await this.filesStorageClientAdapterService.listFilesOfParent(submission.id);
+			submissionFiles = await this.filesStorageClientAdapterService.listFilesOfParent(submission.id);
 		} catch (error) {
 			// the file storage RPC fails as a plain 500 upstream - surface a deliberate,
 			// dedicated error instead of an unlabelled internal server error
@@ -313,7 +318,7 @@ export class AssignmentUc {
 			);
 		}
 
-		if (pickLatestSubmissionFile(files) === undefined) {
+		if (pickLatestFile(submissionFiles) === undefined) {
 			throw new ConflictException('Please upload a file before submitting.');
 		}
 
@@ -324,12 +329,15 @@ export class AssignmentUc {
 		}
 		await this.boardNodeService.save(submission);
 
+		// submission was loaded via findByClassAndId without a depth limit, so its
+		// AssignmentFeedback child (if it already has one) is loaded too.
+		const feedback = await this.getFeedbackFiles(submission);
+
 		return {
 			submission,
-			file: pickLatestSubmissionFile(files),
-			feedbackAudio: pickLatestFeedbackAudio(files),
-			feedbackFiles: pickFeedbackFiles(files),
-			fileVersions: pickSubmissionFileVersions(files),
+			file: pickLatestFile(submissionFiles),
+			...feedback,
+			fileVersions: pickSubmissionFileVersions(submissionFiles),
 		};
 	}
 
@@ -377,7 +385,7 @@ export class AssignmentUc {
 		submission.gradedBy = userId;
 		await this.boardNodeService.save(submission);
 
-		const files = await this.getSubmissionFiles(submission.id);
+		const files = await this.getSubmissionFiles(submission);
 
 		return {
 			submission,
@@ -403,7 +411,7 @@ export class AssignmentUc {
 		this.applyReturn(submission, userId, body);
 		await this.boardNodeService.save(submission);
 
-		const files = await this.getSubmissionFiles(submission.id);
+		const files = await this.getSubmissionFiles(submission);
 
 		return {
 			submission,
@@ -563,29 +571,78 @@ export class AssignmentUc {
 		}
 	}
 
-	private async getSubmissionFiles(parentId: EntityId): Promise<{
+	// submission must already have its children loaded (either via an unbounded-depth
+	// findByClassAndId, or an explicit depth that reaches one level below it) so its
+	// AssignmentFeedback child, if any, can be found without an extra board-node fetch.
+	private async getSubmissionFiles(submission: AssignmentSubmission): Promise<{
 		submissionFile?: FileDto;
 		feedbackAudio?: FileDto;
 		feedbackFiles?: FileDto[];
 		fileVersions?: FileDto[];
 	}> {
-		try {
-			const files = await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
+		const submissionFiles = await this.listFilesSafely(submission.id);
+		const feedback = await this.getFeedbackFiles(submission);
 
-			return {
-				submissionFile: pickLatestSubmissionFile(files),
-				feedbackAudio: pickLatestFeedbackAudio(files),
-				feedbackFiles: pickFeedbackFiles(files),
-				fileVersions: pickSubmissionFileVersions(files),
-			};
+		return {
+			submissionFile: pickLatestFile(submissionFiles),
+			fileVersions: pickSubmissionFileVersions(submissionFiles),
+			...feedback,
+		};
+	}
+
+	// Split out from getSubmissionFiles so submit() - which lists the submission's own files
+	// itself, with different (throwing) error handling - can still reuse the feedback half.
+	private async getFeedbackFiles(
+		submission: AssignmentSubmission
+	): Promise<{ feedbackAudio?: FileDto; feedbackFiles?: FileDto[] }> {
+		const feedback = submission.children.find((child): child is AssignmentFeedback => isAssignmentFeedback(child));
+		if (!feedback) {
+			return {};
+		}
+
+		const files = await this.listFilesSafely(feedback.id);
+
+		return {
+			feedbackAudio: pickLatestFeedbackAudio(files),
+			feedbackFiles: pickFeedbackFiles(files),
+		};
+	}
+
+	private async listFilesSafely(parentId: EntityId): Promise<FileDto[]> {
+		try {
+			return await this.filesStorageClientAdapterService.listFilesOfParent(parentId);
 		} catch (error) {
 			// A broken file record (e.g. from an interrupted upload) must not take down the
 			// whole submission view - the file storage RPC errors would surface as a 500
 			// here. Log it and present the submission without its file instead.
 			this.logger.warning(new AssignmentFilesStorageErrorLoggable(parentId, error as Error));
 
-			return {};
+			return [];
 		}
+	}
+
+	// Idempotent: returns the existing AssignmentFeedback child if the caller (a teacher)
+	// already attached feedback before, otherwise creates one. Created lazily - a submission
+	// with no teacher feedback yet never gets this node at all, keeping listSubmissions'
+	// per-student file lookups to one RPC instead of two for the common case.
+	public async ensureFeedbackContainer(userId: EntityId, submissionId: EntityId): Promise<AssignmentFeedback> {
+		this.checkFeatureEnabled();
+
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const submission = await this.boardNodeService.findByClassAndId(AssignmentSubmission, submissionId);
+		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(submission);
+
+		throwForbiddenIfFalse(this.boardNodeRule.can('gradeAssignmentSubmission', user, boardNodeAuthorizable));
+
+		const existing = submission.children.find((child): child is AssignmentFeedback => isAssignmentFeedback(child));
+		if (existing) {
+			return existing;
+		}
+
+		const feedback = this.boardNodeFactory.buildAssignmentFeedback();
+		await this.boardNodeService.addToParent(submission, feedback);
+
+		return feedback;
 	}
 
 	// Advisory only - averages submitted reviews for one submission, never touches
@@ -637,16 +694,15 @@ export class AssignmentUc {
 	}
 }
 
-// A submission parent holds several kinds of files: the student's submission document,
-// the teacher's audio recording and the teacher's annotated corrections (PDF/image).
-// The file storage RPC does not expose mime types, so feedback files are identified by
-// the name prefixes the client sets (`feedback-audio-`, `feedback-pdf-`,
-// `feedback-img-`). If more than one file of a kind exists (e.g. a race between two
-// uploads), the most recently created one wins for the singular fields.
-const FEEDBACK_PREFIX = 'feedback-';
+// A submission node and its AssignmentFeedback child (see assignment-feedback.do.ts) are
+// separate file storage parents now, so "is this the student's file or the teacher's" is
+// answered by which node a file lists under - never by its name. Within the feedback
+// node's own files, the audio recording is still told apart from the annotated
+// corrections (PDF/image) by the name prefix the client sets (`feedback-audio-` vs
+// `feedback-pdf-`/`feedback-img-`), since the file storage RPC does not expose mime
+// types. If more than one file of a kind exists (e.g. a race between two uploads), the
+// most recently created one wins for the singular fields.
 const FEEDBACK_AUDIO_PREFIX = 'feedback-audio-';
-
-const isFeedbackFile = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_PREFIX);
 
 const isFeedbackAudio = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_AUDIO_PREFIX);
 
@@ -669,28 +725,20 @@ const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 const normalizeFeedbackComment = (feedbackComment: string | null | undefined): string | undefined =>
 	feedbackComment ?? undefined;
 
-const pickLatestSubmissionFile = (files: FileDto[]): FileDto | undefined =>
-	pickLatestFile(files.filter((file) => !isFeedbackFile(file)));
-
 const pickLatestFeedbackAudio = (files: FileDto[]): FileDto | undefined =>
 	pickLatestFile(files.filter(isFeedbackAudio));
 
 const pickFeedbackFiles = (files: FileDto[]): FileDto[] => {
-	const sorted = [...files.filter(isFeedbackFile)].sort(
-		(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
-	);
+	const sorted = [...files].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
 	return sorted;
 };
 
 // Every submission document version the student has ever uploaded (including the current
-// one), newest first. Nothing is ever deleted on resubmission, so this is simply every
-// non-feedback file for the submission - the mapper turns this into 1-based version numbers,
-// oldest = v1.
+// one), newest first. Nothing is ever deleted on resubmission, and the submission node no
+// longer holds anything else - the mapper turns this into 1-based version numbers, oldest = v1.
 const pickSubmissionFileVersions = (files: FileDto[]): FileDto[] => {
-	const sorted = [...files.filter((file) => !isFeedbackFile(file))].sort(
-		(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
-	);
+	const sorted = [...files].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
 	return sorted;
 };

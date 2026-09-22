@@ -10,6 +10,7 @@ export { BoardModule } from './board.module';
 export {
 	AnyBoardNode,
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentRubricCriterion,
 	AssignmentStatus,
 	AssignmentSubmission,
@@ -25,6 +26,7 @@ export {
 	Column,
 	ColumnBoard,
 	isAssignmentElement,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
 	isColumnBoard,
 	// modules/assignment/api/assignment.uc.ts

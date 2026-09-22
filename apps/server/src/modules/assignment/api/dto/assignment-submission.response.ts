@@ -67,6 +67,7 @@ export class AssignmentSubmissionResponse {
 		this.peerReviews = props.peerReviews;
 		this.gradedByFirstName = props.gradedByFirstName;
 		this.gradedByLastName = props.gradedByLastName;
+		this.feedbackContainerId = props.feedbackContainerId;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -153,4 +154,13 @@ export class AssignmentSubmissionResponse {
 			'last name of the teacher who graded this submission - only present for the teacher view, never for the submission owner',
 	})
 	gradedByLastName?: string;
+
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		pattern: bsonStringPattern,
+		description:
+			'id of the AssignmentFeedback node holding teacher feedback files, once one exists - upload target for new feedback (teacher view), or where the released feedback files can be read from (owner view, only once returned)',
+	})
+	feedbackContainerId?: string | null;
 }

@@ -17,6 +17,7 @@ import { ApiValidationError } from '@shared/common/error';
 import { AssignmentUc } from './assignment.uc';
 import {
 	AssignmentElementUrlParams,
+	AssignmentFeedbackContainerResponse,
 	AssignmentListQueryParams,
 	AssignmentListResponse,
 	AssignmentSubmissionListResponse,
@@ -113,6 +114,24 @@ export class AssignmentController {
 		@CurrentUser() currentUser: ICurrentUser
 	): Promise<void> {
 		await this.assignmentUc.deleteOwnSubmission(currentUser.userId, urlParams.submissionId);
+	}
+
+	@ApiOperation({
+		summary:
+			'Get (or, if none exists yet, create) the container a teacher uploads feedback files (audio, annotated corrections) for a submission to.',
+	})
+	@ApiResponse({ status: 200, type: AssignmentFeedbackContainerResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(200)
+	@Post('submissions/:submissionId/feedback-container')
+	public async ensureFeedbackContainer(
+		@Param() urlParams: AssignmentSubmissionUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<AssignmentFeedbackContainerResponse> {
+		const feedback = await this.assignmentUc.ensureFeedbackContainer(currentUser.userId, urlParams.submissionId);
+
+		return new AssignmentFeedbackContainerResponse({ feedbackContainerId: feedback.id });
 	}
 
 	@ApiOperation({
