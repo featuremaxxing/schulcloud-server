@@ -14,7 +14,7 @@ import { CopyElementType, type CopyStatus, CopyStatusEnum } from '../../copy-hel
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
 import { BoardNodeFactory } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
+import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, LearningRoomService } from '../service';
 import { boardNodeAuthorizableFactory, columnBoardFactory, columnFactory } from '../testing';
 import { BoardUc } from './board.uc';
 
@@ -82,6 +82,10 @@ describe(BoardUc.name, () => {
 				{
 					provide: BoardNodeRule,
 					useValue: createMock<BoardNodeRule>(),
+				},
+				{
+					provide: LearningRoomService,
+					useValue: createMock<LearningRoomService>(),
 				},
 			],
 		}).compile();

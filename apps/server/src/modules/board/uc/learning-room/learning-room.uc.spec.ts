@@ -1,6 +1,5 @@
 import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { AuthorizationService } from '@modules/authorization';
-import { BoardContextApiHelperService } from '@modules/board-context';
 import { BoardNodeRule } from '@modules/board/authorisation/board-node.rule';
 import { User } from '@modules/user/repo';
 import { userFactory } from '@modules/user/testing';
@@ -12,6 +11,7 @@ import { BOARD_CONFIG_TOKEN, BoardConfig } from '../../board.config';
 import { BoardExternalReferenceType, BoardNodeFactory, Card, type BoardNodeAuthorizable } from '../../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, LearningRoomService } from '../../service';
 import { cardFactory, columnBoardFactory, columnFactory, pinnedCardFactory } from '../../testing';
+import { BoardUc } from '../board.uc';
 import { LearningRoomUc } from './learning-room.uc';
 
 describe(LearningRoomUc.name, () => {
@@ -24,7 +24,7 @@ describe(LearningRoomUc.name, () => {
 	let boardNodeService: DeepMocked<BoardNodeService>;
 	let boardNodeFactory: DeepMocked<BoardNodeFactory>;
 	let learningRoomService: DeepMocked<LearningRoomService>;
-	let boardContextApiHelperService: DeepMocked<BoardContextApiHelperService>;
+	let boardUc: DeepMocked<BoardUc>;
 	let config: BoardConfig;
 
 	beforeAll(async () => {
@@ -39,7 +39,7 @@ describe(LearningRoomUc.name, () => {
 				{ provide: BoardNodeService, useValue: createMock<BoardNodeService>() },
 				{ provide: BoardNodeFactory, useValue: createMock<BoardNodeFactory>() },
 				{ provide: LearningRoomService, useValue: createMock<LearningRoomService>() },
-				{ provide: BoardContextApiHelperService, useValue: createMock<BoardContextApiHelperService>() },
+				{ provide: BoardUc, useValue: createMock<BoardUc>() },
 				{ provide: BOARD_CONFIG_TOKEN, useValue: new BoardConfig() },
 			],
 		}).compile();
@@ -51,7 +51,7 @@ describe(LearningRoomUc.name, () => {
 		boardNodeService = module.get(BoardNodeService);
 		boardNodeFactory = module.get(BoardNodeFactory);
 		learningRoomService = module.get(LearningRoomService);
-		boardContextApiHelperService = module.get(BoardContextApiHelperService);
+		boardUc = module.get(BoardUc);
 		config = module.get(BOARD_CONFIG_TOKEN);
 	});
 
@@ -145,131 +145,23 @@ describe(LearningRoomUc.name, () => {
 	});
 
 	describe('getLearningRoom', () => {
-		const setup = () => {
-			const user = userFactory.build();
+		// the personal board handling itself lives in BoardUc.findBoard, because the
+		// collaboration socket loads boards through that path as well
+		it('should create the board and hand it to the shared board path', async () => {
 			const board = columnBoardFactory.build();
-			const column = columnFactory.build();
-			board.addChild(column);
-
-			const readableCard = cardFactory.build();
-			const lostCard = cardFactory.build();
-			const readablePin = pinnedCardFactory.build({ referencedCardId: readableCard.id });
-			const lostPin = pinnedCardFactory.build({ referencedCardId: lostCard.id });
-			column.addChild(readablePin);
-			column.addChild(lostPin);
-
-			authorizationService.getUserWithPermissions.mockResolvedValue(user);
-			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({} as BoardNodeAuthorizable);
 			learningRoomService.getOrCreatePersonalLearningRoomOfUser.mockResolvedValue(board);
-			learningRoomService.findPinnedCards.mockReturnValue([readablePin, lostPin]);
-			boardNodeService.findByClassAndIds.mockResolvedValue([readableCard, lostCard] as never);
-			boardNodeRule.listAllowedOperations.mockReturnValue({} as Record<ReturnType<typeof String>, boolean> as never);
+			const expected = {
+				board,
+				features: [],
+				allowedOperations: {} as never,
+				pinnedCardOrigins: new Map<string, string>(),
+			};
+			boardUc.findBoard.mockResolvedValue(expected);
 
-			// only the readable card passes the rule
-			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
-				{ boardNode: readableCard } as BoardNodeAuthorizable,
-				{ boardNode: lostCard } as BoardNodeAuthorizable,
-			]);
-			boardNodeRule.can.mockImplementation(
-				(_operation, _user, authorizable) => authorizable.boardNode.id === readableCard.id
-			);
+			const result = await uc.getLearningRoom('userId');
 
-			return { readableCard, lostCard, readablePin, lostPin };
-		};
-
-		it('should hide board actions that make no sense in a personal room', async () => {
-			setup();
-			boardNodeRule.listAllowedOperations.mockReturnValue({
-				deleteBoard: true,
-				copyBoard: true,
-				shareBoard: true,
-				updateBoardTitle: true,
-				updateBoardVisibility: true,
-				updateReadersCanEditSetting: true,
-				createCard: true,
-			} as unknown as Record<string, boolean> as never);
-
-			const { allowedOperations } = await uc.getLearningRoom('userId');
-
-			// deleting the board would take every pinned card with it
-			expect(allowedOperations.deleteBoard).toBe(false);
-			expect(allowedOperations.copyBoard).toBe(false);
-			expect(allowedOperations.shareBoard).toBe(false);
-			expect(allowedOperations.updateBoardTitle).toBe(false);
-			expect(allowedOperations.updateBoardVisibility).toBe(false);
-			expect(allowedOperations.updateReadersCanEditSetting).toBe(false);
-			// working with the content stays untouched
-			expect(allowedOperations.createCard).toBe(true);
-		});
-
-		it('should drop pointers whose card the user can no longer reach', async () => {
-			const { lostPin } = setup();
-
-			await uc.getLearningRoom('userId');
-
-			expect(boardNodeService.delete).toHaveBeenCalledWith(lostPin);
-			expect(boardNodeService.delete).toHaveBeenCalledTimes(1);
-		});
-
-		it('should map each remaining pointer to the name of its source room', async () => {
-			const { readablePin } = setup();
-			boardContextApiHelperService.getParentsOfElement.mockResolvedValue([
-				{ id: 'roomId', name: 'Mathe 9b', type: BoardExternalReferenceType.Room },
-			] as never);
-
-			const { pinnedCardOrigins } = await uc.getLearningRoom('userId');
-
-			expect(pinnedCardOrigins.get(readablePin.id)).toBe('Mathe 9b');
-		});
-
-		it('should resolve each source board only once', async () => {
-			const user = userFactory.build();
-
-			// two cards sitting in the same source board, so their rootId matches
-			const sourceBoard = columnBoardFactory.build();
-			const sourceColumn = columnFactory.build();
-			sourceBoard.addChild(sourceColumn);
-			const firstCard = cardFactory.build();
-			const secondCard = cardFactory.build();
-			sourceColumn.addChild(firstCard);
-			sourceColumn.addChild(secondCard);
-
-			const learningRoom = columnBoardFactory.build();
-			const column = columnFactory.build();
-			learningRoom.addChild(column);
-			const firstPin = pinnedCardFactory.build({ referencedCardId: firstCard.id });
-			const secondPin = pinnedCardFactory.build({ referencedCardId: secondCard.id });
-			column.addChild(firstPin);
-			column.addChild(secondPin);
-
-			authorizationService.getUserWithPermissions.mockResolvedValue(user);
-			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({} as BoardNodeAuthorizable);
-			learningRoomService.getOrCreatePersonalLearningRoomOfUser.mockResolvedValue(learningRoom);
-			learningRoomService.findPinnedCards.mockReturnValue([firstPin, secondPin]);
-			boardNodeService.findByClassAndIds.mockResolvedValue([firstCard, secondCard] as never);
-			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
-				{ boardNode: firstCard } as BoardNodeAuthorizable,
-				{ boardNode: secondCard } as BoardNodeAuthorizable,
-			]);
-			boardNodeRule.can.mockReturnValue(true);
-			boardContextApiHelperService.getParentsOfElement.mockResolvedValue([
-				{ id: 'roomId', name: 'Mathe 9b', type: BoardExternalReferenceType.Room },
-			] as never);
-
-			const { pinnedCardOrigins } = await uc.getLearningRoom('userId');
-
-			expect(boardContextApiHelperService.getParentsOfElement).toHaveBeenCalledTimes(1);
-			expect(pinnedCardOrigins.get(firstPin.id)).toBe('Mathe 9b');
-			expect(pinnedCardOrigins.get(secondPin.id)).toBe('Mathe 9b');
-		});
-
-		it('should leave the chip empty when the source cannot be resolved', async () => {
-			const { readablePin } = setup();
-			boardContextApiHelperService.getParentsOfElement.mockRejectedValue(new Error('gone'));
-
-			const { pinnedCardOrigins } = await uc.getLearningRoom('userId');
-
-			expect(pinnedCardOrigins.get(readablePin.id)).toBeUndefined();
+			expect(boardUc.findBoard).toHaveBeenCalledWith('userId', board.id);
+			expect(result).toBe(expected);
 		});
 	});
 
