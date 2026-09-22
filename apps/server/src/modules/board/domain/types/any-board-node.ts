@@ -5,6 +5,7 @@ import type { ColumnBoard } from '../colum-board.do';
 import type { Column } from '../column.do';
 import type { AnyMediaBoardNode } from '../media-board';
 import type { PinnedCard } from '../pinned-card.do';
+import type { PollVote } from '../poll-vote.do';
 import type { AnyContentElement } from './any-content-element';
 
 export type AnyBoardNode =
@@ -15,4 +16,5 @@ export type AnyBoardNode =
 	| CollaborativeTextEditorElement
 	| Column
 	| ColumnBoard
-	| PinnedCard;
+	| PinnedCard
+	| PollVote;

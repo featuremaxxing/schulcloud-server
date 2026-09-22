@@ -21,7 +21,7 @@ describe(CourseBoardContext.name, () => {
 
 	describe('getUsersWithBoardRoles', () => {
 		describe('when course has no users', () => {
-			it('should return empty array', () => {
+			it('should return empty array', async () => {
 				const data: CourseBoardContextData = {
 					teachers: [],
 					substitutionTeachers: [],
@@ -29,14 +29,14 @@ describe(CourseBoardContext.name, () => {
 				};
 
 				const context = new CourseBoardContext(data);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([]);
 			});
 		});
 
 		describe('when course has teachers', () => {
-			it('should return teachers with EDITOR and ADMIN roles', () => {
+			it('should return teachers with EDITOR and ADMIN roles', async () => {
 				const teacherId = new ObjectId().toHexString();
 				const data: CourseBoardContextData = {
 					teachers: [{ userId: teacherId, firstName: 'John', lastName: 'Doe' }],
@@ -45,7 +45,7 @@ describe(CourseBoardContext.name, () => {
 				};
 
 				const context = new CourseBoardContext(data);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -60,7 +60,7 @@ describe(CourseBoardContext.name, () => {
 		});
 
 		describe('when course has substitution teachers', () => {
-			it('should return substitution teachers with EDITOR and ADMIN roles', () => {
+			it('should return substitution teachers with EDITOR and ADMIN roles', async () => {
 				const subTeacherId = new ObjectId().toHexString();
 				const data: CourseBoardContextData = {
 					teachers: [],
@@ -69,7 +69,7 @@ describe(CourseBoardContext.name, () => {
 				};
 
 				const context = new CourseBoardContext(data);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -84,7 +84,7 @@ describe(CourseBoardContext.name, () => {
 		});
 
 		describe('when course has students', () => {
-			it('should return students with READER role', () => {
+			it('should return students with READER role', async () => {
 				const studentId = new ObjectId().toHexString();
 				const data: CourseBoardContextData = {
 					teachers: [],
@@ -93,7 +93,7 @@ describe(CourseBoardContext.name, () => {
 				};
 
 				const context = new CourseBoardContext(data);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toEqual([
 					{
@@ -108,7 +108,7 @@ describe(CourseBoardContext.name, () => {
 		});
 
 		describe('when course has all types of users', () => {
-			it('should return all users combined in correct order', () => {
+			it('should return all users combined in correct order', async () => {
 				const teacherId = new ObjectId().toHexString();
 				const subTeacherId = new ObjectId().toHexString();
 				const studentId = new ObjectId().toHexString();
@@ -119,7 +119,7 @@ describe(CourseBoardContext.name, () => {
 				};
 
 				const context = new CourseBoardContext(data);
-				const result = context.getUsersWithBoardRoles();
+				const result = await context.getUsersWithBoardRoles();
 
 				expect(result).toHaveLength(3);
 				expect(result[0].userId).toBe(teacherId);

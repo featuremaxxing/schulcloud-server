@@ -9,6 +9,7 @@ import {
 	BoardExternalReference,
 	BoardNodeType,
 	getBoardNodeType,
+	PollVote,
 } from '../domain';
 import { pathOfChildren } from '../domain/path-utils';
 import { BoardNodeEntity } from './entity/board-node.entity';
@@ -91,6 +92,30 @@ export class BoardNodeRepo {
 
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.persist(boardNode).flush();
+	}
+
+	// Direct children of the given poll elements. Matches paths ending in ',<elementId>,' -
+	// only votes can be direct children of a poll element. Passing userId narrows to a
+	// single participant's vote, used by the vote handler to find an existing vote to update.
+	public async findPollVotesByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<PollVote[]> {
+		if (parentIds.length === 0) {
+			return [];
+		}
+
+		// Every current caller passes an @IsMongoId()-validated id, which can never contain a
+		// regex metacharacter - but that's an invariant of the callers, not of this method, so it
+		// is escaped here too rather than trusted. One $or clause per id (each a simple anchored
+		// literal, not joined into one `(a|b|c)` alternation) keeps this from ever becoming a
+		// regex-injection or backtracking concern regardless of what a future caller passes in.
+		const votes = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.POLL_VOTE,
+			$or: parentIds.map((parentId) => {
+				return { path: { $re: `,${escapeRegExp(parentId)},$` } };
+			}),
+			...(userId ? { userId } : {}),
+		});
+
+		return votes.map((entity) => new TreeBuilder().build(entity)) as PollVote[];
 	}
 
 	// Light-weight overview query for the assignment list: instead of loading entire
@@ -252,3 +277,7 @@ export class BoardNodeRepo {
 		boardNode.props = props;
 	}
 }
+
+// See findPollVotesByParentIds - escapes every character with special meaning in a regex so a
+// value that is embedded into a $re query can never be read as anything but a literal string.
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

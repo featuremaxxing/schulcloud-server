@@ -3,17 +3,16 @@ import { ObjectId } from '@mikro-orm/mongodb';
 import { CourseService } from '@modules/course';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { courseEntityFactory } from '@modules/course/testing';
-import { RoomService } from '@modules/room';
+import { RoleName } from '@modules/role';
 import { roleFactory } from '@modules/role/testing';
-import { Permission } from '@shared/domain/interface';
-import { RoomAuthorizable, RoomMembershipService } from '@modules/room-membership';
+import { RoomService } from '@modules/room';
+import { RoomAuthorizable, RoomMembershipService, type UserWithRoomRoles } from '@modules/room-membership';
 import { roomFactory } from '@modules/room/testing';
-import { User } from '@modules/user/repo';
 import { UserService } from '@modules/user';
+import { User } from '@modules/user/repo';
 import { userFactory } from '@modules/user/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
-import { RoleName } from '@modules/role';
 import { type BoardExternalReference, BoardExternalReferenceType } from '../../../domain';
 import { BoardContextResolverService } from './board-context-resolver.service';
 import { CourseBoardContext } from './course-board-context';
@@ -80,6 +79,7 @@ describe(BoardContextResolverService.name, () => {
 
 				roomService.getSingleRoom.mockResolvedValue(room);
 				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([]);
 
 				return { contextRef, room, roomAuthorizable };
 			};
@@ -102,15 +102,25 @@ describe(BoardContextResolverService.name, () => {
 				expect(result.type).toBe(BoardExternalReferenceType.Room);
 			});
 
-			it('should load the member names and pass them to the context', async () => {
-				const student = userFactory.buildWithId({ firstName: 'Anna', lastName: 'Admin' });
+			it('should not fetch user names when the room has no members', async () => {
+				const { contextRef } = setup();
+
+				await service.resolve(contextRef);
+
+				expect(userService.getUserEntitiesWithRoles).not.toHaveBeenCalled();
+			});
+		});
+
+		describe('when context type is Room and the room has members', () => {
+			const setup = () => {
+				const member = userFactory.buildWithId({ firstName: 'Anna', lastName: 'Beispiel' });
+				const roomMember: UserWithRoomRoles = {
+					userId: member.id,
+					userSchoolId: member.school.id,
+					roles: [],
+				};
 				const room = roomFactory.build();
-				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
-				const roomAuthorizable = new RoomAuthorizable(
-					room.id,
-					[{ userId: student.id, userSchoolId: student.school.id, roles: [role] }],
-					room.schoolId
-				);
+				const roomAuthorizable = new RoomAuthorizable(room.id, [roomMember], room.schoolId);
 				const contextRef: BoardExternalReference = {
 					id: room.id,
 					type: BoardExternalReferenceType.Room,
@@ -118,25 +128,50 @@ describe(BoardContextResolverService.name, () => {
 
 				roomService.getSingleRoom.mockResolvedValue(room);
 				roomMembershipService.getRoomAuthorizable.mockResolvedValue(roomAuthorizable);
-				userService.getUserEntitiesWithRoles.mockResolvedValue([student]);
+				userService.getUserEntitiesWithRoles.mockResolvedValue([member]);
+
+				return { contextRef, member };
+			};
+
+			it('should batch-load the member names once, only once getUsersWithBoardRoles is actually called', async () => {
+				const { contextRef, member } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				// resolve() itself must not pay for the user lookup - most board operations
+				// never call getUsersWithBoardRoles() at all (see RoomBoardContext)
+				expect(userService.getUserEntitiesWithRoles).not.toHaveBeenCalled();
 
-				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([student.id]);
-				expect(users[0].firstName).toBe('Anna');
-				expect(users[0].lastName).toBe('Admin');
+				await result.getUsersWithBoardRoles();
+				await result.getUsersWithBoardRoles();
+
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledTimes(1);
+				expect(userService.getUserEntitiesWithRoles).toHaveBeenCalledWith([member.id]);
 			});
 
-			it('should load the member school role names and pass them to the context', async () => {
+			it('should populate firstName and lastName on the resulting users', async () => {
+				const { contextRef, member } = setup();
+
+				const result = await service.resolve(contextRef);
+				const users = await result.getUsersWithBoardRoles();
+
+				expect(users).toEqual([
+					expect.objectContaining({
+						userId: member.id,
+						firstName: 'Anna',
+						lastName: 'Beispiel',
+					}),
+				]);
+			});
+
+			it('should populate schoolRoleNames on the resulting users', async () => {
 				const teacher = userFactory.buildWithId({ roles: [roleFactory.buildWithId({ name: RoleName.TEACHER })] });
+				const roomMember: UserWithRoomRoles = {
+					userId: teacher.id,
+					userSchoolId: teacher.school.id,
+					roles: [],
+				};
 				const room = roomFactory.build();
-				const role = roleFactory.build({ permissions: [Permission.ROOM_LIST_CONTENT] });
-				const roomAuthorizable = new RoomAuthorizable(
-					room.id,
-					[{ userId: teacher.id, userSchoolId: teacher.school.id, roles: [role] }],
-					room.schoolId
-				);
+				const roomAuthorizable = new RoomAuthorizable(room.id, [roomMember], room.schoolId);
 				const contextRef: BoardExternalReference = {
 					id: room.id,
 					type: BoardExternalReferenceType.Room,
@@ -147,7 +182,7 @@ describe(BoardContextResolverService.name, () => {
 				userService.getUserEntitiesWithRoles.mockResolvedValue([teacher]);
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users[0].schoolRoleNames).toEqual([RoleName.TEACHER]);
 			});
@@ -195,7 +230,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, teacher, substitutionTeacher, student } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(3);
 				expect(users.find((u) => u.userId === teacher.id)).toBeDefined();
@@ -238,7 +273,7 @@ describe(BoardContextResolverService.name, () => {
 				const { contextRef, userId } = setup();
 
 				const result = await service.resolve(contextRef);
-				const users = result.getUsersWithBoardRoles();
+				const users = await result.getUsersWithBoardRoles();
 
 				expect(users).toHaveLength(1);
 				expect(users[0].userId).toBe(userId);

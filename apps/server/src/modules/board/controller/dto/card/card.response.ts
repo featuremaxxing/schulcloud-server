@@ -12,6 +12,7 @@ import {
 	FileFolderElementResponse,
 	H5pElementResponse,
 	LinkElementResponse,
+	PollElementResponse,
 	RichTextElementResponse,
 	VideoConferenceElementResponse,
 } from '../element';
@@ -30,6 +31,7 @@ import { Colors } from '../../../domain';
 	VideoConferenceElementResponse,
 	FileFolderElementResponse,
 	H5pElementResponse,
+	PollElementResponse,
 	AssignmentElementResponse
 )
 export class CardResponse {
@@ -72,6 +74,7 @@ export class CardResponse {
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(FileFolderElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
+				{ $ref: getSchemaPath(PollElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},

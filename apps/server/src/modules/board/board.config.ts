@@ -42,6 +42,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardH5pEnabled = true;
 
+	@ConfigProperty('FEATURE_COLUMN_BOARD_POLL_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureColumnBoardPollEnabled = false;
+
 	@ConfigProperty('FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

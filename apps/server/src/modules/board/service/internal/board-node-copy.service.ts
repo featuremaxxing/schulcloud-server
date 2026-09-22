@@ -35,6 +35,9 @@ import {
 	type MediaExternalToolElement,
 	type MediaLine,
 	type PinnedCard,
+	PollElement,
+	PollStatus,
+	PollVote,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -108,6 +111,12 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.H5P_ELEMENT:
 				result = await this.copyH5pElement(boardNode as H5pElement, context);
+				break;
+			case BoardNodeType.POLL_ELEMENT:
+				result = await this.copyPollElement(boardNode as PollElement, context);
+				break;
+			case BoardNodeType.POLL_VOTE:
+				result = this.copyPollVote(boardNode as PollVote);
 				break;
 			case BoardNodeType.ASSIGNMENT_ELEMENT:
 				result = await this.copyAssignmentElement(boardNode as AssignmentElement, context);
@@ -579,6 +588,49 @@ export class BoardNodeCopyService {
 		});
 
 		return results;
+	}
+
+	// Deliberately does NOT call copyChildrenOf: a copied poll is copied without its votes
+	// and without its frozen resultSnapshot - a copy starts as an empty, unopened poll.
+	// Carrying votes into a copied room/board would leak identifiable participation of
+	// users who never joined the copy's target context. pollStatus/closesAt are reset for
+	// the same reason the comment promises ("an empty, unopened poll") - without this a copy
+	// of a currently-open poll would immediately start accepting votes, and a copy of a
+	// closed poll would be closed with no snapshot (aggregateResults would then fall back to
+	// counting the copy's own, empty vote list instead), and a copied deadline could already
+	// be in the past.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	public copyPollElement(original: PollElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new PollElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+			resultSnapshot: undefined,
+			pollStatus: PollStatus.DRAFT,
+			opensAt: undefined,
+			closesAt: undefined,
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.POLL_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	// A vote never gets copied - see copyPollElement. This case only exists so the type
+	// switch in copy() stays exhaustive; it must never be reached in practice because
+	// copyPollElement skips its children.
+	public copyPollVote(original: PollVote): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.POLL_VOTE,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
 	}
 
 	private buildSpecificProps(childrenResults: CopyStatus[]): {

@@ -11,6 +11,9 @@ import {
 	isAssignmentElement,
 	isAssignmentSubmission,
 	isDrawingElement,
+	isEligibleVoter,
+	isPollElement,
+	isPollVote,
 	isVideoConferenceElement,
 	MediaBoard,
 	UserWithBoardRoles,
@@ -26,6 +29,9 @@ export const BoardOperationValues = [
 	'updateBoardLayout',
 	'updateBoardTitle',
 	'updateReadersCanEditSetting',
+	// True board-edit permission, independent of the readersCanEdit collaboration toggle - see
+	// isBoardEditor below and the poll carve-out in _canEditBoard/hasPermission().
+	'isBoardEditor',
 
 	// column
 	'copyColumn',
@@ -61,6 +67,12 @@ export const BoardOperationValues = [
 
 	// element / videoConferenceElement
 	'manageVideoConference',
+
+	// element / pollElement
+	'createOwnPollVote',
+	'updateOwnPollVote',
+	'viewPollResults',
+	'managePoll',
 
 	// element / assignmentElement
 	'viewAssignmentSubmissions',
@@ -142,17 +154,19 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
 			const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
 
-			// Same reasoning as the carve-out in _canEditBoard below: assignments carry a due
-			// date, grace period and points, so the readersCanEdit collaboration toggle must
-			// never let a student write here. This is a SEPARATE relaxation from the one in
-			// _canEditBoard - hasPermission() is its own Rule-interface entry point (used by
-			// e.g. file-storage's generic checkPermissionsByReference), not routed through
-			// _canEditBoard, so it needs its own guard.
+			// Same reasoning as the carve-out in _canEditBoard below: a poll's questions, status
+			// and deadline, and an assignment's due date/grace period/points, are configuration
+			// with real consequences, so the readersCanEdit collaboration toggle must never let a
+			// student write here. This is a SEPARATE relaxation from the one in _canEditBoard -
+			// hasPermission() is its own Rule-interface entry point (used by e.g. file-storage's
+			// generic checkPermissionsByReference), not routed through _canEditBoard, so it needs
+			// its own guard.
+			const isPollNode = isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode);
 			const isAssignmentNode =
 				isAssignmentElement(authorizable.boardNode) || isAssignmentSubmission(authorizable.boardNode);
 
 			const requiredBoardPermission =
-				isReader && readersCanEdit && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
+				isReader && readersCanEdit && !isPollNode && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
 			const writePermissions = Array.from(new Set([requiredBoardPermission, ...context.requiredPermissions]));
 			return this.hasAllPermissions(user, authorizable, writePermissions);
 		}
@@ -184,6 +198,7 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			updateBoardLayout: _canManageBoard,
 			updateBoardTitle: canEditBoardTitle,
 			updateReadersCanEditSetting: canUpdateReadersCanEditSetting,
+			isBoardEditor: _isBoardEditor,
 
 			// column
 			copyColumn: _canEditBoard,
@@ -219,6 +234,12 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 			// element / videoConferenceElement
 			manageVideoConference: canManageVideoConference,
+
+			// element / pollElement
+			createOwnPollVote: _canVoteInPoll,
+			updateOwnPollVote: _isOwnPollVote,
+			viewPollResults: _canViewBoard,
+			managePoll: _canEditBoard,
 
 			// element / assignmentElement
 			// Deliberately room-role-based, not per-teacher-ownership: every teacher with
@@ -393,6 +414,24 @@ const hasBoardRole = (user: User, authorizable: BoardNodeAuthorizable, role: Boa
 	return userWithBoardRoles?.roles.includes(role) ?? false;
 };
 
+// Whether the caller holds real board-edit permission, independent of the readersCanEdit
+// collaboration toggle. Exposed as its own BoardOperation (evaluated against the *board's own*
+// authorizable, unlike managePoll/updateElement) because the client cannot derive this from
+// allowedOperations.updateElement alone: that one is board-wide and already folds a
+// reader-with-readersCanEdit into "can edit", which is exactly the case a poll element's
+// client-side manage/teacher view must not treat as "can manage" (see the matching carve-outs
+// below and in hasPermission()). A per-element permission check would give the right answer too,
+// but would need a separate authorizable per element; this is the same answer without the extra
+// loads, since the underlying check (hasEditPermission) never varies by element anyway.
+const _isBoardEditor = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const permissions = authorizable.getUserPermissions(user.id);
+	return permissions.includes(Permission.BOARD_EDIT);
+};
+
 const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
 	if (authorizable.boardConfiguration.isLocked) {
 		return false;
@@ -404,6 +443,15 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	const permissions = authorizable.getUserPermissions(user.id);
 	const hasEditPermission = permissions.includes(Permission.BOARD_EDIT);
 	if (hasEditPermission) return true;
+
+	if (isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode)) {
+		// A poll's questions, status and deadline are configuration with real consequences
+		// for participants (e.g. accepting/rejecting votes). The readersCanEdit collaboration
+		// toggle must never grant a student write access here, same reasoning as the board
+		// title carve-out below. Voting itself is a separate, narrower path (see
+		// createOwnPollVote/updateOwnPollVote), unaffected by this carve-out.
+		return false;
+	}
 
 	const isReader = hasBoardRole(user, authorizable, BoardRoles.READER);
 	const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
@@ -545,6 +593,56 @@ const canShareBoardNode = (user: User, authorizable: BoardNodeAuthorizable): boo
 	const canShareBoard = permissions.includes(Permission.BOARD_SHARE_BOARD);
 
 	return isBoard && canShareBoard;
+};
+
+// Whether this user is eligible to cast a vote in this poll at all, per the poll's own
+// audience setting (isEligibleVoter, see poll-audience.ts) - separate from managePoll,
+// which stays board-edit-based: a teacher who is also an eligible voter (audience TEACHERS
+// or ALL) keeps the ability to open/close/configure the poll regardless of this check.
+const _canVoteInPoll = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode } = authorizable;
+	if (!isPollElement(boardNode)) {
+		return false;
+	}
+
+	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
+	if (!userWithBoardRoles) {
+		return false;
+	}
+
+	return isEligibleVoter(boardNode, userWithBoardRoles);
+};
+
+// Checks ownership and, via the parent PollElement, continued audience eligibility - a
+// change to the poll's audience after a vote was cast must not let that voter go on
+// editing a vote they'd no longer be allowed to cast fresh (see U-R4: the audience is
+// locked once votes exist, but this is the belt to that suspenders). Deliberately does
+// NOT check "now" (whether the poll is still open) - that's PollUc's job, so it can throw
+// a specific, clearly-worded exception.
+const _isOwnPollVote = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode, parentNode } = authorizable;
+	if (!isPollVote(boardNode) || boardNode.userId !== user.id) {
+		return false;
+	}
+
+	if (!parentNode || !isPollElement(parentNode)) {
+		return false;
+	}
+
+	const userWithBoardRoles = authorizable.users.find((u) => u.userId === user.id);
+	if (!userWithBoardRoles) {
+		return false;
+	}
+
+	return isEligibleVoter(parentNode, userWithBoardRoles);
 };
 
 // "student" in a room: has the READER role and none of the roles that imply staff-level

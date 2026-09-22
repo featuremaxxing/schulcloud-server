@@ -15,6 +15,8 @@ import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
 import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
+import { PollElement } from './poll-element.do';
+import { PollVote } from './poll-vote.do';
 import { RichTextElement } from './rich-text-element.do';
 import { handleNonExhaustiveSwitch } from './type-mapping';
 import {
@@ -24,6 +26,7 @@ import {
 	BoardNodeProps,
 	Colors,
 	ContentElementType,
+	PollStatus,
 } from './types';
 import { VideoConferenceElement } from './video-conference-element.do';
 
@@ -114,6 +117,15 @@ export class BoardNodeFactory {
 					...this.getBaseProps(),
 				});
 				break;
+			case ContentElementType.POLL:
+				element = new PollElement({
+					...this.getBaseProps(),
+					questions: [],
+					isAnonymous: false,
+					showResultsLive: false,
+					pollStatus: PollStatus.DRAFT,
+				});
+				break;
 			case ContentElementType.ASSIGNMENT:
 				element = new AssignmentElement({
 					...this.getBaseProps(),
@@ -131,6 +143,18 @@ export class BoardNodeFactory {
 		}
 
 		return element;
+	}
+
+	// A vote is not a content element and cannot be created via buildContentElement - it is
+	// created explicitly by PollUc, once per participant, below a PollElement.
+	public buildPollVote(userId: EntityId): PollVote {
+		const vote = new PollVote({
+			...this.getBaseProps(),
+			userId,
+			answers: [],
+		});
+
+		return vote;
 	}
 
 	// A submission is not a content element and cannot be created via buildContentElement -

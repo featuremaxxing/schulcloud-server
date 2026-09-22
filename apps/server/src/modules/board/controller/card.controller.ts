@@ -34,6 +34,7 @@ import {
 	FileFolderElementResponse,
 	H5pElementResponse,
 	LinkElementResponse,
+	PollElementResponse,
 	MoveCardBodyParams,
 	RenameBodyParams,
 	RichTextElementResponse,
@@ -177,6 +178,7 @@ export class CardController {
 		DeletedElementResponse,
 		VideoConferenceElementResponse,
 		H5pElementResponse,
+		PollElementResponse,
 		AssignmentElementResponse
 	)
 	@ApiResponse({
@@ -192,6 +194,7 @@ export class CardController {
 				{ $ref: getSchemaPath(DeletedElementResponse) },
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
+				{ $ref: getSchemaPath(PollElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},

@@ -5,3 +5,4 @@ export * from './column.uc';
 export * from './element.uc';
 export * from './learning-room';
 export * from './media-board';
+export * from './poll.uc';
