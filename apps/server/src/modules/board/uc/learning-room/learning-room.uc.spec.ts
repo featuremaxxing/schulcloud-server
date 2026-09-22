@@ -177,6 +177,31 @@ describe(LearningRoomUc.name, () => {
 			return { readableCard, lostCard, readablePin, lostPin };
 		};
 
+		it('should hide board actions that make no sense in a personal room', async () => {
+			setup();
+			boardNodeRule.listAllowedOperations.mockReturnValue({
+				deleteBoard: true,
+				copyBoard: true,
+				shareBoard: true,
+				updateBoardTitle: true,
+				updateBoardVisibility: true,
+				updateReadersCanEditSetting: true,
+				createCard: true,
+			} as unknown as Record<string, boolean> as never);
+
+			const { allowedOperations } = await uc.getLearningRoom('userId');
+
+			// deleting the board would take every pinned card with it
+			expect(allowedOperations.deleteBoard).toBe(false);
+			expect(allowedOperations.copyBoard).toBe(false);
+			expect(allowedOperations.shareBoard).toBe(false);
+			expect(allowedOperations.updateBoardTitle).toBe(false);
+			expect(allowedOperations.updateBoardVisibility).toBe(false);
+			expect(allowedOperations.updateReadersCanEditSetting).toBe(false);
+			// working with the content stays untouched
+			expect(allowedOperations.createCard).toBe(true);
+		});
+
 		it('should drop pointers whose card the user can no longer reach', async () => {
 			const { lostPin } = setup();
 

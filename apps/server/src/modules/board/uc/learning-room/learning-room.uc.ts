@@ -35,7 +35,9 @@ export class LearningRoomUc {
 
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(board);
-		const allowedOperations = this.boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
+		const allowedOperations = this.hideOperationsThatMakeNoSenseHere(
+			this.boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable)
+		);
 
 		// a personal board has no course/room context, so no context driven features
 		const features: BoardFeature[] = [];
@@ -44,6 +46,27 @@ export class LearningRoomUc {
 		const pinnedCardOrigins = await this.resolvePinnedCardOrigins(board);
 
 		return { board, features, allowedOperations, pinnedCardOrigins };
+	}
+
+	/**
+	 * The owner is editor and admin of their own board, so the rule grants every
+	 * board level operation. In a personal room they are pointless (share, copy,
+	 * publish, rename - the name lives in the navigation) or destructive: deleting
+	 * the board would take all pinned cards with it. Hiding them empties the board
+	 * menu, which is what a personal room should look like.
+	 */
+	private hideOperationsThatMakeNoSenseHere(
+		allowedOperations: Record<BoardOperation, boolean>
+	): Record<BoardOperation, boolean> {
+		return {
+			...allowedOperations,
+			copyBoard: false,
+			deleteBoard: false,
+			shareBoard: false,
+			updateBoardTitle: false,
+			updateReadersCanEditSetting: false,
+			updateBoardVisibility: false,
+		};
 	}
 
 	/**
