@@ -17,6 +17,7 @@ import { ApiValidationError } from '@shared/common/error';
 import { PeerReviewUc } from './peer-review.uc';
 import {
 	AssignmentElementUrlParams,
+	AssignmentFeedbackContainerResponse,
 	PeerReviewAssignBodyParams,
 	PeerReviewAssignmentResponse,
 	PeerReviewAssignResultResponse,
@@ -138,6 +139,24 @@ export class PeerReviewController {
 		const results = await this.peerReviewUc.listMyTasks(currentUser.userId);
 
 		return results.map((result) => PeerReviewResponseMapper.mapTask(result));
+	}
+
+	@ApiOperation({
+		summary:
+			'Get (or, if none exists yet, create) the container this reviewer uploads their own correction files to for a review task.',
+	})
+	@ApiResponse({ status: 200, type: AssignmentFeedbackContainerResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(200)
+	@Post('peer-review/:reviewId/feedback-container')
+	public async ensureReviewFeedbackContainer(
+		@Param() urlParams: PeerReviewTaskUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<AssignmentFeedbackContainerResponse> {
+		const feedback = await this.peerReviewUc.ensureReviewFeedbackContainer(currentUser.userId, urlParams.reviewId);
+
+		return new AssignmentFeedbackContainerResponse({ feedbackContainerId: feedback.id });
 	}
 
 	@ApiOperation({ summary: 'Submit (or update) the caller’s own review for an assigned peer review task.' })

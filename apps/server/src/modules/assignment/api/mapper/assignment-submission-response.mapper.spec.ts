@@ -6,7 +6,11 @@ import {
 	assignmentSubmissionFactory,
 } from '@modules/board/testing';
 import { AssignmentSubmissionResponseMapper } from './assignment-submission-response.mapper';
-import { type AssignmentSubmissionEntry, type AssignmentSubmissionsListResult } from '../assignment.uc';
+import {
+	type AssignmentSubmissionEntry,
+	type AssignmentSubmissionsListResult,
+	type PeerReviewFeedbackEntry,
+} from '../assignment.uc';
 
 describe(AssignmentSubmissionResponseMapper.name, () => {
 	const buildEntry = (overrides: Partial<AssignmentSubmissionEntry> = {}): AssignmentSubmissionEntry => {
@@ -165,6 +169,48 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 
 			expect(response.feedbackContainerId).toBe(feedback.id);
 		});
+
+		it('should only reveal submitted peer reviews, without reviewer identity', () => {
+			const submittedReview: PeerReviewFeedbackEntry = {
+				reviewerUserId: new ObjectId().toHexString(),
+				reviewerFirstName: 'Bea',
+				reviewerLastName: 'Berg',
+				points: 5,
+				feedbackComment: 'well done',
+				submittedAt: new Date(),
+			};
+			const unsubmittedReview: PeerReviewFeedbackEntry = {
+				reviewerUserId: new ObjectId().toHexString(),
+				reviewerFirstName: 'Carl',
+				reviewerLastName: 'Case',
+			};
+			const entry = buildEntry({ peerReviewFeedback: [submittedReview, unsubmittedReview] });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.peerReviewFeedback).toHaveLength(1);
+			expect(response.peerReviewFeedback?.[0].feedbackComment).toBe('well done');
+			expect(response.peerReviewFeedback?.[0].reviewerUserId).toBeUndefined();
+			expect(response.peerReviewFeedback?.[0].reviewerFirstName).toBeUndefined();
+			expect(JSON.stringify(response.peerReviewFeedback)).not.toContain('Bea');
+		});
+
+		// This is the intentional exception to every other release rule in mapForOwner: peer
+		// feedback reaches the submitting student as soon as that review is submitted, not with
+		// the teacher's return - see the review notes.
+		it('should reveal a submitted peer review even before the submission has been returned', () => {
+			const submittedReview: PeerReviewFeedbackEntry = {
+				reviewerUserId: new ObjectId().toHexString(),
+				submittedAt: new Date(),
+				feedbackComment: 'nice',
+			};
+			const submission = assignmentSubmissionFactory.build({ returnedAt: undefined });
+			const entry = buildEntry({ submission, peerReviewFeedback: [submittedReview] });
+
+			const response = AssignmentSubmissionResponseMapper.mapForOwner(entry);
+
+			expect(response.peerReviewFeedback).toHaveLength(1);
+		});
 	});
 
 	describe('mapForTeacher', () => {
@@ -192,6 +238,40 @@ describe(AssignmentSubmissionResponseMapper.name, () => {
 			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
 
 			expect(response.feedbackFiles).toHaveLength(2);
+		});
+
+		it('should include peer review feedback with reviewer identity, submitted or not', () => {
+			const submittedReview: PeerReviewFeedbackEntry = {
+				reviewerUserId: new ObjectId().toHexString(),
+				reviewerFirstName: 'Bea',
+				reviewerLastName: 'Berg',
+				points: 5,
+				feedbackComment: 'well done',
+				submittedAt: new Date(),
+				files: [
+					new FileDto({
+						id: 'correction-1',
+						name: 'feedback-pdf-1.pdf',
+						parentType: FileRecordParentType.BoardNode,
+						parentId: new ObjectId().toHexString(),
+						createdAt: new Date(),
+					}),
+				],
+			};
+			const unsubmittedReview: PeerReviewFeedbackEntry = {
+				reviewerUserId: new ObjectId().toHexString(),
+				reviewerFirstName: 'Carl',
+				reviewerLastName: 'Case',
+			};
+			const entry = buildEntry({ peerReviewFeedback: [submittedReview, unsubmittedReview] });
+
+			const response = AssignmentSubmissionResponseMapper.mapForTeacher(entry);
+
+			expect(response.peerReviewFeedback).toHaveLength(2);
+			expect(response.peerReviewFeedback?.[0].reviewerFirstName).toBe('Bea');
+			expect(response.peerReviewFeedback?.[0].files?.[0].name).toBe('feedback-pdf-1.pdf');
+			expect(response.peerReviewFeedback?.[1].reviewerFirstName).toBe('Carl');
+			expect(response.peerReviewFeedback?.[1].submittedAt).toBeNull();
 		});
 
 		it('should include the grading teacher name when the entry carries one', () => {

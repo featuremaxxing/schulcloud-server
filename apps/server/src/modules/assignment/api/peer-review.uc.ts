@@ -2,6 +2,7 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentReviewAssignmentMode,
 	AssignmentReviewEntity,
 	AssignmentReviewRepo,
@@ -9,9 +10,11 @@ import {
 	BOARD_PUBLIC_API_CONFIG_TOKEN,
 	BoardNodeAuthorizable,
 	BoardNodeAuthorizableService,
+	BoardNodeFactory,
 	BoardNodeRule,
 	BoardNodeService,
 	BoardPublicApiConfig,
+	isAssignmentFeedback,
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
 import {
@@ -45,6 +48,8 @@ export interface PeerReviewSubmitBody {
 export interface PeerReviewTaskResult {
 	review: AssignmentReviewEntity;
 	file?: FileDto;
+	feedbackContainerId?: EntityId;
+	correctionFiles?: FileDto[];
 }
 
 export interface PeerReviewAssignmentListEntry {
@@ -68,6 +73,7 @@ export class PeerReviewUc {
 		private readonly boardNodeAuthorizableService: BoardNodeAuthorizableService,
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeRule: BoardNodeRule,
+		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly assignmentReviewRepo: AssignmentReviewRepo,
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
 		private readonly logger: Logger,
@@ -285,7 +291,18 @@ export class PeerReviewUc {
 					// so no filtering by name is needed here any more.
 					const files = await this.filesStorageClientAdapterService.listFilesOfParent(review.submissionId);
 					const file = pickLatestFile(files);
-					return { review, file };
+
+					// the reviewer's own correction container, if they've already started one -
+					// never created here, only looked up (see ensureReviewFeedbackContainer)
+					const submission = await this.boardNodeService.findByClassAndId(AssignmentSubmission, review.submissionId);
+					const feedback = submission.children.find(
+						(child): child is AssignmentFeedback => isAssignmentFeedback(child) && child.authorId === userId
+					);
+					const correctionFiles = feedback
+						? await this.filesStorageClientAdapterService.listFilesOfParent(feedback.id)
+						: undefined;
+
+					return { review, file, feedbackContainerId: feedback?.id, correctionFiles };
 				} catch (error) {
 					this.logger.warning(new AssignmentFilesStorageErrorLoggable(review.submissionId, error as Error));
 					return { review };
@@ -341,6 +358,46 @@ export class PeerReviewUc {
 	): Promise<AssignmentReviewEntity> {
 		this.checkFeatureEnabled();
 
+		const review = await this.loadOwnEligibleReview(userId, reviewId);
+
+		review.points = body.points;
+		review.feedbackComment = body.feedbackComment;
+		review.submittedAt = new Date();
+		await this.assignmentReviewRepo.save(review);
+
+		return review;
+	}
+
+	// Gets (or, on first call for this review, creates) the container the reviewer uploads their
+	// own correction files (annotated PDFs/images - no audio, see the review notes) to. Mirrors
+	// AssignmentUc.ensureFeedbackContainer, but keyed by reviewer instead of always-the-teacher:
+	// buildAssignmentFeedback(userId) is what makes this the reviewer's own container rather than
+	// the teacher's (see AssignmentFeedback's doc comment and BoardNodeRule.
+	// hasPermissionForAssignmentFeedbackFile, which is what actually enforces that only this
+	// reviewer - not the teacher, not another reviewer - may write here).
+	public async ensureReviewFeedbackContainer(userId: EntityId, reviewId: EntityId): Promise<AssignmentFeedback> {
+		this.checkFeatureEnabled();
+
+		const review = await this.loadOwnEligibleReview(userId, reviewId);
+		const submission = await this.boardNodeService.findByClassAndId(AssignmentSubmission, review.submissionId);
+
+		const existing = submission.children.find(
+			(child): child is AssignmentFeedback => isAssignmentFeedback(child) && child.authorId === userId
+		);
+		if (existing) {
+			return existing;
+		}
+
+		const feedback = this.boardNodeFactory.buildAssignmentFeedback(userId);
+		await this.boardNodeService.addToParent(submission, feedback);
+
+		return feedback;
+	}
+
+	// Shared by submitReview and ensureReviewFeedbackContainer: both need the caller's own,
+	// still-eligible review - see filterCurrentlyEligible/updateSettings for why eligibility is
+	// re-checked here rather than trusted from assignment time.
+	private async loadOwnEligibleReview(userId: EntityId, reviewId: EntityId): Promise<AssignmentReviewEntity> {
 		const review = await this.assignmentReviewRepo.findById(reviewId);
 		if (!review) {
 			throw new NotFoundException('Peer review task not found.');
@@ -349,15 +406,8 @@ export class PeerReviewUc {
 			throw new ForbiddenException('This peer review task is not assigned to you.');
 		}
 		if (!(await this.isReviewerStillEligibleForElement(review.elementId, userId))) {
-			// peer review was turned off, or the reviewer left the room, since this task was
-			// assigned - see filterCurrentlyEligible/updateSettings
 			throw new ForbiddenException('This peer review task is no longer available.');
 		}
-
-		review.points = body.points;
-		review.feedbackComment = body.feedbackComment;
-		review.submittedAt = new Date();
-		await this.assignmentReviewRepo.save(review);
 
 		return review;
 	}

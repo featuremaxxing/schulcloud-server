@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
 import { AssignmentStatus } from '@modules/board';
+import { AssignmentPeerReviewFeedbackResponse } from './assignment-peer-review-feedback.response';
 import { AssignmentPeerReviewSummaryResponse } from './assignment-peer-review-summary.response';
 
 export class AssignmentCriterionPointsResponse {
@@ -65,6 +66,7 @@ export class AssignmentSubmissionResponse {
 		this.fileVersions = props.fileVersions;
 		this.criterionPoints = props.criterionPoints;
 		this.peerReviews = props.peerReviews;
+		this.peerReviewFeedback = props.peerReviewFeedback;
 		this.gradedByFirstName = props.gradedByFirstName;
 		this.gradedByLastName = props.gradedByLastName;
 		this.feedbackContainerId = props.feedbackContainerId;
@@ -142,6 +144,14 @@ export class AssignmentSubmissionResponse {
 		description: 'advisory summary of student peer reviews - only present for the teacher view',
 	})
 	peerReviews?: AssignmentPeerReviewSummaryResponse | null;
+
+	@ApiPropertyOptional({
+		type: [AssignmentPeerReviewFeedbackResponse],
+		nullable: true,
+		description:
+			'identified peer review feedback (files, comment, points) - teacher view: every assignment, with reviewer identity; owner view: only submitted reviews, reviewer identity stripped',
+	})
+	peerReviewFeedback?: AssignmentPeerReviewFeedbackResponse[] | null;
 
 	@ApiPropertyOptional({
 		description:

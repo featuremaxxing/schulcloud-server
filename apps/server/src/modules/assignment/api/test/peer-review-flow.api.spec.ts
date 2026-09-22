@@ -420,6 +420,117 @@ describe('peer review flow (api)', () => {
 			expect(teacherEntry?.points).toBeNull();
 		});
 
+		it('lets the reviewer upload a correction, shows it with identity to the teacher, and anonymously to the owner once submitted', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentBClient = await new TestApiClientBuilder(app, baseRouteName).build(studentBAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+			const tasksResponse = await studentBClient.get('peer-review/my-tasks');
+			const task = (tasksResponse.body as PeerReviewTaskResponse[])[0];
+
+			// idempotent: a second call returns the same container
+			const firstContainer = await studentBClient.post(`peer-review/${task.id}/feedback-container`);
+			const secondContainer = await studentBClient.post(`peer-review/${task.id}/feedback-container`);
+			expect(firstContainer.status).toEqual(200);
+			const { feedbackContainerId } = firstContainer.body as { feedbackContainerId: string };
+			expect((secondContainer.body as { feedbackContainerId: string }).feedbackContainerId).toEqual(
+				feedbackContainerId
+			);
+
+			filesStorageClientAdapterService.listFilesOfParent.mockImplementation((parentId: string) => {
+				if (parentId === feedbackContainerId) {
+					return Promise.resolve([
+						new FileDto({
+							id: 'correction-1',
+							name: 'feedback-pdf-1.pdf',
+							parentType: 'boardnodes' as FileDto['parentType'],
+							parentId: feedbackContainerId,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+						}),
+					]);
+				}
+				return Promise.resolve([buildFileDto(submissionId)]);
+			});
+
+			await studentBClient.patch(`peer-review/${task.id}/submit`, { points: 6, feedbackComment: 'nice work' });
+
+			// the teacher sees the reviewer's identity and their correction file
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			const teacherEntry = (teacherList.body as AssignmentSubmissionListResponse).submissions.find(
+				(entry) => entry.id === submissionId
+			);
+			const teacherFeedback = (
+				teacherEntry as unknown as {
+					peerReviewFeedback: { reviewerUserId: string; files: { name: string }[] }[];
+				}
+			).peerReviewFeedback;
+			expect(teacherFeedback).toHaveLength(1);
+			expect(teacherFeedback[0].reviewerUserId).toEqual(studentBAccount.userId);
+			expect(teacherFeedback[0].files?.[0]?.name).toEqual('feedback-pdf-1.pdf');
+
+			// the owner sees the same correction, but with the reviewer's identity stripped
+			const ownList = await studentAClient.get(`${assignmentElementNode.id}/submissions`);
+			const ownEntry = (ownList.body as AssignmentSubmissionListResponse).submissions[0];
+			const ownFeedback = (
+				ownEntry as unknown as {
+					peerReviewFeedback: { reviewerUserId?: string; files: { name: string }[] }[];
+				}
+			).peerReviewFeedback;
+			expect(ownFeedback).toHaveLength(1);
+			expect(ownFeedback[0].reviewerUserId).toBeUndefined();
+			expect(ownFeedback[0].files?.[0]?.name).toEqual('feedback-pdf-1.pdf');
+		});
+
+		it('should reject creating a correction container for a review that is not the caller’s own', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, studentCAccount, assignmentElementNode } =
+				await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentCClient = await new TestApiClientBuilder(app, baseRouteName).build(studentCAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+
+			const teacherList = await teacherClient.get(`${assignmentElementNode.id}/submissions`);
+			expect(teacherList.status).toEqual(200);
+
+			const response = await studentCClient.post('peer-review/000000000000000000000000/feedback-container');
+			expect(response.status).toEqual(404);
+		});
+
+		it('should reject creating a correction container once peer review has been turned off', async () => {
+			const { teacherAccount, studentAAccount, studentBAccount, assignmentElementNode } = await setup();
+			const studentAClient = await new TestApiClientBuilder(app, baseRouteName).build(studentAAccount);
+			const studentBClient = await new TestApiClientBuilder(app, baseRouteName).build(studentBAccount);
+			const teacherClient = await new TestApiClientBuilder(app, baseRouteName).build(teacherAccount);
+
+			const createResponse = await studentAClient.post(`${assignmentElementNode.id}/submissions`);
+			const submissionId = (createResponse.body as AssignmentSubmissionResponse).id as string;
+			await teacherClient.post(`${assignmentElementNode.id}/peer-review/assign`, {
+				assignments: [{ submissionId, reviewerUserId: studentBAccount.userId }],
+			});
+			const tasksResponse = await studentBClient.get('peer-review/my-tasks');
+			const task = (tasksResponse.body as PeerReviewTaskResponse[])[0];
+
+			await teacherClient.patch(`${assignmentElementNode.id}/peer-review-settings`, { enabled: false });
+
+			// disabling deletes the review row outright (see PeerReviewUc.updateSettings), so this
+			// comes back as "not found" rather than "forbidden" - same as submitReview after disable
+			const response = await studentBClient.post(`peer-review/${task.id}/feedback-container`);
+			expect(response.status).toEqual(404);
+		});
+
 		it('should reject submitting a review that was not assigned to the caller', async () => {
 			const { teacherAccount, studentAAccount, studentBAccount, studentCAccount, assignmentElementNode } =
 				await setup();

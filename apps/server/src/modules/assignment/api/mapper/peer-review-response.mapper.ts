@@ -30,6 +30,10 @@ export class PeerReviewResponseMapper {
 	// Deliberately does not accept anything the caller could use to identify the submission's
 	// owner - only ever construct this from a PeerReviewTaskResult (review + file).
 	public static mapTask(result: PeerReviewTaskResult): PeerReviewTaskResponse {
+		const correctionFiles = [...(result.correctionFiles ?? [])].sort(
+			(a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+		);
+
 		return new PeerReviewTaskResponse({
 			id: result.review.id,
 			submissionId: result.review.submissionId,
@@ -40,6 +44,11 @@ export class PeerReviewResponseMapper {
 			submittedAt: result.review.submittedAt?.toISOString() ?? null,
 			points: result.review.points ?? null,
 			feedbackComment: result.review.feedbackComment ?? null,
+			feedbackContainerId: result.feedbackContainerId ?? null,
+			correctionFiles:
+				correctionFiles.length > 0
+					? correctionFiles.map((file) => new PeerReviewTaskFileResponse({ fileRecordId: file.id, name: file.name }))
+					: null,
 		});
 	}
 }

@@ -44,6 +44,20 @@ export interface PeerReviewSummary {
 	comments: string[];
 }
 
+// One reviewer's feedback on a submission - the identified counterpart to PeerReviewSummary
+// above (which stays anonymous/averaged). Teacher view: full data, one entry per assignment,
+// submitted or not. Owner view (mapForOwner): only entries with submittedAt set, and with the
+// reviewer's identity stripped - see AssignmentSubmissionResponseMapper.
+export interface PeerReviewFeedbackEntry {
+	reviewerUserId: EntityId;
+	reviewerFirstName?: string;
+	reviewerLastName?: string;
+	points?: number;
+	feedbackComment?: string;
+	submittedAt?: Date;
+	files?: FileDto[];
+}
+
 export interface GradeBody {
 	points?: number;
 	feedbackComment?: string;
@@ -65,6 +79,8 @@ export interface AssignmentSubmissionEntry {
 	fileVersions?: FileDto[];
 	// advisory student peer reviews, teacher view only - see AssignmentUc.buildPeerReviewSummary
 	peerReviews?: PeerReviewSummary;
+	// identified peer review feedback (files, comment, points) - see PeerReviewFeedbackEntry
+	peerReviewFeedback?: PeerReviewFeedbackEntry[];
 	// which teacher graded this submission - relevant once a room has more than one
 	// teacher; teacher view only, never sent to the submission's owner (see
 	// AssignmentSubmissionResponseMapper.mapForOwner)
@@ -232,6 +248,9 @@ export class AssignmentUc {
 						feedbackFiles: files.feedbackFiles,
 						fileVersions: files.fileVersions,
 						peerReviews: submission ? this.buildPeerReviewSummary(allReviews, submission.id) : undefined,
+						peerReviewFeedback: submission
+							? await this.buildPeerReviewFeedback(allReviews, submission, boardNodeAuthorizable.users)
+							: undefined,
 						gradedBy: submission?.gradedBy
 							? {
 									userId: submission.gradedBy,
@@ -248,6 +267,12 @@ export class AssignmentUc {
 
 		const ownSubmission = submissions.find((s) => s.userId === userId);
 		const ownFiles = ownSubmission ? await this.getSubmissionFiles(ownSubmission) : {};
+		// the owner is never a board editor here, so no reviewer names to resolve - mapForOwner
+		// strips identity anyway (see PeerReviewFeedbackEntry)
+		const ownReviews = ownSubmission ? await this.assignmentReviewRepo.findBySubmissionId(ownSubmission.id) : [];
+		const ownPeerReviewFeedback = ownSubmission
+			? await this.buildPeerReviewFeedback(ownReviews, ownSubmission, [])
+			: undefined;
 
 		return {
 			element,
@@ -260,6 +285,7 @@ export class AssignmentUc {
 					feedbackAudio: ownFiles.feedbackAudio,
 					feedbackFiles: ownFiles.feedbackFiles,
 					fileVersions: ownFiles.fileVersions,
+					peerReviewFeedback: ownPeerReviewFeedback,
 				},
 			],
 		};
@@ -592,10 +618,13 @@ export class AssignmentUc {
 
 	// Split out from getSubmissionFiles so submit() - which lists the submission's own files
 	// itself, with different (throwing) error handling - can still reuse the feedback half.
+	// Only ever the teacher's own container (authorId undefined) - a submission can also carry
+	// one container per peer reviewer now (see AssignmentFeedback's doc comment), but those are
+	// surfaced separately, through PeerReviewUc/AssignmentSubmissionEntry.peerReviewFeedback.
 	private async getFeedbackFiles(
 		submission: AssignmentSubmission
 	): Promise<{ feedbackAudio?: FileDto; feedbackFiles?: FileDto[] }> {
-		const feedback = submission.children.find((child): child is AssignmentFeedback => isAssignmentFeedback(child));
+		const feedback = findTeacherFeedbackContainer(submission);
 		if (!feedback) {
 			return {};
 		}
@@ -634,7 +663,7 @@ export class AssignmentUc {
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('gradeAssignmentSubmission', user, boardNodeAuthorizable));
 
-		const existing = submission.children.find((child): child is AssignmentFeedback => isAssignmentFeedback(child));
+		const existing = findTeacherFeedbackContainer(submission);
 		if (existing) {
 			return existing;
 		}
@@ -667,6 +696,39 @@ export class AssignmentUc {
 			count: reviews.length,
 			comments: reviews.map((review) => review.feedbackComment).filter((comment): comment is string => !!comment),
 		};
+	}
+
+	// Identified counterpart to buildPeerReviewSummary above - every review for this submission
+	// (submitted or not), with the reviewer's own correction files if they've started one. Only
+	// one extra file-storage RPC per review that actually has a container (most don't, until the
+	// reviewer opens the annotator) - see ensureReviewFeedbackContainer.
+	private buildPeerReviewFeedback(
+		allReviews: AssignmentReviewEntity[],
+		submission: AssignmentSubmission,
+		users: readonly { userId: EntityId; firstName?: string; lastName?: string }[]
+	): Promise<PeerReviewFeedbackEntry[]> {
+		const reviews = allReviews.filter((review) => review.submissionId === submission.id);
+
+		return Promise.all(
+			reviews.map(async (review): Promise<PeerReviewFeedbackEntry> => {
+				const reviewer = users.find((candidate) => candidate.userId === review.reviewerUserId);
+				const container = submission.children.find(
+					(child): child is AssignmentFeedback =>
+						isAssignmentFeedback(child) && child.authorId === review.reviewerUserId
+				);
+				const files = container ? await this.listFilesSafely(container.id) : undefined;
+
+				return {
+					reviewerUserId: review.reviewerUserId,
+					reviewerFirstName: reviewer?.firstName,
+					reviewerLastName: reviewer?.lastName,
+					points: review.points,
+					feedbackComment: review.feedbackComment,
+					submittedAt: review.submittedAt,
+					files,
+				};
+			})
+		);
 	}
 
 	private checkFeatureEnabled(): void {
@@ -705,6 +767,14 @@ export class AssignmentUc {
 const FEEDBACK_AUDIO_PREFIX = 'feedback-audio-';
 
 const isFeedbackAudio = (file: FileDto): boolean => file.name.startsWith(FEEDBACK_AUDIO_PREFIX);
+
+// The teacher's own feedback container has authorId undefined - a submission can also carry one
+// container per peer reviewer (authorId = that reviewer's userId), but those are never what this
+// use case's teacher-feedback fields (feedbackAudio/feedbackFiles/feedbackContainerId) mean.
+const findTeacherFeedbackContainer = (submission: AssignmentSubmission): AssignmentFeedback | undefined =>
+	submission.children.find(
+		(child): child is AssignmentFeedback => isAssignmentFeedback(child) && child.authorId === undefined
+	);
 
 const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
 	if (files.length === 0) {

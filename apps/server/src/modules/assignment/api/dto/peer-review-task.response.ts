@@ -27,6 +27,8 @@ export class PeerReviewTaskResponse {
 		this.submittedAt = props.submittedAt;
 		this.points = props.points;
 		this.feedbackComment = props.feedbackComment;
+		this.feedbackContainerId = props.feedbackContainerId;
+		this.correctionFiles = props.correctionFiles;
 	}
 
 	@ApiProperty({ pattern: bsonStringPattern })
@@ -49,4 +51,19 @@ export class PeerReviewTaskResponse {
 
 	@ApiPropertyOptional({ type: String, nullable: true })
 	feedbackComment?: string | null;
+
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		pattern: bsonStringPattern,
+		description: "id of this reviewer's own correction container, once one exists - upload target for new corrections",
+	})
+	feedbackContainerId?: string | null;
+
+	@ApiPropertyOptional({
+		type: [PeerReviewTaskFileResponse],
+		nullable: true,
+		description: "this reviewer's own annotated corrections on the submission, newest first",
+	})
+	correctionFiles?: PeerReviewTaskFileResponse[] | null;
 }
