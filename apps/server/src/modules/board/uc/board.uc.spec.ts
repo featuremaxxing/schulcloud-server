@@ -139,22 +139,24 @@ describe(BoardUc.name, () => {
 			board.addChild(column);
 
 			const readableCard = cardFactory.build();
-			const lostCard = cardFactory.build();
+			const hiddenCard = cardFactory.build();
 			const readablePin = pinnedCardFactory.build({ referencedCardId: readableCard.id });
-			const lostPin = pinnedCardFactory.build({ referencedCardId: lostCard.id });
+			const hiddenPin = pinnedCardFactory.build({ referencedCardId: hiddenCard.id });
+			const deletedPin = pinnedCardFactory.build({ referencedCardId: 'deletedCardId' });
 			column.addChild(readablePin);
-			column.addChild(lostPin);
+			column.addChild(hiddenPin);
+			column.addChild(deletedPin);
 
 			boardNodeService.findByClassAndId.mockResolvedValue(board as never);
-			boardNodeService.findByClassAndIds.mockResolvedValue([readableCard, lostCard] as never);
+			boardNodeService.findByClassAndIds.mockResolvedValue([readableCard, hiddenCard] as never);
 			authorizationService.getUserWithPermissions.mockResolvedValue(user);
 			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({} as BoardNodeAuthorizable);
 			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
 				{ boardNode: readableCard } as BoardNodeAuthorizable,
-				{ boardNode: lostCard } as BoardNodeAuthorizable,
+				{ boardNode: hiddenCard } as BoardNodeAuthorizable,
 			]);
 			boardContextApiHelperService.getFeaturesForBoardNode.mockResolvedValue([]);
-			learningRoomService.findPinnedCards.mockReturnValue([readablePin, lostPin]);
+			learningRoomService.findPinnedCards.mockReturnValue([readablePin, hiddenPin, deletedPin]);
 			boardNodeRule.listAllowedOperations.mockReturnValue({
 				deleteBoard: true,
 				shareBoard: true,
@@ -166,7 +168,7 @@ describe(BoardUc.name, () => {
 				return authorizable.boardNode?.id === readableCard.id;
 			});
 
-			return { board, readablePin, lostPin };
+			return { board, readableCard, readablePin, hiddenPin, deletedPin };
 		};
 
 		it('should hide board actions that make no sense in a personal room', async () => {
@@ -181,24 +183,34 @@ describe(BoardUc.name, () => {
 			expect(allowedOperations.createCard).toBe(true);
 		});
 
-		it('should drop pointers whose card the user can no longer reach', async () => {
-			const { board, lostPin } = setupPersonalBoard();
+		it('should delete pointers whose card no longer exists', async () => {
+			const { board, deletedPin } = setupPersonalBoard();
 
 			await uc.findBoard('userId', board.id);
 
-			expect(boardNodeService.delete).toHaveBeenCalledWith(lostPin);
+			expect(boardNodeService.delete).toHaveBeenCalledWith(deletedPin);
 			expect(boardNodeService.delete).toHaveBeenCalledTimes(1);
 		});
 
-		it('should map each remaining pointer to the name of its source room', async () => {
-			const { board, readablePin } = setupPersonalBoard();
+		it('should keep but not hand out pointers the user cannot read right now', async () => {
+			// e.g. a teacher hid the board - the pins of the class must survive that
+			const { board, hiddenPin } = setupPersonalBoard();
+
+			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(boardNodeService.delete).not.toHaveBeenCalledWith(hiddenPin);
+			expect(pinnedCardOrigins.has(hiddenPin.id)).toBe(false);
+		});
+
+		it('should map each readable pointer to its source board and room name', async () => {
+			const { board, readablePin, readableCard } = setupPersonalBoard();
 			boardContextApiHelperService.getParentsOfElement.mockResolvedValue([
 				{ id: 'roomId', name: 'Mathe 9b', type: BoardExternalReferenceType.Room },
 			] as never);
 
 			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
 
-			expect(pinnedCardOrigins.get(readablePin.id)).toBe('Mathe 9b');
+			expect(pinnedCardOrigins.get(readablePin.id)).toEqual({ boardId: readableCard.rootId, title: 'Mathe 9b' });
 		});
 
 		it('should leave a course board untouched', async () => {

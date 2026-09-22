@@ -104,6 +104,22 @@ describe(LearningRoomUc.name, () => {
 			});
 		});
 
+		describe('when the card is an own card of a personal board', () => {
+			it('should refuse to pin it, it would show up twice', async () => {
+				const { card } = setup();
+				boardNodeRule.can.mockReturnValue(true);
+				const personalBoard = columnBoardFactory.build({
+					context: { type: BoardExternalReferenceType.User, id: 'userId' },
+				});
+				boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({
+					rootNode: personalBoard,
+				} as BoardNodeAuthorizable);
+
+				await expect(uc.pinCard('userId', card.id)).rejects.toThrow(BadRequestException);
+				expect(boardNodeService.addToParent).not.toHaveBeenCalled();
+			});
+		});
+
 		describe('when the user may see the card', () => {
 			it('should add a pointer to the first column', async () => {
 				const { card, column } = setup();
@@ -154,7 +170,7 @@ describe(LearningRoomUc.name, () => {
 				board,
 				features: [],
 				allowedOperations: {} as never,
-				pinnedCardOrigins: new Map<string, string>(),
+				pinnedCardOrigins: new Map(),
 			};
 			boardUc.findBoard.mockResolvedValue(expected);
 

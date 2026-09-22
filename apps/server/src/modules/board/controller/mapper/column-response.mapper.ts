@@ -1,5 +1,5 @@
 import { InternalServerErrorException } from '@nestjs/common';
-import { Card, type Column, PinnedCard } from '../../domain';
+import { Card, type Column, PinnedCard, type PinnedCardOrigin } from '../../domain';
 import type { EntityId } from '@shared/domain/types';
 import { CardSkeletonResponse, ColumnFullResponse, ColumnResponse, TimestampsResponse } from '../dto';
 import { CardResponseMapper } from './card-response.mapper';
@@ -8,31 +8,37 @@ import { CardResponseMapper } from './card-response.mapper';
 const PINNED_CARD_PRERENDER_HEIGHT = 150;
 
 export class ColumnResponseMapper {
-	public static mapToResponse(column: Column, pinnedCardOrigins?: Map<EntityId, string>): ColumnResponse {
+	public static mapToResponse(column: Column, pinnedCardOrigins?: Map<EntityId, PinnedCardOrigin>): ColumnResponse {
 		const result = new ColumnResponse({
 			id: column.id,
 			title: column.title ?? '',
-			cards: column.children.map((card) => {
-				// pinned cards point at a card in another board - hand out the referenced
-				// id so the client loads it through the regular card api (which authorizes
-				// it in its own board context), plus the pointer id for moving/unpinning
-				if (card instanceof PinnedCard) {
+			// a pinned card without a resolved origin is one the user cannot read right
+			// now (hidden or locked board) - it stays stored but is not handed out
+			cards: column.children
+				.filter((card) => !(card instanceof PinnedCard) || pinnedCardOrigins?.has(card.id))
+				.map((card) => {
+					// pinned cards point at a card in another board - hand out the referenced
+					// id so the client loads it through the regular card api (which authorizes
+					// it in its own board context), plus the pointer id for moving/unpinning
+					if (card instanceof PinnedCard) {
+						const origin = pinnedCardOrigins?.get(card.id);
+						return new CardSkeletonResponse({
+							cardId: card.referencedCardId,
+							height: PINNED_CARD_PRERENDER_HEIGHT,
+							pinnedCardId: card.id,
+							originBoardId: origin?.boardId,
+							originTitle: origin?.title,
+						});
+					}
+					/* istanbul ignore next */
+					if (!(card instanceof Card)) {
+						throw new InternalServerErrorException(`unsupported child type: ${card.constructor.name}`);
+					}
 					return new CardSkeletonResponse({
-						cardId: card.referencedCardId,
-						height: PINNED_CARD_PRERENDER_HEIGHT,
-						pinnedCardId: card.id,
-						originTitle: pinnedCardOrigins?.get(card.id),
+						cardId: card.id,
+						height: card.height,
 					});
-				}
-				/* istanbul ignore next */
-				if (!(card instanceof Card)) {
-					throw new InternalServerErrorException(`unsupported child type: ${card.constructor.name}`);
-				}
-				return new CardSkeletonResponse({
-					cardId: card.id,
-					height: card.height,
-				});
-			}),
+				}),
 			timestamps: new TimestampsResponse({ lastUpdatedAt: column.updatedAt, createdAt: column.createdAt }),
 		});
 		return result;

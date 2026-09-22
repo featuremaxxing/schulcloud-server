@@ -1,7 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common';
 import type { EntityId } from '@shared/domain/types';
 import { type BoardOperation } from '../../authorisation/board-node.rule';
-import { type BoardFeature, Column, type ColumnBoard } from '../../domain';
+import { type BoardFeature, Column, type ColumnBoard, type PinnedCardOrigin } from '../../domain';
 import { BoardResponse, TimestampsResponse } from '../dto';
 import { ColumnResponseMapper } from './column-response.mapper';
 
@@ -10,7 +10,7 @@ export class BoardResponseMapper {
 		board: ColumnBoard,
 		features: BoardFeature[],
 		allowedOperations: Record<BoardOperation, boolean>,
-		pinnedCardOrigins?: Map<EntityId, string>
+		pinnedCardOrigins?: Map<EntityId, PinnedCardOrigin>
 	): BoardResponse {
 		const result = new BoardResponse({
 			id: board.id,

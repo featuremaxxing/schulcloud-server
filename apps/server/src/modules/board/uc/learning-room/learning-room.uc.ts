@@ -6,7 +6,16 @@ import { throwForbiddenIfFalse } from '@shared/common/utils';
 import type { EntityId } from '@shared/domain/types';
 import { BoardNodeRule, BoardOperation } from '../../authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../../board.config';
-import { BoardFeature, BoardNodeFactory, Card, Column, ColumnBoard, PinnedCard } from '../../domain';
+import {
+	BoardExternalReferenceType,
+	BoardFeature,
+	BoardNodeFactory,
+	Card,
+	Column,
+	ColumnBoard,
+	PinnedCard,
+	PinnedCardOrigin,
+} from '../../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, LearningRoomService } from '../../service';
 import { BoardUc } from '../board.uc';
 
@@ -27,7 +36,7 @@ export class LearningRoomUc {
 		board: ColumnBoard;
 		features: BoardFeature[];
 		allowedOperations: Record<BoardOperation, boolean>;
-		pinnedCardOrigins: Map<EntityId, string>;
+		pinnedCardOrigins: Map<EntityId, PinnedCardOrigin>;
 	}> {
 		this.checkFeatureEnabled();
 
@@ -52,6 +61,13 @@ export class LearningRoomUc {
 		// must never widen access
 		const cardAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(card);
 		throwForbiddenIfFalse(this.boardNodeRule.can('findCards', user, cardAuthorizable));
+
+		// own cards of the learning room already live there - pinning one would show
+		// it twice in the same board
+		const sourceBoard = cardAuthorizable.rootNode;
+		if (sourceBoard instanceof ColumnBoard && sourceBoard.context.type === BoardExternalReferenceType.User) {
+			throw new BadRequestException('Cards of a personal board cannot be pinned');
+		}
 
 		const board = await this.learningRoomService.getOrCreatePersonalLearningRoomOfUser(userId);
 
