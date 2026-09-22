@@ -1,14 +1,16 @@
+import { ObjectId } from '@mikro-orm/mongodb';
 import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { LegacyLogger } from '@infra/logger';
 import { AuthorizationService } from '@modules/authorization';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { User } from '@modules/user/repo';
 import { userFactory } from '@modules/user/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
 import { CopyElementType, type CopyStatus, CopyStatusEnum } from '../../copy-helper';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
-import { BoardNodeFactory } from '../domain';
+import { type BoardExternalReference, BoardExternalReferenceType, BoardNodeFactory } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
 import { boardNodeAuthorizableFactory, cardFactory, columnBoardFactory, columnFactory } from '../testing';
 import { ColumnUc } from './column.uc';
@@ -120,6 +122,62 @@ describe(ColumnUc.name, () => {
 				boardNodeService.findByClassAndId.mockResolvedValueOnce(cardWithoutParent);
 
 				await expect(uc.moveCard(user.id, card.id, column.id)).rejects.toThrow('Card has no parent column');
+			});
+		});
+
+		describe('when a personal board is involved', () => {
+			// A pinned card hands out the id of the card it references. Without this
+			// guard a client could pass that id here and drag the original out of its
+			// course board into a personal learning room - for everyone in the course.
+			const setupBoards = (fromContext: BoardExternalReference, toContext: BoardExternalReference) => {
+				const user = userFactory.build();
+				const card = cardFactory.build();
+				const fromColumn = columnFactory.build();
+				fromColumn.addChild(card);
+				const toColumn = columnFactory.build();
+
+				const fromBoard = columnBoardFactory.build({ context: fromContext });
+				const toBoard = columnBoardFactory.build({ context: toContext });
+
+				boardNodeService.findByClassAndId.mockResolvedValueOnce(card);
+				boardNodeService.findByClassAndId.mockResolvedValueOnce(fromColumn);
+				boardNodeService.findByClassAndId.mockResolvedValueOnce(toColumn);
+				authorizationService.getUserWithPermissions.mockResolvedValueOnce(user);
+				boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValueOnce(
+					boardNodeAuthorizableFactory.build({ boardNode: fromColumn })
+				);
+				columnBoardService.findById.mockResolvedValueOnce(fromBoard);
+				columnBoardService.findById.mockResolvedValueOnce(toBoard);
+				boardNodeRule.can.mockReturnValue(true);
+
+				return { user, card, toColumn };
+			};
+
+			const courseContext: BoardExternalReference = {
+				type: BoardExternalReferenceType.Course,
+				id: new ObjectId().toHexString(),
+			};
+
+			it('should refuse moving a card into a personal board', async () => {
+				const userContext: BoardExternalReference = {
+					type: BoardExternalReferenceType.User,
+					id: new ObjectId().toHexString(),
+				};
+				const { user, card, toColumn } = setupBoards(courseContext, userContext);
+
+				await expect(uc.moveCard(user.id, card.id, toColumn.id)).rejects.toThrow(ForbiddenException);
+				expect(boardNodeService.move).not.toHaveBeenCalled();
+			});
+
+			it('should refuse moving a card out of a personal board', async () => {
+				const userContext: BoardExternalReference = {
+					type: BoardExternalReferenceType.User,
+					id: new ObjectId().toHexString(),
+				};
+				const { user, card, toColumn } = setupBoards(userContext, courseContext);
+
+				await expect(uc.moveCard(user.id, card.id, toColumn.id)).rejects.toThrow(ForbiddenException);
+				expect(boardNodeService.move).not.toHaveBeenCalled();
 			});
 		});
 	});

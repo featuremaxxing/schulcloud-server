@@ -121,6 +121,12 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Enum({ type: 'ContentElementType', nullable: true })
 	deletedElementType: ContentElementType | undefined;
 
+	// PinnedCard
+	// --------------------------------------------------------------------------
+	@Index()
+	@Property({ type: ObjectIdType, nullable: true })
+	referencedCardId: EntityId | undefined;
+
 	// AssignmentElement
 	// --------------------------------------------------------------------------
 	@Property({ type: 'Date', nullable: true })

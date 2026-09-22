@@ -2,11 +2,19 @@ import { StorageLocation } from '@infra/files-storage-amqp-client';
 import { LegacyLogger } from '@infra/logger';
 import { AuthorizationService } from '@modules/authorization';
 import { CopyStatusEnum } from '@modules/copy-helper';
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ForbiddenException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { EntityId } from '@shared/domain/types';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
-import { BoardNodeFactory, Card, Column, ColumnBoard, ContentElementType, isCard } from '../domain';
+import {
+	BoardExternalReferenceType,
+	BoardNodeFactory,
+	Card,
+	Column,
+	ColumnBoard,
+	ContentElementType,
+	isCard,
+} from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
 
 @Injectable()
@@ -87,6 +95,18 @@ export class ColumnUc {
 		const toBoard = await this.columnBoardService.findById(toColumn.rootId, 0);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('moveCard', user, boardNodeAuthorizable));
+
+		// A personal board (learning room) may only ever move its own cards within
+		// itself. Without this, a client could hand the referenced id of a pinned
+		// card to this endpoint and drag the original out of its course board - the
+		// pointer node has its own endpoint for moving.
+		const involvesPersonalBoard =
+			fromBoard.context.type === BoardExternalReferenceType.User ||
+			toBoard.context.type === BoardExternalReferenceType.User;
+		if (involvesPersonalBoard && fromBoard.id !== toBoard.id) {
+			throw new ForbiddenException('Cards cannot be moved into or out of a personal board');
+		}
+
 		const isNotBoardContent = fromBoard.context.id !== toBoard.context.id;
 		if (isNotBoardContent) {
 			throwForbiddenIfFalse(this.boardNodeRule.can('relocateContent', user, boardNodeAuthorizable));

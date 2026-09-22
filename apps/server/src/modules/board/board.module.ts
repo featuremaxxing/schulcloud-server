@@ -30,6 +30,7 @@ import {
 	BoardNodeService,
 	ColumnBoardService,
 	ContextExternalToolDeletedEventHandlerService,
+	LearningRoomService,
 	MediaBoardService,
 } from './service';
 import {
@@ -92,6 +93,7 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		ColumnBoardReferenceService,
 		ColumnBoardTitleService,
 		ContextExternalToolDeletedEventHandlerService,
+		LearningRoomService,
 		// TODO replace by import of MediaBoardModule (fix dependency cycle)
 		MediaBoardNodeFactory,
 		MediaBoardService,
@@ -104,6 +106,7 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		BoardNodeService,
 		BoardCommonToolService,
 		ColumnBoardService,
+		LearningRoomService,
 	],
 })
 export class BoardModule {}

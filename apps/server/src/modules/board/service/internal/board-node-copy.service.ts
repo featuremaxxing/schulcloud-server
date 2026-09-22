@@ -34,6 +34,7 @@ import {
 	type MediaBoard,
 	type MediaExternalToolElement,
 	type MediaLine,
+	type PinnedCard,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -113,6 +114,9 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.ASSIGNMENT_SUBMISSION:
 				result = this.copyAssignmentSubmission(boardNode as AssignmentSubmission);
+				break;
+			case BoardNodeType.PINNED_CARD:
+				result = this.copyPinnedCard(boardNode as PinnedCard);
 				break;
 			default:
 				/* istanbul ignore next */
@@ -515,6 +519,21 @@ export class BoardNodeCopyService {
 	// A submission never gets copied - see copyAssignmentElement. This case only exists so
 	// the type switch in copy() stays exhaustive; it must never be reached in practice
 	// because copyAssignmentElement skips its children.
+	/**
+	 * Pinned cards are personal pointers into someone's learning room. Copying one
+	 * would carry a reference into a context its new owner may not be allowed to
+	 * see, so it is never copied - same reasoning as assignment submissions.
+	 */
+	public copyPinnedCard(original: PinnedCard): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.PINNED_CARD,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
 	public copyAssignmentSubmission(original: AssignmentSubmission): CopyStatus {
 		const result: CopyStatus = {
 			id: original.id,
