@@ -9,6 +9,7 @@ import {
 	BoardRoles,
 	ColumnBoard,
 	isAssignmentElement,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
 	isDrawingElement,
 	isVideoConferenceElement,
@@ -141,6 +142,10 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			return this.hasPermissionForAssignmentSubmissionFile(userWithBoardRoles, authorizable, context);
 		}
 
+		if (this.shouldProcessAssignmentFeedbackFile(authorizable, context)) {
+			return this.hasPermissionForAssignmentFeedbackFile(userWithBoardRoles, authorizable, context);
+		}
+
 		if (context.action === Action.write) {
 			const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
 			const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
@@ -152,7 +157,9 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			// e.g. file-storage's generic checkPermissionsByReference), not routed through
 			// _canEditBoard, so it needs its own guard.
 			const isAssignmentNode =
-				isAssignmentElement(authorizable.boardNode) || isAssignmentSubmission(authorizable.boardNode);
+				isAssignmentElement(authorizable.boardNode) ||
+				isAssignmentSubmission(authorizable.boardNode) ||
+				isAssignmentFeedback(authorizable.boardNode);
 
 			const requiredBoardPermission =
 				isReader && readersCanEdit && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
@@ -341,10 +348,13 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 	// The submission's file is the one place a plain reader (student) needs write access to
 	// a node they do not own the containing board of - mirrors hasPermissionForDrawingElementFile.
 	// The owning student may write their file, and only while the assignment is still
-	// accepting submissions. Since the teacher's audio feedback was introduced, board
-	// editors may additionally ADD files (the feedback recording) to the same parent -
-	// but they must not remove or replace the student's file via the file storage REST
-	// paths; removing happens only through the student's withdrawal or the node delete hook.
+	// accepting submissions.
+	//
+	// Teacher-authored artifacts (audio feedback, annotated corrections) do NOT live here -
+	// they attach to a separate AssignmentFeedback child node (see
+	// hasPermissionForAssignmentFeedbackFile below). That split is what lets a peer reviewer's
+	// read access below stop at the student's own submission file and never reach the
+	// teacher's feedback about it - see A1 in the review notes.
 	private hasPermissionForAssignmentSubmissionFile(
 		userWithBoardRoles: UserWithBoardRoles,
 		authorizable: BoardNodeAuthorizable,
@@ -362,19 +372,6 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			);
 		}
 
-		// Feedback audio upload: an editor-only create, deliberately unconditional on
-		// returnedAt/submittable - a teacher may also attach audio after returning.
-		// Falls through to the owner logic otherwise (student uploads, withdrawals).
-		const isFileCreate = context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE);
-		const isFileRemove = context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
-		if (
-			isFileCreate &&
-			!isFileRemove &&
-			(this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles))
-		) {
-			return true;
-		}
-
 		if (!isOwner) {
 			return false;
 		}
@@ -389,6 +386,48 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 		}
 
 		return assignment.isSubmittable(new Date());
+	}
+
+	private shouldProcessAssignmentFeedbackFile(
+		boardNodeAuthorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		const requiresFileStoragePermission =
+			context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_VIEW) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
+
+		return isAssignmentFeedback(boardNodeAuthorizable.boardNode) && requiresFileStoragePermission;
+	}
+
+	// Teacher-authored artifacts about a submission. Only a board editor/admin may ever write
+	// here. Read access is deliberately narrower than the submission file's: a peer reviewer
+	// is never let in (peerReviewerIds is only ever populated for a submission's own
+	// authorizable, never for its feedback child - see BoardNodeAuthorizableService), and even
+	// the submission's owner only gets to read it once the submission has been returned,
+	// mirroring the release rule AssignmentSubmissionResponseMapper.mapForOwner already
+	// enforces on the metadata (points/feedbackComment). Before that, a file id the client
+	// happens to know (e.g. from a race) still can't be read via the file storage REST route.
+	private hasPermissionForAssignmentFeedbackFile(
+		userWithBoardRoles: UserWithBoardRoles,
+		authorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		if (this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles)) {
+			return true;
+		}
+
+		if (context.action !== Action.read) {
+			return false;
+		}
+
+		const submission = authorizable.parentNode;
+		if (!isAssignmentSubmission(submission)) {
+			return false;
+		}
+
+		const isOwner = submission.userId === userWithBoardRoles.userId;
+		return isOwner && !!submission.returnedAt;
 	}
 }
 
