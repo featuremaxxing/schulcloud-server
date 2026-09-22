@@ -10,6 +10,7 @@ import {
 	BoardConfiguration,
 	BoardNodeAuthorizable,
 	ColumnBoard,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
 	MediaBoard,
 } from '../domain';
@@ -48,7 +49,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		const preparedContext = await this.resolveContext(rootNode);
 		const users = await preparedContext.getUsersWithBoardRoles();
 		const boardConfiguration = preparedContext.getBoardConfiguration(rootNode as MediaBoard | ColumnBoard);
-		const peerReviewerIds = await this.getPeerReviewerIds(boardNode);
+		const { peerReviewerIds, submittedPeerReviewerIds } = await this.getPeerReviewInfo(boardNode, parentNode);
 
 		const boardNodeAuthorizable = new BoardNodeAuthorizable({
 			users,
@@ -58,6 +59,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 			parentNode,
 			boardConfiguration,
 			peerReviewerIds,
+			submittedPeerReviewerIds,
 		});
 
 		return boardNodeAuthorizable;
@@ -100,18 +102,30 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		return boardNodeAuthorizables;
 	}
 
-	// See BoardNodeAuthorizableProps.peerReviewerIds - only meaningful for an AssignmentSubmission,
-	// undefined otherwise (the file-permission check in BoardNodeRule only reads this branch when
-	// boardNode is a submission, but returning undefined for every other node type keeps this
-	// service from doing a review lookup on every single board node access).
-	private async getPeerReviewerIds(boardNode: AnyBoardNode): Promise<EntityId[] | undefined> {
-		if (!isAssignmentSubmission(boardNode)) {
-			return undefined;
+	// See BoardNodeAuthorizableProps.peerReviewerIds/submittedPeerReviewerIds - only meaningful for
+	// an AssignmentSubmission or one of its AssignmentFeedback children (whose submission is then
+	// its parentNode, already loaded by the caller), undefined otherwise. Keeping this narrow spares
+	// every other node type a review lookup on every single board node access.
+	private async getPeerReviewInfo(
+		boardNode: AnyBoardNode,
+		parentNode: AnyBoardNode | undefined
+	): Promise<{ peerReviewerIds?: EntityId[]; submittedPeerReviewerIds?: EntityId[] }> {
+		const submissionId = isAssignmentSubmission(boardNode)
+			? boardNode.id
+			: isAssignmentFeedback(boardNode) && isAssignmentSubmission(parentNode)
+				? parentNode.id
+				: undefined;
+
+		if (!submissionId) {
+			return {};
 		}
 
-		const reviews = await this.assignmentReviewRepo.findBySubmissionId(boardNode.id);
+		const reviews = await this.assignmentReviewRepo.findBySubmissionId(submissionId);
 
-		return reviews.map((review) => review.reviewerUserId);
+		return {
+			peerReviewerIds: reviews.map((review) => review.reviewerUserId),
+			submittedPeerReviewerIds: reviews.filter((review) => review.submittedAt).map((review) => review.reviewerUserId),
+		};
 	}
 
 	private async resolveContext(rootNode: AnyBoardNode): Promise<PreparedBoardContext> {

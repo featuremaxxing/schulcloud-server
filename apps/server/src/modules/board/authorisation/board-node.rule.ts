@@ -9,6 +9,7 @@ import {
 	BoardRoles,
 	ColumnBoard,
 	isAssignmentElement,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
 	isDrawingElement,
 	isEligibleVoter,
@@ -30,7 +31,7 @@ export const BoardOperationValues = [
 	'updateBoardTitle',
 	'updateReadersCanEditSetting',
 	// True board-edit permission, independent of the readersCanEdit collaboration toggle - see
-	// isBoardEditor below and the poll carve-out in _canEditBoard/hasPermission().
+	// isBoardEditor below and the assignment/poll carve-out in _canEditBoard/hasPermission().
 	'isBoardEditor',
 
 	// column
@@ -150,6 +151,10 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			return this.hasPermissionForAssignmentSubmissionFile(userWithBoardRoles, authorizable, context);
 		}
 
+		if (this.shouldProcessAssignmentFeedbackFile(authorizable, context)) {
+			return this.hasPermissionForAssignmentFeedbackFile(userWithBoardRoles, authorizable, context);
+		}
+
 		if (context.action === Action.write) {
 			const isReader = userWithBoardRoles.roles.includes(BoardRoles.READER);
 			const readersCanEdit = authorizable.boardConfiguration.canReadersEdit ?? false;
@@ -163,7 +168,9 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			// its own guard.
 			const isPollNode = isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode);
 			const isAssignmentNode =
-				isAssignmentElement(authorizable.boardNode) || isAssignmentSubmission(authorizable.boardNode);
+				isAssignmentElement(authorizable.boardNode) ||
+				isAssignmentSubmission(authorizable.boardNode) ||
+				isAssignmentFeedback(authorizable.boardNode);
 
 			const requiredBoardPermission =
 				isReader && readersCanEdit && !isPollNode && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
@@ -358,10 +365,13 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 	// The submission's file is the one place a plain reader (student) needs write access to
 	// a node they do not own the containing board of - mirrors hasPermissionForDrawingElementFile.
 	// The owning student may write their file, and only while the assignment is still
-	// accepting submissions. Since the teacher's audio feedback was introduced, board
-	// editors may additionally ADD files (the feedback recording) to the same parent -
-	// but they must not remove or replace the student's file via the file storage REST
-	// paths; removing happens only through the student's withdrawal or the node delete hook.
+	// accepting submissions.
+	//
+	// Teacher-authored artifacts (audio feedback, annotated corrections) do NOT live here -
+	// they attach to a separate AssignmentFeedback child node (see
+	// hasPermissionForAssignmentFeedbackFile below). That split is what lets a peer reviewer's
+	// read access below stop at the student's own submission file and never reach the
+	// teacher's feedback about it - see A1 in the review notes.
 	private hasPermissionForAssignmentSubmissionFile(
 		userWithBoardRoles: UserWithBoardRoles,
 		authorizable: BoardNodeAuthorizable,
@@ -379,19 +389,6 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			);
 		}
 
-		// Feedback audio upload: an editor-only create, deliberately unconditional on
-		// returnedAt/submittable - a teacher may also attach audio after returning.
-		// Falls through to the owner logic otherwise (student uploads, withdrawals).
-		const isFileCreate = context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE);
-		const isFileRemove = context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
-		if (
-			isFileCreate &&
-			!isFileRemove &&
-			(this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles))
-		) {
-			return true;
-		}
-
 		if (!isOwner) {
 			return false;
 		}
@@ -407,6 +404,84 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 
 		return assignment.isSubmittable(new Date());
 	}
+
+	private shouldProcessAssignmentFeedbackFile(
+		boardNodeAuthorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		const requiresFileStoragePermission =
+			context.requiredPermissions.includes(Permission.FILESTORAGE_CREATE) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_VIEW) ||
+			context.requiredPermissions.includes(Permission.FILESTORAGE_REMOVE);
+
+		return isAssignmentFeedback(boardNodeAuthorizable.boardNode) && requiresFileStoragePermission;
+	}
+
+	// A submission can have several feedback containers: the teacher's own (authorId undefined)
+	// and one per assigned peer reviewer (authorId = that reviewer's userId) - see
+	// AssignmentFeedback's doc comment. A board editor/admin always has full access, to every
+	// container. Below that, access is per-author:
+	//
+	// write: only the container's own author (a reviewer must still be a currently-eligible
+	//   reviewer for this submission - filterCurrentlyEligible's reasoning in PeerReviewUc
+	//   applies here too: turning peer review off or removing the assignment must revoke write
+	//   access, not just hide the UI for it).
+	// read: the container's own author always; the submission's owner once released - the
+	//   teacher's container releases with the submission's return (mirrors the metadata release
+	//   rule in AssignmentSubmissionResponseMapper.mapForOwner), a reviewer's container releases
+	//   once that specific review has been submitted (submittedPeerReviewerIds). Any other
+	//   reviewer is never let in - a peer reviewer's own read access stops at the student's
+	//   submission file (hasPermissionForAssignmentSubmissionFile) and never reaches another
+	//   reviewer's or the teacher's feedback about it - see A1 in the review notes.
+	private hasPermissionForAssignmentFeedbackFile(
+		userWithBoardRoles: UserWithBoardRoles,
+		authorizable: BoardNodeAuthorizable,
+		context: AuthorizationContext
+	): boolean {
+		if (this.isBoardEditor(userWithBoardRoles) || this.isBoardAdmin(userWithBoardRoles)) {
+			return true;
+		}
+
+		const feedback = authorizable.boardNode;
+		if (!isAssignmentFeedback(feedback)) {
+			return false;
+		}
+
+		const isAuthor = feedback.authorId === userWithBoardRoles.userId;
+
+		if (context.action !== Action.read) {
+			// isAuthor is only ever true for a real userId, so this also correctly rejects
+			// writes to the teacher's own container (authorId undefined) from anyone but the
+			// editor/admin check above
+			if (!isAuthor) {
+				return false;
+			}
+			// still assigned to review this submission, and peer review hasn't been turned off
+			// since - re-checked here rather than trusted from assignment time, same reasoning
+			// as PeerReviewUc.filterCurrentlyEligible
+			return authorizable.peerReviewerIds?.includes(userWithBoardRoles.userId) ?? false;
+		}
+
+		if (isAuthor) {
+			return true;
+		}
+
+		const submission = authorizable.parentNode;
+		if (!isAssignmentSubmission(submission)) {
+			return false;
+		}
+
+		const isOwner = submission.userId === userWithBoardRoles.userId;
+		if (!isOwner) {
+			return false;
+		}
+
+		if (feedback.authorId === undefined) {
+			return !!submission.returnedAt;
+		}
+
+		return authorizable.submittedPeerReviewerIds?.includes(feedback.authorId) ?? false;
+	}
 }
 
 const hasBoardRole = (user: User, authorizable: BoardNodeAuthorizable, role: BoardRoles): boolean => {
@@ -416,13 +491,13 @@ const hasBoardRole = (user: User, authorizable: BoardNodeAuthorizable, role: Boa
 
 // Whether the caller holds real board-edit permission, independent of the readersCanEdit
 // collaboration toggle. Exposed as its own BoardOperation (evaluated against the *board's own*
-// authorizable, unlike managePoll/updateElement) because the client cannot derive this from
-// allowedOperations.updateElement alone: that one is board-wide and already folds a
-// reader-with-readersCanEdit into "can edit", which is exactly the case a poll element's
-// client-side manage/teacher view must not treat as "can manage" (see the matching carve-outs
-// below and in hasPermission()). A per-element permission check would give the right answer too,
-// but would need a separate authorizable per element; this is the same answer without the extra
-// loads, since the underlying check (hasEditPermission) never varies by element anyway.
+// authorizable, unlike gradeAssignmentSubmission/updateElement) because the client cannot derive
+// this from allowedOperations.updateElement alone: that one is board-wide and already folds a
+// reader-with-readersCanEdit into "can edit", which is exactly the case an assignment or poll
+// element's client-side manage/teacher view must not treat as "can manage" (see the matching
+// carve-outs below and in hasPermission()). A per-element permission check would give the right
+// answer too, but would need a separate authorizable per element; this is the same answer without
+// the extra loads, since the underlying check (hasEditPermission) never varies by element anyway.
 const _isBoardEditor = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
 	if (authorizable.boardConfiguration.isLocked) {
 		return false;

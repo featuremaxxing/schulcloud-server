@@ -3,6 +3,8 @@ import { getBoardNodeType, handleNonExhaustiveSwitch } from './type-mapping';
 import { BoardNodeType } from './types/board-node-type.enum';
 
 import {
+	assignmentFeedbackFactory,
+	assignmentSubmissionFactory,
 	cardFactory,
 	collaborativeTextEditorFactory,
 	columnBoardFactory,
@@ -20,6 +22,8 @@ import {
 
 describe('getBoardNodeType', () => {
 	it('should return correct type for each instance', () => {
+		expect(getBoardNodeType(assignmentFeedbackFactory.build())).toBe(BoardNodeType.ASSIGNMENT_FEEDBACK);
+		expect(getBoardNodeType(assignmentSubmissionFactory.build())).toBe(BoardNodeType.ASSIGNMENT_SUBMISSION);
 		expect(getBoardNodeType(cardFactory.build())).toBe(BoardNodeType.CARD);
 		expect(getBoardNodeType(collaborativeTextEditorFactory.build())).toBe(BoardNodeType.COLLABORATIVE_TEXT_EDITOR);
 		expect(getBoardNodeType(columnFactory.build())).toBe(BoardNodeType.COLUMN);

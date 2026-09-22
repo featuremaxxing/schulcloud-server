@@ -148,9 +148,17 @@ export class BoardNodeRepo {
 		}
 
 		// An element's path starts with its board's id: ',<boardId>,<columnId>,...' (ROOT_PATH=',').
+		// One $or clause per id (each a simple anchored literal) instead of one `(a|b|c)`
+		// alternation: Mongo cannot use the path index for an alternation at all, whereas a
+		// single anchored-prefix literal per clause can still use it. Also escaped, matching
+		// findPollVotesByParentIds below - ids are @IsMongoId()-validated by every current caller
+		// and can never contain a regex metacharacter, but that is an invariant of the callers,
+		// not of this method.
 		const elements = await this.em.find(BoardNodeEntity, {
 			type: BoardNodeType.ASSIGNMENT_ELEMENT,
-			path: { $re: `^,(${reachableBoardIds.join('|')}),` },
+			$or: reachableBoardIds.map((boardId) => {
+				return { path: { $re: `^,${escapeRegExp(boardId)},` } };
+			}),
 		});
 
 		return elements.map((entity) => new TreeBuilder().build(entity)) as AssignmentElement[];
@@ -166,9 +174,13 @@ export class BoardNodeRepo {
 			return [];
 		}
 
+		// See findAssignmentElementsByBoardIds above for why this is a $or of per-id clauses
+		// rather than one `(a|b|c)` alternation.
 		const submissions = await this.em.find(BoardNodeEntity, {
 			type: BoardNodeType.ASSIGNMENT_SUBMISSION,
-			path: { $re: `,(${parentIds.join('|')}),$` },
+			$or: parentIds.map((parentId) => {
+				return { path: { $re: `,${escapeRegExp(parentId)},$` } };
+			}),
 			...(userId ? { userId } : {}),
 		});
 
@@ -278,6 +290,7 @@ export class BoardNodeRepo {
 	}
 }
 
-// See findPollVotesByParentIds - escapes every character with special meaning in a regex so a
-// value that is embedded into a $re query can never be read as anything but a literal string.
+// See findAssignmentElementsByBoardIds/findAssignmentSubmissionsByParentIds/findPollVotesByParentIds -
+// escapes every character with special meaning in a regex so a value embedded into a $re query
+// can never be read as anything but a literal string.
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

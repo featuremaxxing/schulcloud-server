@@ -2,6 +2,7 @@ import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable, NotImplementedException, UnprocessableEntityException } from '@nestjs/common';
 import { EntityId, InputFormat } from '@shared/domain/types';
 import { AssignmentElement } from './assignment-element.do';
+import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
@@ -167,6 +168,20 @@ export class BoardNodeFactory {
 		});
 
 		return submission;
+	}
+
+	// Created lazily, on the first teacher-authored feedback artifact for a submission - see
+	// AssignmentFeedback's doc comment.
+	// authorId omitted (or explicitly undefined) builds the teacher's own container; pass a
+	// reviewer's userId to build their correction container instead - see AssignmentFeedback's
+	// doc comment.
+	public buildAssignmentFeedback(authorId?: EntityId): AssignmentFeedback {
+		const feedback = new AssignmentFeedback({
+			...this.getBaseProps(),
+			userId: authorId,
+		});
+
+		return feedback;
 	}
 
 	private getBaseProps(): BoardNodeProps {

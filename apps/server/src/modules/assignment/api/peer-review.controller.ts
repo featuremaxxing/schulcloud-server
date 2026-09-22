@@ -1,7 +1,9 @@
 import { CurrentUser, ICurrentUser, JwtAuthentication } from '@infra/auth-guard';
 import {
 	Body,
+	ConflictException,
 	Controller,
+	Delete,
 	ForbiddenException,
 	Get,
 	HttpCode,
@@ -15,13 +17,16 @@ import { ApiValidationError } from '@shared/common/error';
 import { PeerReviewUc } from './peer-review.uc';
 import {
 	AssignmentElementUrlParams,
+	AssignmentFeedbackContainerResponse,
 	PeerReviewAssignBodyParams,
+	PeerReviewAssignmentResponse,
 	PeerReviewAssignResultResponse,
 	PeerReviewSettingsBodyParams,
 	PeerReviewSettingsResponse,
 	PeerReviewSubmitBodyParams,
 	PeerReviewTaskResponse,
 	PeerReviewTaskUrlParams,
+	PeerReviewUnassignUrlParams,
 } from './dto';
 import { PeerReviewResponseMapper } from './mapper';
 
@@ -90,6 +95,40 @@ export class PeerReviewController {
 	}
 
 	@ApiOperation({
+		summary: 'List every current reviewer<->submission pairing for an assignment, with reviewer identities.',
+	})
+	@ApiResponse({ status: 200, type: [PeerReviewAssignmentResponse] })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@Get(':elementId/peer-review/assignments')
+	public async listAssignments(
+		@Param() urlParams: AssignmentElementUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<PeerReviewAssignmentResponse[]> {
+		const results = await this.peerReviewUc.listAssignments(currentUser.userId, urlParams.elementId);
+
+		return results.map((result) => PeerReviewResponseMapper.mapAssignment(result));
+	}
+
+	@ApiOperation({ summary: 'Remove one reviewer<->submission pairing, as long as it has not been submitted yet.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@ApiResponse({ status: 409, type: ConflictException })
+	@HttpCode(204)
+	@Delete(':elementId/peer-review/assignments/:submissionId/:reviewerUserId')
+	public async unassign(
+		@Param() urlParams: PeerReviewUnassignUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.peerReviewUc.unassign(
+			currentUser.userId,
+			urlParams.elementId,
+			urlParams.submissionId,
+			urlParams.reviewerUserId
+		);
+	}
+
+	@ApiOperation({
 		summary:
 			'List the caller’s own peer review tasks. Anonymized: never reveals who submitted the work being reviewed.',
 	})
@@ -100,6 +139,24 @@ export class PeerReviewController {
 		const results = await this.peerReviewUc.listMyTasks(currentUser.userId);
 
 		return results.map((result) => PeerReviewResponseMapper.mapTask(result));
+	}
+
+	@ApiOperation({
+		summary:
+			'Get (or, if none exists yet, create) the container this reviewer uploads their own correction files to for a review task.',
+	})
+	@ApiResponse({ status: 200, type: AssignmentFeedbackContainerResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(200)
+	@Post('peer-review/:reviewId/feedback-container')
+	public async ensureReviewFeedbackContainer(
+		@Param() urlParams: PeerReviewTaskUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<AssignmentFeedbackContainerResponse> {
+		const feedback = await this.peerReviewUc.ensureReviewFeedbackContainer(currentUser.userId, urlParams.reviewId);
+
+		return new AssignmentFeedbackContainerResponse({ feedbackContainerId: feedback.id });
 	}
 
 	@ApiOperation({ summary: 'Submit (or update) the caller’s own review for an assigned peer review task.' })

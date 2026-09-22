@@ -1,6 +1,6 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { AssignmentStatus } from './assignment-status.enum';
-import { assignmentSubmissionFactory } from '../testing';
+import { assignmentFeedbackFactory, assignmentSubmissionFactory } from '../testing';
 import { AssignmentSubmission, isAssignmentSubmission } from './assignment-submission.do';
 
 describe(AssignmentSubmission.name, () => {
@@ -14,10 +14,18 @@ describe(AssignmentSubmission.name, () => {
 		expect(isAssignmentSubmission({})).toBe(false);
 	});
 
-	it('should never have a child (V1 has no in-place feedback node yet)', () => {
+	it('should allow an AssignmentFeedback as a child', () => {
 		const submission = assignmentSubmissionFactory.build();
+		const feedback = assignmentFeedbackFactory.build();
 
-		expect(submission.canHaveChild()).toBe(false);
+		expect(submission.canHaveChild(feedback)).toBe(true);
+	});
+
+	it('should not allow any other node type as a child', () => {
+		const submission = assignmentSubmissionFactory.build();
+		const otherSubmission = assignmentSubmissionFactory.build();
+
+		expect(submission.canHaveChild(otherSubmission)).toBe(false);
 	});
 
 	describe('getStatus', () => {

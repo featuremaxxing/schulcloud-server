@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
 import { AssignmentStatus } from '@modules/board';
+import { AssignmentPeerReviewFeedbackResponse } from './assignment-peer-review-feedback.response';
 import { AssignmentPeerReviewSummaryResponse } from './assignment-peer-review-summary.response';
 
 export class AssignmentCriterionPointsResponse {
@@ -65,8 +66,10 @@ export class AssignmentSubmissionResponse {
 		this.fileVersions = props.fileVersions;
 		this.criterionPoints = props.criterionPoints;
 		this.peerReviews = props.peerReviews;
+		this.peerReviewFeedback = props.peerReviewFeedback;
 		this.gradedByFirstName = props.gradedByFirstName;
 		this.gradedByLastName = props.gradedByLastName;
+		this.feedbackContainerId = props.feedbackContainerId;
 	}
 
 	@ApiProperty({ type: String, nullable: true, pattern: bsonStringPattern })
@@ -143,6 +146,14 @@ export class AssignmentSubmissionResponse {
 	peerReviews?: AssignmentPeerReviewSummaryResponse | null;
 
 	@ApiPropertyOptional({
+		type: [AssignmentPeerReviewFeedbackResponse],
+		nullable: true,
+		description:
+			'identified peer review feedback (files, comment, points) - teacher view: every assignment, with reviewer identity; owner view: only submitted reviews, reviewer identity stripped',
+	})
+	peerReviewFeedback?: AssignmentPeerReviewFeedbackResponse[] | null;
+
+	@ApiPropertyOptional({
 		description:
 			'first name of the teacher who graded this submission - relevant when a room has more than one teacher; only present for the teacher view, never for the submission owner',
 	})
@@ -153,4 +164,13 @@ export class AssignmentSubmissionResponse {
 			'last name of the teacher who graded this submission - only present for the teacher view, never for the submission owner',
 	})
 	gradedByLastName?: string;
+
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		pattern: bsonStringPattern,
+		description:
+			'id of the AssignmentFeedback node holding teacher feedback files, once one exists - upload target for new feedback (teacher view), or where the released feedback files can be read from (owner view, only once returned)',
+	})
+	feedbackContainerId?: string | null;
 }

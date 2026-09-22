@@ -156,6 +156,15 @@ export interface AssignmentSubmissionProps extends BoardNodeProps {
 	criterionPoints?: AssignmentSubmissionCriterionPoints[];
 }
 
+export interface AssignmentFeedbackProps extends BoardNodeProps {
+	// undefined = the teacher's own feedback container; set = a specific reviewer's own
+	// correction container. Reuses the same entity column AssignmentSubmissionProps.userId
+	// already maps onto (see BoardNodeEntity.userId) rather than adding a new one - the two
+	// node types are never confused because their BoardNodeType differs. See AssignmentFeedback's
+	// doc comment for why containers are split by author at all.
+	userId?: EntityId;
+}
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -178,6 +187,7 @@ type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | Med
 
 export type AnyBoardNodeProps =
 	| AssignmentElementProps
+	| AssignmentFeedbackProps
 	| AssignmentSubmissionProps
 	| CardProps
 	| PinnedCardProps

@@ -1,7 +1,9 @@
-import { AssignmentStatus, type AssignmentSubmissionCriterionPoints } from '@modules/board';
+import { AssignmentStatus, type AssignmentSubmissionCriterionPoints, isAssignmentFeedback } from '@modules/board';
 import { type FileDto } from '@infra/files-storage-amqp-client';
 import {
 	AssignmentCriterionPointsResponse,
+	AssignmentPeerReviewFeedbackFileResponse,
+	AssignmentPeerReviewFeedbackResponse,
 	AssignmentPeerReviewSummaryResponse,
 	AssignmentSubmissionListResponse,
 	AssignmentSubmissionResponse,
@@ -12,6 +14,7 @@ import {
 	type AssignmentSubmissionEntry,
 	type AssignmentSubmissionResult,
 	type AssignmentSubmissionsListResult,
+	type PeerReviewFeedbackEntry,
 } from '../assignment.uc';
 
 export class AssignmentSubmissionResponseMapper {
@@ -35,8 +38,12 @@ export class AssignmentSubmissionResponseMapper {
 			fileVersions: mapFileVersions(entry.fileVersions),
 			criterionPoints: mapCriterionPoints(entry.submission?.criterionPoints),
 			peerReviews: entry.peerReviews ? new AssignmentPeerReviewSummaryResponse(entry.peerReviews) : null,
+			// full detail, with reviewer identity - never gated, this is the teacher's own view
+			peerReviewFeedback: mapPeerReviewFeedback(entry.peerReviewFeedback, { includeReviewerIdentity: true }),
 			gradedByFirstName: entry.gradedBy?.firstName,
 			gradedByLastName: entry.gradedBy?.lastName,
+			// always present once it exists - the teacher's own view is never gated
+			feedbackContainerId: feedbackContainerIdOf(entry.submission),
 		});
 	}
 
@@ -44,7 +51,7 @@ export class AssignmentSubmissionResponseMapper {
 	// until the teacher has returned the submission - enforced here on the server, never
 	// only by hiding it in the client. See AGENTS notes / plan §5.3.
 	public static mapForOwner(entry: AssignmentSubmissionEntry): AssignmentSubmissionResponse {
-		const isReturned = entry.submission?.returnedAt !== undefined;
+		const isReturned = !!entry.submission?.returnedAt;
 
 		return new AssignmentSubmissionResponse({
 			id: entry.submission?.id ?? null,
@@ -65,6 +72,15 @@ export class AssignmentSubmissionResponseMapper {
 			fileVersions: mapFileVersions(entry.fileVersions),
 			// follows the same release rule as the flat points total it sums up to
 			criterionPoints: isReturned ? mapCriterionPoints(entry.submission?.criterionPoints) : null,
+			// same release rule as feedbackAudio/feedbackFiles - the id is meaningless to the
+			// owner before then anyway, since hasPermissionForAssignmentFeedbackFile would
+			// reject a read of it regardless
+			feedbackContainerId: isReturned ? feedbackContainerIdOf(entry.submission) : null,
+			// deliberately NOT gated on isReturned, unlike everything else in this method: a
+			// peer review is visible to the reviewed student as soon as that specific review is
+			// submitted (filtered inside mapPeerReviewFeedback), independent of whether/when the
+			// teacher returns the submission. Reviewer identity is stripped either way.
+			peerReviewFeedback: mapPeerReviewFeedback(entry.peerReviewFeedback, { includeReviewerIdentity: false }),
 		});
 	}
 
@@ -110,6 +126,12 @@ export class AssignmentSubmissionResponseMapper {
 	}
 }
 
+// Only ever the teacher's own container (authorId undefined) - a submission can also carry one
+// container per peer reviewer now (see AssignmentFeedback's doc comment), surfaced separately
+// via peerReviewFeedback below.
+const feedbackContainerIdOf = (submission: AssignmentSubmissionEntry['submission']): string | null =>
+	submission?.children.find((child) => isAssignmentFeedback(child) && child.authorId === undefined)?.id ?? null;
+
 const mapFile = (file: AssignmentSubmissionEntry['file']): AssignmentSubmissionFileResponse | null => {
 	if (!file) {
 		return null;
@@ -147,6 +169,36 @@ const mapFiles = (files?: FileDto[]): AssignmentSubmissionFileResponse[] | null 
 	}
 
 	return files.map((file) => new AssignmentSubmissionFileResponse({ fileRecordId: file.id, name: file.name }));
+};
+
+// Teacher view: every assignment (submitted or not), with reviewer identity. Owner view: only
+// submitted reviews, reviewer identity stripped - see the doc comments on the two call sites.
+const mapPeerReviewFeedback = (
+	entries: PeerReviewFeedbackEntry[] | undefined,
+	options: { includeReviewerIdentity: boolean }
+): AssignmentPeerReviewFeedbackResponse[] | null => {
+	const relevant = options.includeReviewerIdentity ? entries : entries?.filter((entry) => entry.submittedAt);
+	if (!relevant || relevant.length === 0) {
+		return null;
+	}
+
+	return relevant.map(
+		(entry) =>
+			new AssignmentPeerReviewFeedbackResponse({
+				reviewerUserId: options.includeReviewerIdentity ? entry.reviewerUserId : undefined,
+				reviewerFirstName: options.includeReviewerIdentity ? entry.reviewerFirstName : undefined,
+				reviewerLastName: options.includeReviewerIdentity ? entry.reviewerLastName : undefined,
+				points: entry.points ?? null,
+				feedbackComment: entry.feedbackComment ?? null,
+				submittedAt: entry.submittedAt?.toISOString() ?? null,
+				// names no person, so this stays present even in the owner's anonymized view
+				feedbackContainerId: entry.feedbackContainerId ?? null,
+				files:
+					entry.files?.map(
+						(file) => new AssignmentPeerReviewFeedbackFileResponse({ fileRecordId: file.id, name: file.name })
+					) ?? null,
+			})
+	);
 };
 
 const mapCriterionPoints = (
