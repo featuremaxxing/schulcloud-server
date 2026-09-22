@@ -400,14 +400,22 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 		return isAssignmentFeedback(boardNodeAuthorizable.boardNode) && requiresFileStoragePermission;
 	}
 
-	// Teacher-authored artifacts about a submission. Only a board editor/admin may ever write
-	// here. Read access is deliberately narrower than the submission file's: a peer reviewer
-	// is never let in (peerReviewerIds is only ever populated for a submission's own
-	// authorizable, never for its feedback child - see BoardNodeAuthorizableService), and even
-	// the submission's owner only gets to read it once the submission has been returned,
-	// mirroring the release rule AssignmentSubmissionResponseMapper.mapForOwner already
-	// enforces on the metadata (points/feedbackComment). Before that, a file id the client
-	// happens to know (e.g. from a race) still can't be read via the file storage REST route.
+	// A submission can have several feedback containers: the teacher's own (authorId undefined)
+	// and one per assigned peer reviewer (authorId = that reviewer's userId) - see
+	// AssignmentFeedback's doc comment. A board editor/admin always has full access, to every
+	// container. Below that, access is per-author:
+	//
+	// write: only the container's own author (a reviewer must still be a currently-eligible
+	//   reviewer for this submission - filterCurrentlyEligible's reasoning in PeerReviewUc
+	//   applies here too: turning peer review off or removing the assignment must revoke write
+	//   access, not just hide the UI for it).
+	// read: the container's own author always; the submission's owner once released - the
+	//   teacher's container releases with the submission's return (mirrors the metadata release
+	//   rule in AssignmentSubmissionResponseMapper.mapForOwner), a reviewer's container releases
+	//   once that specific review has been submitted (submittedPeerReviewerIds). Any other
+	//   reviewer is never let in - a peer reviewer's own read access stops at the student's
+	//   submission file (hasPermissionForAssignmentSubmissionFile) and never reaches another
+	//   reviewer's or the teacher's feedback about it - see A1 in the review notes.
 	private hasPermissionForAssignmentFeedbackFile(
 		userWithBoardRoles: UserWithBoardRoles,
 		authorizable: BoardNodeAuthorizable,
@@ -417,8 +425,28 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			return true;
 		}
 
-		if (context.action !== Action.read) {
+		const feedback = authorizable.boardNode;
+		if (!isAssignmentFeedback(feedback)) {
 			return false;
+		}
+
+		const isAuthor = feedback.authorId === userWithBoardRoles.userId;
+
+		if (context.action !== Action.read) {
+			// isAuthor is only ever true for a real userId, so this also correctly rejects
+			// writes to the teacher's own container (authorId undefined) from anyone but the
+			// editor/admin check above
+			if (!isAuthor) {
+				return false;
+			}
+			// still assigned to review this submission, and peer review hasn't been turned off
+			// since - re-checked here rather than trusted from assignment time, same reasoning
+			// as PeerReviewUc.filterCurrentlyEligible
+			return authorizable.peerReviewerIds?.includes(userWithBoardRoles.userId) ?? false;
+		}
+
+		if (isAuthor) {
+			return true;
 		}
 
 		const submission = authorizable.parentNode;
@@ -427,7 +455,15 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 		}
 
 		const isOwner = submission.userId === userWithBoardRoles.userId;
-		return isOwner && !!submission.returnedAt;
+		if (!isOwner) {
+			return false;
+		}
+
+		if (feedback.authorId === undefined) {
+			return !!submission.returnedAt;
+		}
+
+		return authorizable.submittedPeerReviewerIds?.includes(feedback.authorId) ?? false;
 	}
 }
 

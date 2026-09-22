@@ -1094,12 +1094,15 @@ describe(BoardNodeRule.name, () => {
 				owner: User;
 				returnedAt?: Date;
 				users: { userId: string; roles: BoardRoles[] }[];
+				authorId?: string;
+				peerReviewerIds?: string[];
+				submittedPeerReviewerIds?: string[];
 			}) => {
 				const submission = assignmentSubmissionFactory.build({
 					userId: options.owner.id,
 					returnedAt: options.returnedAt,
 				});
-				const feedback = assignmentFeedbackFactory.build();
+				const feedback = assignmentFeedbackFactory.build({ userId: options.authorId });
 				const columnBoard = columnBoardFactory.build();
 
 				return boardNodeAuthorizableFactory.build({
@@ -1108,8 +1111,8 @@ describe(BoardNodeRule.name, () => {
 					parentNode: submission,
 					rootNode: columnBoard,
 					boardConfiguration: { isLocked: false },
-					// deliberately no peerReviewerIds - see BoardNodeAuthorizableService.getPeerReviewerIds,
-					// which only ever populates it for a submission's own authorizable
+					peerReviewerIds: options.peerReviewerIds,
+					submittedPeerReviewerIds: options.submittedPeerReviewerIds,
 				});
 			};
 
@@ -1241,6 +1244,179 @@ describe(BoardNodeRule.name, () => {
 				});
 
 				expect(res).toBe(false);
+			});
+
+			// A reviewer's own correction container - see AssignmentFeedback's doc comment for why
+			// there can be more than one feedback container per submission.
+			describe('a reviewer-authored container (authorId set)', () => {
+				it("should allow the container's own author to write to it while still an eligible reviewer", () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow the author to write once no longer an eligible reviewer (peer review turned off or reassigned)', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [], // no longer assigned
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should NOT allow a different reviewer to write to someone else’s correction container', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const otherReviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id, otherReviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+							{ userId: otherReviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(otherReviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should always allow the author to read their own container, regardless of submittedAt', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow the submission owner to read a review before it was submitted', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should allow the submission owner to read a review once it was submitted', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow a different reviewer to read someone else’s submitted review', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const otherReviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id, otherReviewer.id],
+						submittedPeerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+							{ userId: otherReviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(otherReviewer, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(false);
+				});
 			});
 		});
 	});

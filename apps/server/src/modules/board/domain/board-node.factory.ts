@@ -141,9 +141,13 @@ export class BoardNodeFactory {
 
 	// Created lazily, on the first teacher-authored feedback artifact for a submission - see
 	// AssignmentFeedback's doc comment.
-	public buildAssignmentFeedback(): AssignmentFeedback {
+	// authorId omitted (or explicitly undefined) builds the teacher's own container; pass a
+	// reviewer's userId to build their correction container instead - see AssignmentFeedback's
+	// doc comment.
+	public buildAssignmentFeedback(authorId?: EntityId): AssignmentFeedback {
 		const feedback = new AssignmentFeedback({
 			...this.getBaseProps(),
+			userId: authorId,
 		});
 
 		return feedback;

@@ -1,6 +1,7 @@
 import type {
 	AnyBoardNodeProps,
 	AssignmentElementProps,
+	AssignmentFeedbackProps,
 	AssignmentSubmissionProps,
 	BoardNodeProps,
 	BoardNodeType,
@@ -45,6 +46,7 @@ export interface BoardNodeEntityProps
 		BoardNodeProps,
 		TypeProps,
 		ComponentProps<AssignmentElementProps>,
+		ComponentProps<AssignmentFeedbackProps>,
 		ComponentProps<AssignmentSubmissionProps>,
 		ComponentProps<ColumnBoardProps>,
 		ComponentProps<ColumnProps>,
