@@ -24,6 +24,7 @@ const SYSTEM_PROMPT = [
 	'Struktur der Rückmeldung: 1) Urteil (richtig / falsch / teilweise richtig),',
 	'2) kurze Begründung, 3) ein Tipp, falls die Antwort nicht vollständig richtig war.',
 	'Antworte in höchstens 120 Wörtern, auf Deutsch, in einfacher Schüler-Sprache.',
+	'Schreibe reinen Fließtext ohne Markdown-Zeichen (keine **, #, * oder Aufzählungszeichen).',
 	'Erfinde keine zusätzlichen Fragen, starte keinen Dialog und bewerte nichts außer der gegebenen Antwort.',
 ].join(' ');
 
