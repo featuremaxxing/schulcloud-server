@@ -13,9 +13,15 @@ import { setupEntities } from '@testing/database';
 import { CopyElementType, type CopyStatus, CopyStatusEnum } from '../../copy-helper';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
-import { BoardNodeFactory } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
-import { boardNodeAuthorizableFactory, columnBoardFactory, columnFactory } from '../testing';
+import { type BoardNodeAuthorizable, BoardExternalReferenceType, BoardNodeFactory } from '../domain';
+import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, LearningRoomService } from '../service';
+import {
+	boardNodeAuthorizableFactory,
+	cardFactory,
+	columnBoardFactory,
+	columnFactory,
+	pinnedCardFactory,
+} from '../testing';
 import { BoardUc } from './board.uc';
 
 describe(BoardUc.name, () => {
@@ -26,6 +32,8 @@ describe(BoardUc.name, () => {
 	let boardNodeRule: DeepMocked<BoardNodeRule>;
 	let boardNodeAuthorizableService: DeepMocked<BoardNodeAuthorizableService>;
 	let authorizationService: DeepMocked<AuthorizationService>;
+	let learningRoomService: DeepMocked<LearningRoomService>;
+	let boardContextApiHelperService: DeepMocked<BoardContextApiHelperService>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -83,6 +91,10 @@ describe(BoardUc.name, () => {
 					provide: BoardNodeRule,
 					useValue: createMock<BoardNodeRule>(),
 				},
+				{
+					provide: LearningRoomService,
+					useValue: createMock<LearningRoomService>(),
+				},
 			],
 		}).compile();
 
@@ -91,6 +103,8 @@ describe(BoardUc.name, () => {
 		columnBoardService = module.get(ColumnBoardService);
 		boardNodeRule = module.get(BoardNodeRule);
 		authorizationService = module.get(AuthorizationService);
+		learningRoomService = module.get(LearningRoomService);
+		boardContextApiHelperService = module.get(BoardContextApiHelperService);
 		boardNodeAuthorizableService = module.get(BoardNodeAuthorizableService);
 		await setupEntities([User, CourseEntity, CourseGroupEntity]);
 	});
@@ -112,6 +126,117 @@ describe(BoardUc.name, () => {
 
 		return { user, board, boardId, column };
 	};
+
+	describe('findBoard', () => {
+		// A personal board is loaded through this path as well - the collaboration
+		// socket uses it - so the learning room specifics have to live here.
+		const setupPersonalBoard = () => {
+			const user = userFactory.build();
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.User, id: user.id },
+			});
+			const column = columnFactory.build();
+			board.addChild(column);
+
+			const readableCard = cardFactory.build();
+			const hiddenCard = cardFactory.build();
+			const readablePin = pinnedCardFactory.build({ referencedCardId: readableCard.id });
+			const hiddenPin = pinnedCardFactory.build({ referencedCardId: hiddenCard.id });
+			const deletedPin = pinnedCardFactory.build({ referencedCardId: 'deletedCardId' });
+			column.addChild(readablePin);
+			column.addChild(hiddenPin);
+			column.addChild(deletedPin);
+
+			boardNodeService.findByClassAndId.mockResolvedValue(board as never);
+			boardNodeService.findByClassAndIds.mockResolvedValue([readableCard, hiddenCard] as never);
+			authorizationService.getUserWithPermissions.mockResolvedValue(user);
+			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({} as BoardNodeAuthorizable);
+			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
+				{ boardNode: readableCard } as BoardNodeAuthorizable,
+				{ boardNode: hiddenCard } as BoardNodeAuthorizable,
+			]);
+			boardContextApiHelperService.getFeaturesForBoardNode.mockResolvedValue([]);
+			learningRoomService.findPinnedCards.mockReturnValue([readablePin, hiddenPin, deletedPin]);
+			boardNodeRule.listAllowedOperations.mockReturnValue({
+				deleteBoard: true,
+				shareBoard: true,
+				updateBoardTitle: true,
+				createCard: true,
+			} as unknown as Record<string, boolean> as never);
+			boardNodeRule.can.mockImplementation((operation, _user, authorizable) => {
+				if (operation === 'findBoard') return true;
+				return authorizable.boardNode?.id === readableCard.id;
+			});
+
+			return { board, readableCard, readablePin, hiddenPin, deletedPin };
+		};
+
+		it('should hide board actions that make no sense in a personal room', async () => {
+			const { board } = setupPersonalBoard();
+
+			const { allowedOperations } = await uc.findBoard('userId', board.id);
+
+			// deleting the board would take every pinned card with it
+			expect(allowedOperations.deleteBoard).toBe(false);
+			expect(allowedOperations.shareBoard).toBe(false);
+			expect(allowedOperations.updateBoardTitle).toBe(false);
+			expect(allowedOperations.createCard).toBe(true);
+		});
+
+		it('should delete pointers whose card no longer exists', async () => {
+			const { board, deletedPin } = setupPersonalBoard();
+
+			await uc.findBoard('userId', board.id);
+
+			expect(boardNodeService.delete).toHaveBeenCalledWith(deletedPin);
+			expect(boardNodeService.delete).toHaveBeenCalledTimes(1);
+		});
+
+		it('should keep but not hand out pointers the user cannot read right now', async () => {
+			// e.g. a teacher hid the board - the pins of the class must survive that
+			const { board, hiddenPin } = setupPersonalBoard();
+
+			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(boardNodeService.delete).not.toHaveBeenCalledWith(hiddenPin);
+			expect(pinnedCardOrigins.has(hiddenPin.id)).toBe(false);
+		});
+
+		it('should map each readable pointer to its source board and room name', async () => {
+			const { board, readablePin, readableCard } = setupPersonalBoard();
+			boardContextApiHelperService.getParentsOfElement.mockResolvedValue([
+				{ id: 'roomId', name: 'Mathe 9b', type: BoardExternalReferenceType.Room },
+			] as never);
+
+			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(pinnedCardOrigins.get(readablePin.id)).toEqual({ boardId: readableCard.rootId, title: 'Mathe 9b' });
+		});
+
+		it('should leave a course board untouched', async () => {
+			const user = userFactory.build();
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.Course, id: 'courseId' },
+			});
+
+			boardNodeService.findByClassAndId.mockResolvedValue(board as never);
+			authorizationService.getUserWithPermissions.mockResolvedValue(user);
+			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue({} as BoardNodeAuthorizable);
+			boardContextApiHelperService.getFeaturesForBoardNode.mockResolvedValue([]);
+			boardNodeRule.can.mockReturnValue(true);
+			boardNodeRule.listAllowedOperations.mockReturnValue({
+				deleteBoard: true,
+				shareBoard: true,
+			} as unknown as Record<string, boolean> as never);
+
+			const { allowedOperations, pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(allowedOperations.deleteBoard).toBe(true);
+			expect(allowedOperations.shareBoard).toBe(true);
+			expect(pinnedCardOrigins.size).toBe(0);
+			expect(boardNodeService.delete).not.toHaveBeenCalled();
+		});
+	});
 
 	describe('copyColumnBoard', () => {
 		describe('when something goes wrong', () => {

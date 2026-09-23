@@ -19,3 +19,9 @@ export class PinnedCard extends BoardNode<PinnedCardProps> {
 }
 
 export const isPinnedCard = (reference: unknown): reference is PinnedCard => reference instanceof PinnedCard;
+
+/** Where a pinned card lives, for the origin chip that links back to it. */
+export type PinnedCardOrigin = {
+	boardId: EntityId;
+	title?: string;
+};

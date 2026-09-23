@@ -5,6 +5,7 @@ import { BoardContextApiHelperService } from '@modules/board-context';
 import { CopyStatus, CopyStatusEnum } from '@modules/copy-helper';
 import { CourseService } from '@modules/course';
 import { RoomService } from '@modules/room';
+import { User } from '@modules/user/repo';
 import { RoomMembershipService } from '@modules/room-membership';
 import { forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { FeatureDisabledLoggableException } from '@shared/common/loggable-exception';
@@ -20,11 +21,13 @@ import {
 	BoardFeature,
 	BoardLayout,
 	BoardNodeFactory,
+	Card,
 	Column,
 	ColumnBoard,
 	isColumn,
+	PinnedCardOrigin,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
+import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, LearningRoomService } from '../service';
 import { StorageLocationReference } from '../service/internal';
 
 @Injectable()
@@ -42,7 +45,8 @@ export class BoardUc {
 		private readonly boardContextApiHelperService: BoardContextApiHelperService,
 		private readonly boardNodeAuthorizableService: BoardNodeAuthorizableService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig,
-		private readonly boardNodeRule: BoardNodeRule
+		private readonly boardNodeRule: BoardNodeRule,
+		private readonly learningRoomService: LearningRoomService
 	) {
 		this.logger.setContext(BoardUc.name);
 	}
@@ -68,6 +72,7 @@ export class BoardUc {
 		board: ColumnBoard;
 		features: BoardFeature[];
 		allowedOperations: Record<BoardOperation, boolean>;
+		pinnedCardOrigins: Map<EntityId, PinnedCardOrigin>;
 	}> {
 		// TODO set depth=2 to reduce data?
 		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId);
@@ -77,8 +82,95 @@ export class BoardUc {
 		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, boardNodeAuthorizable));
 
 		const features = await this.boardContextApiHelperService.getFeaturesForBoardNode(boardId);
-		const allowedOperations = this.boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
-		return { board, features, allowedOperations };
+		let allowedOperations = this.boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
+		let pinnedCardOrigins = new Map<EntityId, PinnedCardOrigin>();
+
+		// Every way of loading a board ends up here - the rest endpoint as well as the
+		// collaboration socket, which is what the client actually uses. Personal board
+		// handling therefore belongs here, not in the learning room endpoint.
+		if (board.context.type === BoardExternalReferenceType.User) {
+			pinnedCardOrigins = await this.resolvePinnedCards(board, user);
+			allowedOperations = this.hidePersonalBoardOperations(allowedOperations);
+		}
+
+		return { board, features, allowedOperations, pinnedCardOrigins };
+	}
+
+	/**
+	 * The owner is editor and admin of their own board, so the rule grants every
+	 * board level action. In a personal room they are pointless (share, copy,
+	 * publish, rename - the name lives in the navigation) or destructive: deleting
+	 * the board would take all pinned cards with it.
+	 */
+	private hidePersonalBoardOperations(
+		allowedOperations: Record<BoardOperation, boolean>
+	): Record<BoardOperation, boolean> {
+		return {
+			...allowedOperations,
+			copyBoard: false,
+			deleteBoard: false,
+			shareBoard: false,
+			updateBoardTitle: false,
+			updateReadersCanEditSetting: false,
+			updateBoardVisibility: false,
+		};
+	}
+
+	/**
+	 * Maps every pinned card the user can currently read to where it lives - the
+	 * mapper renders exactly these, so this is also the read check for pointers.
+	 *
+	 * Pointers whose card no longer exists are deleted. Pointers the user merely
+	 * cannot read right now are kept: a teacher hiding or locking a board must not
+	 * wipe the pins of the whole class, and they come back once it is visible.
+	 */
+	private async resolvePinnedCards(board: ColumnBoard, user: User): Promise<Map<EntityId, PinnedCardOrigin>> {
+		const pinnedCards = this.learningRoomService.findPinnedCards(board);
+		if (pinnedCards.length === 0) {
+			return new Map();
+		}
+
+		const cards = await this.boardNodeService.findByClassAndIds(
+			Card,
+			pinnedCards.map((node) => node.referencedCardId)
+		);
+
+		const existingCardIds = new Set(cards.map((card) => card.id));
+		const deletedCardPointers = pinnedCards.filter((node) => !existingCardIds.has(node.referencedCardId));
+		for (const node of deletedCardPointers) {
+			await this.boardNodeService.delete(node);
+		}
+
+		const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(cards);
+		const readableCards = authorizables
+			.filter((authorizable) => this.boardNodeRule.can('findCards', user, authorizable))
+			.map((authorizable) => authorizable.boardNode);
+		const rootIdByCardId = new Map(readableCards.map((card) => [card.id, card.rootId]));
+
+		// resolved once per source board, not per card - a learning room usually
+		// holds several cards from the same room
+		const titleByRootId = new Map<EntityId, string>();
+		for (const rootId of new Set(rootIdByCardId.values())) {
+			try {
+				const parents = await this.boardContextApiHelperService.getParentsOfElement(rootId);
+				const title = parents[0]?.name;
+				if (title) {
+					titleByRootId.set(rootId, title);
+				}
+			} catch {
+				// a source board we cannot resolve simply gets a chip without a name
+			}
+		}
+
+		const originByPinnedCardId = new Map<EntityId, PinnedCardOrigin>();
+		pinnedCards.forEach((node) => {
+			const rootId = rootIdByCardId.get(node.referencedCardId);
+			if (rootId) {
+				originByPinnedCardId.set(node.id, { boardId: rootId, title: titleByRootId.get(rootId) });
+			}
+		});
+
+		return originByPinnedCardId;
 	}
 
 	public async findBoardContext(userId: EntityId, boardId: EntityId): Promise<BoardExternalReference> {
