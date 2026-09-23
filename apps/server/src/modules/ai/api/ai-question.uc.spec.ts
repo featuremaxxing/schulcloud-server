@@ -193,6 +193,22 @@ describe(AiQuestionUc.name, () => {
 			expect(boardNodeService.addToParent).not.toHaveBeenCalled();
 		});
 
+		// Regression guard: the ownership rule inspects the authorizable's boardNode itself,
+		// so it must be evaluated against the ANSWER node - against the element it would
+		// 403 every legitimate owner (see updateOwnAiQuestionAnswer in board-node.rule.ts).
+		it('should check the ownership rule against the answer node, not the element', async () => {
+			const element = setupElement({ allowMultipleAttempts: true });
+			const existing = aiQuestionAnswerFactory.build({ userId: 'userId', attemptCount: 1 });
+			element.addChild(existing);
+			setupUserContext(element);
+
+			await uc.submitAnswer('userId', element.id, 'zweiter Versuch');
+			expect(boardNodeAuthorizableService.getBoardAuthorizable).toHaveBeenCalledWith(existing);
+
+			await uc.getOwnAnswer('userId', element.id);
+			expect(boardNodeAuthorizableService.getBoardAuthorizable).toHaveBeenCalledWith(existing);
+		});
+
 		it('should persist nothing when the AI call fails', async () => {
 			const element = setupElement();
 			setupUserContext(element);

@@ -88,7 +88,12 @@ export class AiQuestionUc {
 		const existing = element.getChildrenOfType(AiQuestionAnswer).find((candidate) => candidate.userId === userId);
 
 		if (existing) {
-			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, boardNodeAuthorizable));
+			// Ownership is checked against the ANSWER's authorizable, not the element's:
+			// updateOwnAiQuestionAnswer inspects the authorizable's boardNode itself, and only
+			// the answer node can ever satisfy it (the element authorizable would 403 every
+			// legitimate owner - the assignment module loads its submission node the same way).
+			const answerAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(existing);
+			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, answerAuthorizable));
 			if (!element.allowMultipleAttempts) {
 				// Conflict, not forbidden: the caller owns the answer and the data is safe -
 				// a proxy timeout during the slow AI call can make the first POST appear failed
@@ -143,7 +148,9 @@ export class AiQuestionUc {
 
 		const existing = element.getChildrenOfType(AiQuestionAnswer).find((candidate) => candidate.userId === userId);
 		if (existing) {
-			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, boardNodeAuthorizable));
+			// Ownership check against the answer's own authorizable - see submitAnswer.
+			const answerAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(existing);
+			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, answerAuthorizable));
 
 			return new AiQuestionOwnAnswerResponse({ answer: this.mapToResponse(existing) });
 		}
