@@ -13,6 +13,8 @@ export class AiQuestionElementContent {
 	constructor(props: AiQuestionElementContent) {
 		this.question = props.question;
 		this.allowMultipleAttempts = props.allowMultipleAttempts;
+		this.creatorId = props.creatorId;
+		this.onlyCreatorCanEdit = props.onlyCreatorCanEdit;
 	}
 
 	@ApiProperty()
@@ -20,6 +22,12 @@ export class AiQuestionElementContent {
 
 	@ApiProperty({ description: 'whether students may replace their answer; false = single attempt' })
 	allowMultipleAttempts: boolean;
+
+	@ApiProperty({ pattern: bsonStringPattern, required: false })
+	creatorId?: string;
+
+	@ApiProperty({ description: 'whether only the creating teacher may edit this element' })
+	onlyCreatorCanEdit: boolean;
 }
 
 export class AiQuestionElementResponse {

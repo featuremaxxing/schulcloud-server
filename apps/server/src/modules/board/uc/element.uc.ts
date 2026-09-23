@@ -6,7 +6,7 @@ import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { EntityId } from '@shared/domain/types';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import { AnyElementContentBody } from '../controller/dto';
-import { AnyContentElement, BoardNodeFactory, ContentElementWithParentHierarchy } from '../domain';
+import { AnyContentElement, BoardNodeFactory, ContentElementWithParentHierarchy, isAiQuestionElement } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
 @Injectable()
@@ -46,10 +46,19 @@ export class ElementUc {
 	): Promise<AnyContentElement> {
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const element = await this.boardNodeService.findContentElementById(elementId);
-		const boardNode = await this.boardNodeService.findRoot(element);
-		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(boardNode);
+		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('updateElement', user, boardNodeAuthorizable));
+
+		if (isAiQuestionElement(element)) {
+			const requestedRestriction = (content as { onlyCreatorCanEdit?: boolean }).onlyCreatorCanEdit;
+			const changesRestriction =
+				requestedRestriction !== undefined && requestedRestriction !== element.onlyCreatorCanEdit;
+			throwForbiddenIfFalse(!changesRestriction || !element.creatorId || element.creatorId === userId);
+			// Legacy elements predate creator tracking. The first teacher who updates one becomes
+			// its creator and can subsequently enable the creator-only restriction.
+			element.creatorId ??= userId;
+		}
 
 		// boardNodeAuthorizable.users is only used for polls (see
 		// ContentElementUpdateService.updatePollElement) - already loaded above, so passing
@@ -62,8 +71,7 @@ export class ElementUc {
 	public async deleteElement(userId: EntityId, elementId: EntityId): Promise<EntityId> {
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const element = await this.boardNodeService.findContentElementById(elementId);
-		const boardNode = await this.boardNodeService.findRoot(element);
-		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(boardNode);
+		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('deleteElement', user, boardNodeAuthorizable));
 

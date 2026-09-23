@@ -343,5 +343,6 @@ export class ContentElementUpdateService {
 				: undefined;
 		}
 		element.allowMultipleAttempts = content.allowMultipleAttempts ?? false;
+		element.onlyCreatorCanEdit = content.onlyCreatorCanEdit ?? false;
 	}
 }

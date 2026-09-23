@@ -60,7 +60,7 @@ export class BoardNodeFactory {
 		return pinnedCard;
 	}
 
-	public buildContentElement(type: ContentElementType): AnyContentElement {
+	public buildContentElement(type: ContentElementType, creatorId?: EntityId): AnyContentElement {
 		let element!: AnyContentElement;
 
 		switch (type) {
@@ -141,6 +141,8 @@ export class BoardNodeFactory {
 				element = new AiQuestionElement({
 					...this.getBaseProps(),
 					question: '',
+					creatorId,
+					onlyCreatorCanEdit: false,
 				});
 				break;
 			default:

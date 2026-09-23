@@ -167,6 +167,10 @@ export interface AssignmentFeedbackProps extends BoardNodeProps {
 
 export interface AiQuestionElementProps extends BoardNodeProps {
 	question: string;
+	// user who originally created the element; absent only on legacy elements
+	creatorId?: EntityId;
+	// false/absent = every teacher editor may change it; true = creator only
+	onlyCreatorCanEdit?: boolean;
 	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
 	aiInstructions?: string;
 	// grading reference for the AI, withheld from students (see AiQuestionElement)

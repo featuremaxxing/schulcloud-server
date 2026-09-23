@@ -247,6 +247,12 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: 'boolean', nullable: true })
 	allowMultipleAttempts: boolean | undefined;
 
+	@Property({ type: ObjectIdType, nullable: true })
+	creatorId: EntityId | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	onlyCreatorCanEdit: boolean | undefined;
+
 	// AiQuestionAnswer
 	// --------------------------------------------------------------------------
 	// the student's latest answer text; persisted together with aiResponse

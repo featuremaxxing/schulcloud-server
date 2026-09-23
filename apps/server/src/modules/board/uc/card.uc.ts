@@ -118,7 +118,7 @@ export class CardUc {
 			throwForbiddenIfFalse(this.boardNodeRule.can('manageVideoConference', user, boardNodeAuthorizable));
 		}
 
-		const element = this.boardNodeFactory.buildContentElement(type);
+		const element = this.boardNodeFactory.buildContentElement(type, userId);
 
 		await this.boardNodeService.addToParent(card, element, toPosition);
 
@@ -139,7 +139,7 @@ export class CardUc {
 		throwForbiddenIfFalse(this.boardNodeRule.can('moveElement', user, boardNodeAuthorizable));
 		if (isAiQuestionElement(element)) {
 			const elementAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
-			throwForbiddenIfFalse(this.boardNodeRule.can('manageAiQuestion', user, elementAuthorizable));
+			throwForbiddenIfFalse(this.boardNodeRule.can('updateElement', user, elementAuthorizable));
 		}
 
 		await this.boardNodeService.move(element, targetCard, targetPosition);

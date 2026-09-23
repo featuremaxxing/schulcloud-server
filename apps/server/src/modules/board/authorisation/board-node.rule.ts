@@ -537,10 +537,19 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	if (!isBoard) return false;
 
 	const member = authorizable.users.find(({ userId }) => userId === user.id);
-	if (isAiQuestionElement(authorizable.boardNode) && member && isStudentMember(member)) {
-		// A school-level student must never edit the teacher's question configuration,
-		// even when they have an EDITOR room role rather than the collaboration toggle.
-		return false;
+	if (isAiQuestionElement(authorizable.boardNode)) {
+		if (member && isStudentMember(member)) {
+			// A school-level student must never edit the teacher's question configuration,
+			// even when they have an EDITOR room role rather than the collaboration toggle.
+			return false;
+		}
+		if (
+			authorizable.boardNode.onlyCreatorCanEdit &&
+			authorizable.boardNode.creatorId &&
+			authorizable.boardNode.creatorId !== user.id
+		) {
+			return false;
+		}
 	}
 
 	const permissions = authorizable.getUserPermissions(user.id);
@@ -585,7 +594,7 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 const _canManageAiQuestion = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
 	const member = authorizable.users.find(({ userId }) => userId === user.id);
 
-	return !!member && isTeacherMember(member) && _canEditBoard(user, authorizable);
+	return !!member && isTeacherMember(member) && _isBoardEditor(user, authorizable);
 };
 
 const canEditBoardTitle = (user: User, authorizable: BoardNodeAuthorizable): boolean => {

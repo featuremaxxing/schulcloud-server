@@ -21,6 +21,8 @@ export class AiQuestionElementResponseMapper implements BaseResponseMapper {
 			content: new AiQuestionElementContent({
 				question: element.question,
 				allowMultipleAttempts: element.allowMultipleAttempts,
+				creatorId: element.creatorId,
+				onlyCreatorCanEdit: element.onlyCreatorCanEdit,
 			}),
 		});
 

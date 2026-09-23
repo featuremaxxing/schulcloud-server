@@ -383,6 +383,11 @@ export class AiQuestionContentBody {
 	@IsOptional()
 	@ApiPropertyOptional({ description: 'whether students may replace their answer; default false (single attempt)' })
 	allowMultipleAttempts?: boolean;
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'whether only the creating teacher may edit this element; default false' })
+	onlyCreatorCanEdit?: boolean;
 }
 
 export class AiQuestionElementContentBody extends ElementContentBody {

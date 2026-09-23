@@ -2002,7 +2002,7 @@ describe(BoardNodeRule.name, () => {
 			expect(boardNodeRule.can('deleteElement', student, boardNodeAuthorizable)).toBe(false);
 		});
 
-		it('should let a teacher with an editor room role manage an AI question', () => {
+		it('should let a teacher with an editor room role manage an unrestricted AI question', () => {
 			const teacher = userFactory.asTeacher().buildWithId();
 			const aiQuestion = aiQuestionElementFactory.build();
 			const columnBoard = columnBoardFactory.build();
@@ -2014,6 +2014,29 @@ describe(BoardNodeRule.name, () => {
 
 			expect(boardNodeRule.can('manageAiQuestion', teacher, boardNodeAuthorizable)).toBe(true);
 			expect(boardNodeRule.can('updateElement', teacher, boardNodeAuthorizable)).toBe(true);
+		});
+
+		it('should only let the creator manage a creator-restricted AI question', () => {
+			const creator = userFactory.asTeacher().buildWithId();
+			const otherTeacher = userFactory.asTeacher().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build({
+				creatorId: creator.id,
+				onlyCreatorCanEdit: true,
+			});
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [
+					{ userId: creator.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: otherTeacher.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+				],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', creator, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('manageAiQuestion', otherTeacher, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', creator, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', otherTeacher, boardNodeAuthorizable)).toBe(false);
 		});
 	});
 

@@ -569,11 +569,11 @@ export class BoardNodeCopyService {
 	// answers. Carrying student answers (and the AI's judgements of them) into a copied
 	// room/board would leak personal data of students who never joined the copy's target
 	// context - same reasoning as copyAssignmentElement above.
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	public copyAiQuestionElement(original: AiQuestionElement, context: CopyContext): Promise<CopyStatus> {
 		const copy = new AiQuestionElement({
 			...original.getProps(),
 			...this.buildSpecificProps([]),
+			creatorId: context.userId,
 		});
 
 		const result: CopyStatus = {

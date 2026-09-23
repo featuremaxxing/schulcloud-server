@@ -16,6 +16,22 @@ export class AiQuestionElement extends BoardNode<AiQuestionElementProps> {
 		this.props.question = value;
 	}
 
+	get creatorId(): string | undefined {
+		return this.props.creatorId;
+	}
+
+	set creatorId(value: string | undefined) {
+		this.props.creatorId = value;
+	}
+
+	get onlyCreatorCanEdit(): boolean {
+		return this.props.onlyCreatorCanEdit ?? false;
+	}
+
+	set onlyCreatorCanEdit(value: boolean) {
+		this.props.onlyCreatorCanEdit = value;
+	}
+
 	// Teacher-authored guidance for the AI, never broadcast to students - it is served
 	// exclusively through the editor-only config endpoint (see AiQuestionUc.getConfig).
 	get aiInstructions(): string | undefined {
