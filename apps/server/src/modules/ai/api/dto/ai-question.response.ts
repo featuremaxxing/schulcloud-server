@@ -20,10 +20,18 @@ export class AiQuestionConfigResponse {
 	@ApiProperty()
 	question: string;
 
-	@ApiPropertyOptional({ type: String, nullable: true, description: 'guidance for the AI - editors only, never broadcast' })
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		description: 'guidance for the AI - editors only, never broadcast',
+	})
 	aiInstructions: string | null;
 
-	@ApiPropertyOptional({ type: String, nullable: true, description: 'grading reference - editors only, never broadcast' })
+	@ApiPropertyOptional({
+		type: String,
+		nullable: true,
+		description: 'grading reference - editors only, never broadcast',
+	})
 	expectedAnswer: string | null;
 
 	@ApiProperty()
