@@ -2,6 +2,7 @@ import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Action, AuthorizationInjectionService } from '@modules/authorization';
 import { BoardRoles } from '@modules/board';
+import { RoleName } from '@modules/role';
 import { roleFactory } from '@modules/role/testing';
 import { UserService } from '@modules/user';
 import { User } from '@modules/user/repo';
@@ -15,6 +16,7 @@ import {
 	assignmentElementFactory,
 	assignmentFeedbackFactory,
 	assignmentSubmissionFactory,
+	aiQuestionElementFactory,
 	boardNodeAuthorizableFactory,
 	columnBoardFactory,
 	drawingElementFactory,
@@ -1981,6 +1983,37 @@ describe(BoardNodeRule.name, () => {
 			});
 
 			expect(res).toBe(false);
+		});
+	});
+
+	describe('AI question operations', () => {
+		it('should never let a student with an editor room role manage or update an AI question', () => {
+			const student = userFactory.asStudent().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build();
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [{ userId: student.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.STUDENT] }],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', student, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('updateElement', student, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('deleteElement', student, boardNodeAuthorizable)).toBe(false);
+		});
+
+		it('should let a teacher with an editor room role manage an AI question', () => {
+			const teacher = userFactory.asTeacher().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build();
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] }],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', teacher, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', teacher, boardNodeAuthorizable)).toBe(true);
 		});
 	});
 

@@ -5,7 +5,15 @@ import { EntityId } from '@shared/domain/types';
 
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
-import { AnyBoardNode, AnyContentElement, BoardNodeFactory, Card, Colors, ContentElementType } from '../domain';
+import {
+	AnyBoardNode,
+	AnyContentElement,
+	BoardNodeFactory,
+	Card,
+	Colors,
+	ContentElementType,
+	isAiQuestionElement,
+} from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
 @Injectable()
@@ -102,6 +110,10 @@ export class CardUc {
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('createElement', user, boardNodeAuthorizable));
 
+		if (type === ContentElementType.AI_QUESTION) {
+			throwForbiddenIfFalse(this.boardNodeRule.can('manageAiQuestion', user, boardNodeAuthorizable));
+		}
+
 		if (isVideoConferenceElement) {
 			throwForbiddenIfFalse(this.boardNodeRule.can('manageVideoConference', user, boardNodeAuthorizable));
 		}
@@ -125,6 +137,10 @@ export class CardUc {
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(targetCard);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('moveElement', user, boardNodeAuthorizable));
+		if (isAiQuestionElement(element)) {
+			const elementAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
+			throwForbiddenIfFalse(this.boardNodeRule.can('manageAiQuestion', user, elementAuthorizable));
+		}
 
 		await this.boardNodeService.move(element, targetCard, targetPosition);
 

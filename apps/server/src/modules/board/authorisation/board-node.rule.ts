@@ -17,6 +17,8 @@ import {
 	isEligibleVoter,
 	isPollElement,
 	isPollVote,
+	isStudentMember,
+	isTeacherMember,
 	isVideoConferenceElement,
 	MediaBoard,
 	UserWithBoardRoles,
@@ -276,7 +278,7 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			// Real board-edit check, same reasoning as gradeAssignmentSubmission above: every
 			// teacher with board-edit rights may read the config (instructions, expected
 			// answer) and every answer given - the readersCanEdit toggle must never grant that.
-			manageAiQuestion: _canEditBoard,
+			manageAiQuestion: _canManageAiQuestion,
 			createOwnAiQuestionAnswer: _isPlainBoardReader,
 			updateOwnAiQuestionAnswer: _isOwnAiQuestionAnswer,
 
@@ -534,6 +536,13 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	const isBoard = authorizable.rootNode instanceof ColumnBoard || authorizable.rootNode instanceof MediaBoard;
 	if (!isBoard) return false;
 
+	const member = authorizable.users.find(({ userId }) => userId === user.id);
+	if (isAiQuestionElement(authorizable.boardNode) && member && isStudentMember(member)) {
+		// A school-level student must never edit the teacher's question configuration,
+		// even when they have an EDITOR room role rather than the collaboration toggle.
+		return false;
+	}
+
 	const permissions = authorizable.getUserPermissions(user.id);
 	const hasEditPermission = permissions.includes(Permission.BOARD_EDIT);
 	if (hasEditPermission) return true;
@@ -571,6 +580,12 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	}
 
 	return isReader && readersCanEdit;
+};
+
+const _canManageAiQuestion = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	const member = authorizable.users.find(({ userId }) => userId === user.id);
+
+	return !!member && isTeacherMember(member) && _canEditBoard(user, authorizable);
 };
 
 const canEditBoardTitle = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
