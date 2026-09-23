@@ -325,18 +325,23 @@ export class ContentElementUpdateService {
 		element.criteria = content.criteria;
 	}
 
-	// The full teacher config (instructions, expected answer) reaches the element here, but
-	// must never be broadcast back to students - the element response therefore carries only
-	// question/allowMultipleAttempts, and the editor reads the private parts back through the
-	// AI module's config endpoint (see AiQuestionUc.getConfig).
+	// The broadcast element content (and therefore every autosave PATCH) carries only
+	// question/allowMultipleAttempts - the private aiInstructions/expectedAnswer are
+	// served to editors through the AI module's config endpoint instead. Absent fields
+	// therefore mean "unchanged" (otherwise every keystroke on the question would wipe
+	// the teacher's instructions); an empty string clears the field.
 	public updateAiQuestionElement(element: AiQuestionElement, content: AiQuestionContentBody): void {
 		element.question = sanitizeRichText(content.question, InputFormat.PLAIN_TEXT);
-		element.aiInstructions = content.aiInstructions
-			? sanitizeRichText(content.aiInstructions, InputFormat.PLAIN_TEXT)
-			: undefined;
-		element.expectedAnswer = content.expectedAnswer
-			? sanitizeRichText(content.expectedAnswer, InputFormat.PLAIN_TEXT)
-			: undefined;
+		if (content.aiInstructions !== undefined) {
+			element.aiInstructions = content.aiInstructions
+				? sanitizeRichText(content.aiInstructions, InputFormat.PLAIN_TEXT)
+				: undefined;
+		}
+		if (content.expectedAnswer !== undefined) {
+			element.expectedAnswer = content.expectedAnswer
+				? sanitizeRichText(content.expectedAnswer, InputFormat.PLAIN_TEXT)
+				: undefined;
+		}
 		element.allowMultipleAttempts = content.allowMultipleAttempts ?? false;
 	}
 }

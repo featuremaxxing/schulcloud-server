@@ -174,7 +174,7 @@ describe(AiQuestionUc.name, () => {
 			setupUserContext(element);
 
 			await expect(uc.submitAnswer('userId', element.id, 'zweiter Versuch')).rejects.toThrow(
-				'This question can only be answered once.'
+				'This question has already been answered.'
 			);
 			expect(aiClientService.complete).not.toHaveBeenCalled();
 		});

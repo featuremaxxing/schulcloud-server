@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
 	AiQuestionAnswer,
 	AiQuestionElement,
@@ -89,7 +89,11 @@ export class AiQuestionUc {
 		if (existing) {
 			throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, boardNodeAuthorizable));
 			if (!element.allowMultipleAttempts) {
-				throw new ForbiddenException('This question can only be answered once.');
+				// Conflict, not forbidden: the caller owns the answer and the data is safe -
+				// a proxy timeout during the slow AI call can make the first POST appear failed
+				// to the client (e.g. 408), so the retry must be able to distinguish "already
+				// answered" (recover by GETting the answer) from a real permission problem.
+				throw new ConflictException('This question has already been answered.');
 			}
 		} else {
 			throwForbiddenIfFalse(this.boardNodeRule.can('createOwnAiQuestionAnswer', user, boardNodeAuthorizable));
