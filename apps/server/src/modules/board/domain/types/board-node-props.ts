@@ -171,6 +171,11 @@ export interface AiQuestionElementProps extends BoardNodeProps {
 	creatorId?: EntityId;
 	// false/absent = every teacher editor may change it; true = creator only
 	onlyCreatorCanEdit?: boolean;
+	// optional context for age-appropriate assessment
+	gradeLevel?: number;
+	subject?: string;
+	// when set, the AI assigns 0..maxPoints
+	maxPoints?: number;
 	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
 	aiInstructions?: string;
 	// grading reference for the AI, withheld from students (see AiQuestionElement)
@@ -185,6 +190,11 @@ export interface AiQuestionAnswerProps extends BoardNodeProps {
 	// call succeeded - an answer node with only one of them must not exist
 	answer?: string;
 	aiResponse?: string;
+	points?: number;
+	maxPoints?: number;
+	aiFlagged?: boolean;
+	aiFlagReason?: string;
+	studentFlagged?: boolean;
 	answeredAt?: Date;
 	attemptCount?: number;
 }

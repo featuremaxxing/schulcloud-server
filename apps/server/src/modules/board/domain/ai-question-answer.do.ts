@@ -40,6 +40,46 @@ export class AiQuestionAnswer extends BoardNode<AiQuestionAnswerProps> {
 		this.props.aiResponse = value;
 	}
 
+	get points(): number | undefined {
+		return this.props.points;
+	}
+
+	set points(value: number | undefined) {
+		this.props.points = value;
+	}
+
+	get maxPoints(): number | undefined {
+		return this.props.maxPoints;
+	}
+
+	set maxPoints(value: number | undefined) {
+		this.props.maxPoints = value;
+	}
+
+	get aiFlagged(): boolean {
+		return this.props.aiFlagged ?? false;
+	}
+
+	set aiFlagged(value: boolean) {
+		this.props.aiFlagged = value;
+	}
+
+	get aiFlagReason(): string | undefined {
+		return this.props.aiFlagReason;
+	}
+
+	set aiFlagReason(value: string | undefined) {
+		this.props.aiFlagReason = value;
+	}
+
+	get studentFlagged(): boolean {
+		return this.props.studentFlagged ?? false;
+	}
+
+	set studentFlagged(value: boolean) {
+		this.props.studentFlagged = value;
+	}
+
 	get answeredAt(): Date | undefined {
 		return this.props.answeredAt;
 	}
@@ -58,7 +98,7 @@ export class AiQuestionAnswer extends BoardNode<AiQuestionAnswerProps> {
 		this.props.attemptCount = value;
 	}
 
-	public canHaveChild(childNode: AnyBoardNode): boolean {
+	public canHaveChild(_childNode: AnyBoardNode): boolean {
 		// Answers are leaves - nothing may ever be attached to them.
 		return false;
 	}

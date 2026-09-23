@@ -1,5 +1,15 @@
 import { CurrentUser, ICurrentUser, JwtAuthentication } from '@infra/auth-guard';
-import { Body, Controller, ForbiddenException, Get, HttpCode, NotFoundException, Param, Post } from '@nestjs/common';
+import {
+	Body,
+	Controller,
+	ForbiddenException,
+	Get,
+	HttpCode,
+	NotFoundException,
+	Param,
+	Patch,
+	Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiValidationError } from '@shared/common/error';
 import { AiQuestionUc } from './ai-question.uc';
@@ -11,6 +21,7 @@ import {
 	AiQuestionOwnAnswerResponse,
 	AiQuestionElementUrlParams,
 	CreateAiQuestionAnswerBodyParams,
+	SetAiQuestionAnswerFlagBodyParams,
 } from './dto';
 
 @ApiTags('AiQuestion')
@@ -56,6 +67,39 @@ export class AiQuestionController {
 			aiResponse: answer.aiResponse ?? '',
 			answeredAt: (answer.answeredAt ?? new Date(0)).toISOString(),
 			attemptCount: answer.attemptCount,
+			points: answer.points ?? null,
+			maxPoints: answer.maxPoints ?? null,
+			aiFlagged: answer.aiFlagged,
+			aiFlagReason: answer.aiFlagReason ?? null,
+			studentFlagged: answer.studentFlagged,
+		});
+	}
+
+	@ApiOperation({ summary: 'Flag or unflag the caller’s AI assessment for teacher review.' })
+	@ApiResponse({ status: 200, type: AiQuestionAnswerResponse })
+	@Patch(':elementId/answer/flag')
+	public async setOwnAnswerFlag(
+		@Param() urlParams: AiQuestionElementUrlParams,
+		@CurrentUser() currentUser: ICurrentUser,
+		@Body() bodyParams: SetAiQuestionAnswerFlagBodyParams
+	): Promise<AiQuestionAnswerResponse> {
+		const answer = await this.aiQuestionUc.setOwnAnswerFlag(
+			currentUser.userId,
+			urlParams.elementId,
+			bodyParams.flagged
+		);
+		return new AiQuestionAnswerResponse({
+			id: answer.id,
+			userId: answer.userId,
+			answer: answer.answer ?? '',
+			aiResponse: answer.aiResponse ?? '',
+			answeredAt: (answer.answeredAt ?? new Date(0)).toISOString(),
+			attemptCount: answer.attemptCount,
+			points: answer.points ?? null,
+			maxPoints: answer.maxPoints ?? null,
+			aiFlagged: answer.aiFlagged,
+			aiFlagReason: answer.aiFlagReason ?? null,
+			studentFlagged: answer.studentFlagged,
 		});
 	}
 
@@ -92,6 +136,11 @@ export class AiQuestionController {
 						aiResponse: answer.aiResponse ?? '',
 						answeredAt: (answer.answeredAt ?? new Date(0)).toISOString(),
 						attemptCount: answer.attemptCount,
+						points: answer.points ?? null,
+						maxPoints: answer.maxPoints ?? null,
+						aiFlagged: answer.aiFlagged,
+						aiFlagReason: answer.aiFlagReason ?? null,
+						studentFlagged: answer.studentFlagged,
 						firstName,
 						lastName,
 					})

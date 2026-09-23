@@ -253,6 +253,12 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: 'boolean', nullable: true })
 	onlyCreatorCanEdit: boolean | undefined;
 
+	@Property({ type: 'integer', nullable: true })
+	gradeLevel: number | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	subject: string | undefined;
+
 	// AiQuestionAnswer
 	// --------------------------------------------------------------------------
 	// the student's latest answer text; persisted together with aiResponse
@@ -262,6 +268,15 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// the AI's assessment of `answer`, persisted together with it
 	@Property({ type: 'string', nullable: true })
 	aiResponse: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	aiFlagged: boolean | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	aiFlagReason: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	studentFlagged: boolean | undefined;
 
 	@Property({ type: 'Date', nullable: true })
 	answeredAt: Date | undefined;

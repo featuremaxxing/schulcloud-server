@@ -388,6 +388,26 @@ export class AiQuestionContentBody {
 	@IsOptional()
 	@ApiPropertyOptional({ description: 'whether only the creating teacher may edit this element; default false' })
 	onlyCreatorCanEdit?: boolean;
+
+	@IsInt()
+	@Min(1)
+	@Max(13)
+	@IsOptional()
+	@ApiPropertyOptional({ minimum: 1, maximum: 13 })
+	gradeLevel?: number;
+
+	@IsString()
+	@MaxLength(100)
+	@IsOptional()
+	@ApiPropertyOptional()
+	subject?: string;
+
+	@IsInt()
+	@Min(1)
+	@Max(1000)
+	@IsOptional()
+	@ApiPropertyOptional({ minimum: 1, maximum: 1000 })
+	maxPoints?: number;
 }
 
 export class AiQuestionElementContentBody extends ElementContentBody {

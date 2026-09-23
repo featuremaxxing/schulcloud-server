@@ -344,5 +344,8 @@ export class ContentElementUpdateService {
 		}
 		element.allowMultipleAttempts = content.allowMultipleAttempts ?? false;
 		element.onlyCreatorCanEdit = content.onlyCreatorCanEdit ?? false;
+		element.gradeLevel = content.gradeLevel;
+		element.subject = content.subject ? sanitizeRichText(content.subject, InputFormat.PLAIN_TEXT) : undefined;
+		element.maxPoints = content.maxPoints;
 	}
 }

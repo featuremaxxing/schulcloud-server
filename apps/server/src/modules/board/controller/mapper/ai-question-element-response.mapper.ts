@@ -23,6 +23,9 @@ export class AiQuestionElementResponseMapper implements BaseResponseMapper {
 				allowMultipleAttempts: element.allowMultipleAttempts,
 				creatorId: element.creatorId,
 				onlyCreatorCanEdit: element.onlyCreatorCanEdit,
+				gradeLevel: element.gradeLevel,
+				subject: element.subject,
+				maxPoints: element.maxPoints,
 			}),
 		});
 

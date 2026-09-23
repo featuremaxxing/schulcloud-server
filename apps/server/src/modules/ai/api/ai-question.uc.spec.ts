@@ -167,6 +167,28 @@ describe(AiQuestionUc.name, () => {
 			expect(boardNodeService.save).not.toHaveBeenCalled();
 		});
 
+		it('should persist structured points and force an off-topic answer to zero points', async () => {
+			const element = setupElement({ gradeLevel: 7, subject: 'Biologie', maxPoints: 10 });
+			setupUserContext(element);
+			const answer = aiQuestionAnswerFactory.build();
+			boardNodeFactory.buildAiQuestionAnswer.mockReturnValue(answer);
+			aiClientService.complete.mockResolvedValue(
+				JSON.stringify({ feedback: 'Das gehört nicht zur Frage.', points: 8, flagged: true, flagReason: 'Themenfremd' })
+			);
+
+			const result = await uc.submitAnswer('userId', element.id, 'Ich mag Pizza.');
+
+			expect(aiClientService.complete).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('Jahrgang: 7'));
+			expect(aiClientService.complete).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.stringContaining('Fach: Biologie')
+			);
+			expect(result.points).toBe(0);
+			expect(result.maxPoints).toBe(10);
+			expect(result.aiFlagged).toBe(true);
+			expect(result.aiFlagReason).toBe('Themenfremd');
+		});
+
 		it('should reject a second attempt when the element allows only one', async () => {
 			const element = setupElement({ allowMultipleAttempts: false });
 			const existing = aiQuestionAnswerFactory.build({ userId: 'userId' });
@@ -248,6 +270,19 @@ describe(AiQuestionUc.name, () => {
 			const result = await uc.getOwnAnswer('userId', element.id);
 
 			expect(result.answer).toBeNull();
+		});
+	});
+
+	describe('setOwnAnswerFlag', () => {
+		it('should persist a student review flag on the own answer', async () => {
+			const answer = aiQuestionAnswerFactory.build({ userId: 'userId' });
+			const element = setupElement({ children: [answer] });
+			setupUserContext(element);
+
+			const result = await uc.setOwnAnswerFlag('userId', element.id, true);
+
+			expect(result.studentFlagged).toBe(true);
+			expect(boardNodeService.save).toHaveBeenCalledWith(answer);
 		});
 	});
 

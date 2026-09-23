@@ -15,6 +15,9 @@ export class AiQuestionElementContent {
 		this.allowMultipleAttempts = props.allowMultipleAttempts;
 		this.creatorId = props.creatorId;
 		this.onlyCreatorCanEdit = props.onlyCreatorCanEdit;
+		this.gradeLevel = props.gradeLevel;
+		this.subject = props.subject;
+		this.maxPoints = props.maxPoints;
 	}
 
 	@ApiProperty()
@@ -28,6 +31,15 @@ export class AiQuestionElementContent {
 
 	@ApiProperty({ description: 'whether only the creating teacher may edit this element' })
 	onlyCreatorCanEdit: boolean;
+
+	@ApiProperty({ required: false, minimum: 1, maximum: 13 })
+	gradeLevel?: number;
+
+	@ApiProperty({ required: false })
+	subject?: string;
+
+	@ApiProperty({ required: false, minimum: 1 })
+	maxPoints?: number;
 }
 
 export class AiQuestionElementResponse {

@@ -1,12 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { bsonStringPattern } from '@shared/controller/bson-string-pattern';
-import { IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsString, MaxLength } from 'class-validator';
 
 export class CreateAiQuestionAnswerBodyParams {
 	@IsString()
 	@MaxLength(10000)
 	@ApiProperty({ description: 'the student\u2019s answer text' })
 	answer!: string;
+}
+
+export class SetAiQuestionAnswerFlagBodyParams {
+	@IsBoolean()
+	@ApiProperty()
+	flagged!: boolean;
 }
 
 export class AiQuestionConfigResponse {
@@ -46,6 +52,11 @@ export class AiQuestionAnswerResponse {
 		this.aiResponse = props.aiResponse;
 		this.answeredAt = props.answeredAt;
 		this.attemptCount = props.attemptCount;
+		this.points = props.points;
+		this.maxPoints = props.maxPoints;
+		this.aiFlagged = props.aiFlagged;
+		this.aiFlagReason = props.aiFlagReason;
+		this.studentFlagged = props.studentFlagged;
 	}
 
 	@ApiProperty({ pattern: bsonStringPattern })
@@ -65,6 +76,21 @@ export class AiQuestionAnswerResponse {
 
 	@ApiProperty()
 	attemptCount: number;
+
+	@ApiPropertyOptional({ type: Number, nullable: true })
+	points: number | null;
+
+	@ApiPropertyOptional({ type: Number, nullable: true })
+	maxPoints: number | null;
+
+	@ApiProperty()
+	aiFlagged: boolean;
+
+	@ApiPropertyOptional({ type: String, nullable: true })
+	aiFlagReason: string | null;
+
+	@ApiProperty()
+	studentFlagged: boolean;
 }
 
 // Own-answer view: `answer` is null until the student has answered for the first time.

@@ -19,29 +19,74 @@ import { AiQuestionConfigResponse, AiQuestionOwnAnswerResponse } from './dto/ai-
 // instructions and expected answer are injected as context; the response language follows
 // the question.
 const SYSTEM_PROMPT = [
-	'Du bist ein prüfender Assistent für Schülerinnen und Schüler.',
-	'Bewerte die gegebene Antwort auf die gestellte Frage in genau einer kurzen Rückmeldung.',
-	'Struktur der Rückmeldung: 1) Urteil (richtig / falsch / teilweise richtig),',
-	'2) kurze Begründung, 3) ein Tipp, falls die Antwort nicht vollständig richtig war.',
-	'Antworte in höchstens 120 Wörtern, auf Deutsch, in einfacher Schüler-Sprache.',
-	'Schreibe reinen Fließtext ohne Markdown-Zeichen (keine **, #, * oder Aufzählungszeichen).',
-	'Erfinde keine zusätzlichen Fragen, starte keinen Dialog und bewerte nichts außer der gegebenen Antwort.',
+	'Du bist ein prüfender Assistent und bewertest Antworten von Schülerinnen und Schülern sachlich und altersgerecht.',
+	'Gib ausschließlich ein gültiges JSON-Objekt ohne Markdown aus:',
+	'{"feedback":"kurze Rückmeldung","points":null,"flagged":false,"flagReason":null}.',
+	'feedback enthält Urteil, kurze Begründung und bei Bedarf einen Tipp, höchstens 120 Wörter.',
+	'Wenn eine Antwort vollständig am Thema vorbeigeht oder offensichtlich keinen ernsthaften Bezug zur Frage hat,',
+	'setze flagged=true, erkläre dies kurz in flagReason und vergib bei aktivierter Punktebewertung 0 Punkte.',
+	'Eine lediglich falsche oder unvollständige Antwort ist nicht automatisch themenfremd.',
 ].join(' ');
+
+interface AiAssessment {
+	feedback: string;
+	points?: number;
+	flagged: boolean;
+	flagReason?: string;
+}
 
 const buildUserPrompt = (props: {
 	question: string;
 	aiInstructions?: string;
 	expectedAnswer?: string;
 	studentAnswer: string;
+	gradeLevel?: number;
+	subject?: string;
+	maxPoints?: number;
 }): string =>
 	[
 		`Frage: ${props.question}`,
+		props.gradeLevel ? `Jahrgang: ${props.gradeLevel}. Passe Sprache und Anspruch daran an.` : undefined,
+		props.subject ? `Fach: ${props.subject}` : undefined,
 		props.aiInstructions ? `Hinweise der Lehrkraft an dich: ${props.aiInstructions}` : undefined,
 		props.expectedAnswer ? `Erwartete Antwort (Bewertungsreferenz): ${props.expectedAnswer}` : undefined,
+		props.maxPoints
+			? `Punktebewertung ist aktiv. Vergib eine ganze Punktzahl von 0 bis ${props.maxPoints}.`
+			: 'Punktebewertung ist nicht aktiv. Setze points auf null.',
 		`Antwort des Schülers / der Schülerin: ${props.studentAnswer}`,
 	]
 		.filter((line): line is string => !!line)
 		.join('\n');
+
+const parseAssessment = (raw: string, maxPoints?: number): AiAssessment => {
+	try {
+		const start = raw.indexOf('{');
+		const end = raw.lastIndexOf('}');
+		const parsed = JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw) as Record<string, unknown>;
+		if (typeof parsed.feedback !== 'string' || parsed.feedback.trim() === '') throw new Error('missing feedback');
+
+		const flagged = parsed.flagged === true;
+		const numericPoints =
+			typeof parsed.points === 'number' && Number.isFinite(parsed.points) ? parsed.points : undefined;
+		const points = !maxPoints
+			? undefined
+			: flagged
+				? 0
+				: numericPoints === undefined
+					? undefined
+					: Math.max(0, Math.min(maxPoints, Math.round(numericPoints)));
+
+		return {
+			feedback: parsed.feedback.trim(),
+			points,
+			flagged,
+			flagReason: typeof parsed.flagReason === 'string' ? parsed.flagReason.trim() || undefined : undefined,
+		};
+	} catch {
+		// Compatibility fallback for providers that ignore the requested JSON format.
+		return { feedback: raw.trim(), flagged: false };
+	}
+};
 
 @Injectable()
 export class AiQuestionUc {
@@ -105,20 +150,29 @@ export class AiQuestionUc {
 			throwForbiddenIfFalse(this.boardNodeRule.can('createOwnAiQuestionAnswer', user, boardNodeAuthorizable));
 		}
 
-		const aiResponse = await this.aiClientService.complete(
+		const rawAssessment = await this.aiClientService.complete(
 			SYSTEM_PROMPT,
 			buildUserPrompt({
 				question: element.question,
 				aiInstructions: element.aiInstructions,
 				expectedAnswer: element.expectedAnswer,
 				studentAnswer: answerText,
+				gradeLevel: element.gradeLevel,
+				subject: element.subject,
+				maxPoints: element.maxPoints,
 			})
 		);
+		const assessment = parseAssessment(rawAssessment, element.maxPoints);
 
 		const now = new Date();
 		if (existing) {
 			existing.answer = answerText;
-			existing.aiResponse = aiResponse;
+			existing.aiResponse = assessment.feedback;
+			existing.points = assessment.points;
+			existing.maxPoints = element.maxPoints;
+			existing.aiFlagged = assessment.flagged;
+			existing.aiFlagReason = assessment.flagReason;
+			existing.studentFlagged = false;
 			existing.answeredAt = now;
 			existing.attemptCount += 1;
 			await this.boardNodeService.save(existing);
@@ -128,7 +182,12 @@ export class AiQuestionUc {
 
 		const answer = this.boardNodeFactory.buildAiQuestionAnswer(userId);
 		answer.answer = answerText;
-		answer.aiResponse = aiResponse;
+		answer.aiResponse = assessment.feedback;
+		answer.points = assessment.points;
+		answer.maxPoints = element.maxPoints;
+		answer.aiFlagged = assessment.flagged;
+		answer.aiFlagReason = assessment.flagReason;
+		answer.studentFlagged = false;
 		answer.answeredAt = now;
 		answer.attemptCount = 1;
 		await this.boardNodeService.addToParent(element, answer);
@@ -159,6 +218,24 @@ export class AiQuestionUc {
 		throwForbiddenIfFalse(this.boardNodeRule.can('createOwnAiQuestionAnswer', user, boardNodeAuthorizable));
 
 		return new AiQuestionOwnAnswerResponse({ answer: null });
+	}
+
+	public async setOwnAnswerFlag(userId: EntityId, elementId: EntityId, flagged: boolean): Promise<AiQuestionAnswer> {
+		this.checkFeatureEnabled();
+
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const element = await this.boardNodeService.findByClassAndId(AiQuestionElement, elementId, 1);
+		const answer = element.getChildrenOfType(AiQuestionAnswer).find((candidate) => candidate.userId === userId);
+		if (!answer) {
+			throw new NotFoundException('No answer exists for this user.');
+		}
+
+		const answerAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(answer);
+		throwForbiddenIfFalse(this.boardNodeRule.can('updateOwnAiQuestionAnswer', user, answerAuthorizable));
+		answer.studentFlagged = flagged;
+		await this.boardNodeService.save(answer);
+
+		return answer;
 	}
 
 	// Teacher overview: every answer given, with the student's name. Names come from the
@@ -204,6 +281,11 @@ export class AiQuestionUc {
 		aiResponse: string;
 		answeredAt: string;
 		attemptCount: number;
+		points: number | null;
+		maxPoints: number | null;
+		aiFlagged: boolean;
+		aiFlagReason: string | null;
+		studentFlagged: boolean;
 	} {
 		return {
 			id: answer.id,
@@ -212,6 +294,11 @@ export class AiQuestionUc {
 			aiResponse: answer.aiResponse ?? '',
 			answeredAt: (answer.answeredAt ?? new Date(0)).toISOString(),
 			attemptCount: answer.attemptCount,
+			points: answer.points ?? null,
+			maxPoints: answer.maxPoints ?? null,
+			aiFlagged: answer.aiFlagged,
+			aiFlagReason: answer.aiFlagReason ?? null,
+			studentFlagged: answer.studentFlagged,
 		};
 	}
 

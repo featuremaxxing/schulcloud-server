@@ -32,6 +32,30 @@ export class AiQuestionElement extends BoardNode<AiQuestionElementProps> {
 		this.props.onlyCreatorCanEdit = value;
 	}
 
+	get gradeLevel(): number | undefined {
+		return this.props.gradeLevel;
+	}
+
+	set gradeLevel(value: number | undefined) {
+		this.props.gradeLevel = value;
+	}
+
+	get subject(): string | undefined {
+		return this.props.subject;
+	}
+
+	set subject(value: string | undefined) {
+		this.props.subject = value;
+	}
+
+	get maxPoints(): number | undefined {
+		return this.props.maxPoints;
+	}
+
+	set maxPoints(value: number | undefined) {
+		this.props.maxPoints = value;
+	}
+
 	// Teacher-authored guidance for the AI, never broadcast to students - it is served
 	// exclusively through the editor-only config endpoint (see AiQuestionUc.getConfig).
 	get aiInstructions(): string | undefined {
