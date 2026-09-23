@@ -50,7 +50,7 @@ export class AiClientService {
 					Authorization: `Bearer ${this.config.aiClientApiKey}`,
 				},
 				body: JSON.stringify(body),
-				signal: AbortSignal.timeout(30_000),
+				signal: AbortSignal.timeout(this.config.aiClientTimeoutMs),
 			});
 		} catch (error) {
 			this.logger.warning(new AiRequestFailedLoggable(error as Error));

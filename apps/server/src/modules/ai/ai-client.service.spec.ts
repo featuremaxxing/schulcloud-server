@@ -13,6 +13,7 @@ describe(AiClientService.name, () => {
 		aiClientApiKey: 'test-key',
 		aiClientBaseUrl: 'https://ai.example.com/v4',
 		aiClientModel: 'test-model',
+		aiClientTimeoutMs: 120_000,
 		isConfigured: () => true,
 	};
 
@@ -29,12 +30,14 @@ describe(AiClientService.name, () => {
 	});
 
 	beforeEach(() => {
+		jest.restoreAllMocks();
 		jest.clearAllMocks();
 		fetchMock = jest.fn();
 		global.fetch = fetchMock as unknown as typeof fetch;
 	});
 
 	it('should POST an OpenAI-compatible chat completion with the configured model', async () => {
+		const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
 		fetchMock.mockResolvedValue(
 			new Response(JSON.stringify({ choices: [{ message: { content: 'Richtig' } }] }), { status: 200 })
 		);
@@ -50,6 +53,8 @@ describe(AiClientService.name, () => {
 		expect(url).toBe('https://ai.example.com/v4/chat/completions');
 		expect(init.method).toBe('POST');
 		expect(init.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-key' }));
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+		expect(timeoutSpy).toHaveBeenCalledWith(120_000);
 		expect(body.model).toBe('test-model');
 		expect(body.messages).toEqual([
 			{ role: 'system', content: 'system' },
