@@ -1,4 +1,5 @@
 import type { AiQuestionElementResponse } from './ai-question-element.response';
+import type { CheckboxElementResponse } from './checkbox-element.response';
 import type { AssignmentElementResponse } from './assignment-element.response';
 import type { CollaborativeTextEditorElementResponse } from './collaborative-text-editor-element.response';
 import type { DeletedElementResponse } from './deleted-element.response';
@@ -14,6 +15,7 @@ import type { VideoConferenceElementResponse } from './video-conference-element.
 
 export type AnyContentElementResponse =
 	| AiQuestionElementResponse
+	| CheckboxElementResponse
 	| AssignmentElementResponse
 	| FileElementResponse
 	| LinkElementResponse

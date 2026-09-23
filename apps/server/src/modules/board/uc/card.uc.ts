@@ -8,11 +8,14 @@ import { BoardNodeRule } from '../authorisation/board-node.rule';
 import {
 	AnyBoardNode,
 	AnyContentElement,
+	canManageCheckboxDescendants,
 	BoardNodeFactory,
 	Card,
 	Colors,
 	ContentElementType,
 	isAiQuestionElement,
+	isCheckboxElement,
+	isTeacherMember,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
@@ -83,11 +86,12 @@ export class CardUc {
 	}
 
 	public async deleteCard(userId: EntityId, cardId: EntityId): Promise<EntityId> {
-		const card = await this.boardNodeService.findByClassAndId(Card, cardId);
+		const card = await this.boardNodeService.findByClassAndId(Card, cardId, 1);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(card);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('deleteCard', user, boardNodeAuthorizable));
+		throwForbiddenIfFalse(canManageCheckboxDescendants(card, userId));
 
 		const { rootId } = card; // needs to be captured before deletion
 		await this.boardNodeService.delete(card);
@@ -109,6 +113,12 @@ export class CardUc {
 		const isVideoConferenceElement = type === ContentElementType.VIDEO_CONFERENCE;
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('createElement', user, boardNodeAuthorizable));
+		if (type === ContentElementType.CHECKBOX) {
+			throwForbiddenIfFalse(
+				this.boardNodeRule.can('isBoardEditor', user, boardNodeAuthorizable) &&
+					boardNodeAuthorizable.users.some((member) => member.userId === userId && isTeacherMember(member))
+			);
+		}
 
 		if (type === ContentElementType.AI_QUESTION) {
 			throwForbiddenIfFalse(this.boardNodeRule.can('manageAiQuestion', user, boardNodeAuthorizable));
@@ -137,7 +147,7 @@ export class CardUc {
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(targetCard);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('moveElement', user, boardNodeAuthorizable));
-		if (isAiQuestionElement(element)) {
+		if (isAiQuestionElement(element) || isCheckboxElement(element)) {
 			const elementAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
 			throwForbiddenIfFalse(this.boardNodeRule.can('updateElement', user, elementAuthorizable));
 		}

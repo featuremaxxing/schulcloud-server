@@ -9,6 +9,7 @@ import {
 	AssignmentElement,
 	AssignmentSubmission,
 	BoardExternalReferenceType,
+	type CheckboxEntry,
 	ColumnBoard,
 	isAnyMediaElement,
 	isContentElement,
@@ -113,6 +114,13 @@ export class BoardNodeService {
 	// instead of going through one of the typed update* methods above.
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.boardNodeRepo.save(boardNode);
+	}
+
+	public mutateCheckboxEntries(
+		id: EntityId,
+		change: (entries: CheckboxEntry[]) => CheckboxEntry[]
+	): Promise<CheckboxEntry[]> {
+		return this.boardNodeRepo.mutateCheckboxEntries(id, change);
 	}
 
 	public async replace(oldNode: AnyBoardNode, newNode: AnyBoardNode): Promise<void> {

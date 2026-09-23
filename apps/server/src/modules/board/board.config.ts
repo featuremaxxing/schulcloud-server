@@ -47,6 +47,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardPollEnabled = false;
 
+	@ConfigProperty('FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureColumnBoardCheckboxEnabled = false;
+
 	@ConfigProperty('FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

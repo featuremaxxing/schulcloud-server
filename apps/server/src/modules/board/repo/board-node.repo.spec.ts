@@ -1,12 +1,16 @@
 import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { BaseEntityWithTimestamps } from '@shared/domain/entity';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { MongoMemoryDatabaseModule } from '@testing/database';
 import {
 	BoardExternalReferenceType,
+	BoardRoles,
+	BoardNodeType,
 	ColumnBoard,
 	PollAnswerMode,
+	PollAudience,
 	PollChartType,
 	type PollElement,
 	PollStatus,
@@ -44,6 +48,101 @@ describe('BoardNodeRepo', () => {
 
 	afterEach(async () => {
 		await cleanupCollections(em);
+	});
+
+	describe('checkbox atomic updates', () => {
+		const create = async () => {
+			const id = new ObjectId().toHexString();
+			await em.getCollection(BoardNodeEntity).insertOne({
+				_id: new ObjectId(id),
+				type: BoardNodeType.CHECKBOX_ELEMENT,
+				path: ',',
+				level: 0,
+				position: 0,
+				text: 'Task',
+				requireTeacherConfirmation: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			} as BoardNodeEntity);
+			return id;
+		};
+
+		it('keeps simultaneous student check states and prevents a late mode switch', async () => {
+			const id = await create();
+			const students = [new ObjectId().toHexString(), new ObjectId().toHexString()];
+			await Promise.all(
+				students.map((userId) =>
+					repo.mutateCheckboxEntries(id, (entries) => {
+						entries.push({ userId, checked: true, approved: false });
+						return entries;
+					})
+				)
+			);
+			const stored = await em.getCollection(BoardNodeEntity).findOne({ _id: new ObjectId(id) });
+			expect(stored?.entries?.map((entry) => entry.userId).sort()).toEqual(students.sort());
+			await expect(repo.updateCheckboxContent(id, 'Changed', true, true)).rejects.toThrow(ConflictException);
+			await repo.updateCheckboxContent(id, 'Text can still change', false, false);
+			await repo.updateCheckboxContent(id, 'Text still editable repeatedly', false, false);
+			const unchanged = await em.getCollection(BoardNodeEntity).findOne({ _id: new ObjectId(id) });
+			expect(unchanged?.entries).toHaveLength(2);
+		});
+
+		it('lets the teacher set confirmation mode before activity, but rejects stale mode updates', async () => {
+			const id = await create();
+			await repo.updateCheckboxContent(id, 'Mode on', true, false);
+			await expect(repo.updateCheckboxContent(id, 'Stale mode off', false, false)).rejects.toThrow(ConflictException);
+			const stored = await em.getCollection(BoardNodeEntity).findOne({ _id: new ObjectId(id) });
+			expect(stored?.requireTeacherConfirmation).toBe(true);
+		});
+
+		it('locks audience and custom roles after an initial check, including after uncheck', async () => {
+			const id = await create();
+			await repo.updateCheckboxContent(id, 'Task', false, false, PollAudience.CUSTOM, PollAudience.STUDENTS, [
+				BoardRoles.READER,
+			]);
+			const userId = new ObjectId().toHexString();
+			await repo.mutateCheckboxEntries(id, (entries) => [...entries, { userId, checked: false, approved: false }]);
+			await expect(
+				repo.updateCheckboxContent(
+					id,
+					'Task',
+					false,
+					false,
+					PollAudience.CUSTOM,
+					PollAudience.CUSTOM,
+					[BoardRoles.EDITOR],
+					[BoardRoles.READER]
+				)
+			).rejects.toThrow(ConflictException);
+			await expect(
+				repo.updateCheckboxContent(id, 'Task', false, false, PollAudience.ALL, PollAudience.CUSTOM, undefined, [
+					BoardRoles.READER,
+				])
+			).rejects.toThrow(ConflictException);
+		});
+
+		it('keeps activity after unchecking and rejects changing an approved student state', async () => {
+			const id = await create();
+			const userId = new ObjectId().toHexString();
+			await repo.mutateCheckboxEntries(id, (entries) => [...entries, { userId, checked: true, approved: false }]);
+			await repo.mutateCheckboxEntries(id, (entries) =>
+				entries.map((entry) => {
+					return { ...entry, checked: false };
+				})
+			);
+			await expect(repo.updateCheckboxContent(id, 'Text', true, true)).rejects.toThrow(ConflictException);
+			await repo.mutateCheckboxEntries(id, (entries) =>
+				entries.map((entry) => {
+					return { ...entry, checked: true, approved: true };
+				})
+			);
+			await expect(
+				repo.mutateCheckboxEntries(id, (entries) => {
+					if (entries[0].approved) throw new ForbiddenException();
+					return entries;
+				})
+			).rejects.toThrow(ForbiddenException);
+		});
 	});
 
 	describe('save', () => {

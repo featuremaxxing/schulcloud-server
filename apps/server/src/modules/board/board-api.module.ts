@@ -11,6 +11,8 @@ import { BoardContextApiHelperModule } from '../board-context';
 import { RoomModule } from '../room';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardModule } from './board.module';
+import { CheckboxController } from './controller/checkbox.controller';
+import { CheckboxUc } from './uc/checkbox.uc';
 import {
 	BoardController,
 	BoardErrorReportController,
@@ -46,8 +48,19 @@ import { BoardErrorReportUc, BoardUc, CardUc, ColumnUc, ElementUc, LearningRoomU
 		BoardErrorReportController,
 		LearningRoomController,
 		PollController,
+		CheckboxController,
 	],
-	providers: [BoardUc, BoardErrorReportUc, ColumnUc, CardUc, ElementUc, LearningRoomUc, PollUc, CopyRoomBoardsStep],
+	providers: [
+		BoardUc,
+		BoardErrorReportUc,
+		ColumnUc,
+		CardUc,
+		ElementUc,
+		LearningRoomUc,
+		PollUc,
+		CheckboxUc,
+		CopyRoomBoardsStep,
+	],
 })
 @RegisterTimeoutConfig(BOARD_TIMEOUT_CONFIG_TOKEN)
 export class BoardApiModule {}

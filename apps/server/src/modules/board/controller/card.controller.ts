@@ -35,6 +35,7 @@ import {
 	H5pElementResponse,
 	LinkElementResponse,
 	PollElementResponse,
+	CheckboxElementResponse,
 	MoveCardBodyParams,
 	RenameBodyParams,
 	RichTextElementResponse,
@@ -179,6 +180,7 @@ export class CardController {
 		VideoConferenceElementResponse,
 		H5pElementResponse,
 		PollElementResponse,
+		CheckboxElementResponse,
 		AssignmentElementResponse
 	)
 	@ApiResponse({
@@ -195,6 +197,7 @@ export class CardController {
 				{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
 				{ $ref: getSchemaPath(PollElementResponse) },
+				{ $ref: getSchemaPath(CheckboxElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 			],
 		},

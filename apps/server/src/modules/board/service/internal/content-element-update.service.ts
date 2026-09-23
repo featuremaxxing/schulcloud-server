@@ -5,6 +5,7 @@ import { InputFormat } from '@shared/domain/types';
 import {
 	type AnyElementContentBody,
 	AssignmentContentBody,
+	CheckboxContentBody,
 	AiQuestionContentBody,
 	DrawingContentBody,
 	ExternalToolContentBody,
@@ -38,6 +39,7 @@ import {
 	countEligibleVoters,
 	H5pElement,
 	isAssignmentElement,
+	isCheckboxElement,
 	isAiQuestionElement,
 	isDrawingElement,
 	isExternalToolElement,
@@ -87,6 +89,33 @@ export class ContentElementUpdateService {
 			this.updateH5pElement(element, content);
 		} else if (isPollElement(element) && content instanceof PollContentBody) {
 			this.updatePollElement(element, content, authorizableUsers ?? []);
+		} else if (isCheckboxElement(element) && content instanceof CheckboxContentBody) {
+			const audience = content.audience ?? element.audience;
+			const audienceRoles = audience === PollAudience.CUSTOM ? (content.audienceRoles ?? []) : undefined;
+			if (
+				element.entries.length > 0 &&
+				(element.requireTeacherConfirmation !== content.requireTeacherConfirmation ||
+					element.audience !== audience ||
+					JSON.stringify(element.audienceRoles ?? []) !== JSON.stringify(audienceRoles ?? []))
+			) {
+				throw new ConflictException('Checkbox mode and audience cannot change after activity');
+			}
+			const text = sanitizeRichText(content.text, InputFormat.PLAIN_TEXT);
+			await this.boardNodeRepo.updateCheckboxContent(
+				element.id,
+				text,
+				content.requireTeacherConfirmation,
+				element.requireTeacherConfirmation,
+				audience,
+				element.audience,
+				audienceRoles,
+				element.audienceRoles
+			);
+			element.text = text;
+			element.requireTeacherConfirmation = content.requireTeacherConfirmation;
+			element.audience = audience;
+			element.audienceRoles = audienceRoles;
+			return;
 		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
 			this.updateAssignmentElement(element, content);
 		} else if (isAiQuestionElement(element) && content instanceof AiQuestionContentBody) {

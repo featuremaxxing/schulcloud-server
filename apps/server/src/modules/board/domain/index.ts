@@ -8,6 +8,7 @@ export * from './board-node-authorizable.do';
 export * from './board-node.do';
 export * from './board-node.factory';
 export * from './card.do';
+export * from './checkbox-element.do';
 export * from './pinned-card.do';
 export * from './collaborative-text-editor.do';
 export * from './colum-board.do';

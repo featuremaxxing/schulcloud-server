@@ -14,6 +14,7 @@ export enum BoardNodeType {
 	VIDEO_CONFERENCE_ELEMENT = 'video-conference-element',
 	H5P_ELEMENT = 'h5p-element',
 	POLL_ELEMENT = 'poll-element',
+	CHECKBOX_ELEMENT = 'checkbox-element',
 	POLL_VOTE = 'poll-vote',
 	ASSIGNMENT_ELEMENT = 'assignment-element',
 	ASSIGNMENT_SUBMISSION = 'assignment-submission',

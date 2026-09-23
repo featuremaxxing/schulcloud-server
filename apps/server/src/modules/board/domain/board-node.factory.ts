@@ -7,6 +7,7 @@ import { AssignmentElement } from './assignment-element.do';
 import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
+import { CheckboxElement } from './checkbox-element.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
 import { Column } from './column.do';
@@ -127,6 +128,15 @@ export class BoardNodeFactory {
 					isAnonymous: false,
 					showResultsLive: false,
 					pollStatus: PollStatus.DRAFT,
+				});
+				break;
+			case ContentElementType.CHECKBOX:
+				element = new CheckboxElement({
+					...this.getBaseProps(),
+					creatorId,
+					text: '',
+					requireTeacherConfirmation: false,
+					entries: [],
 				});
 				break;
 			case ContentElementType.ASSIGNMENT:

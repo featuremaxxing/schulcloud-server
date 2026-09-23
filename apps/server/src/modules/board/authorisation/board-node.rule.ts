@@ -13,6 +13,7 @@ import {
 	isAssignmentSubmission,
 	isAiQuestionAnswer,
 	isAiQuestionElement,
+	isCheckboxElement,
 	isDrawingElement,
 	isEligibleVoter,
 	isPollElement,
@@ -175,7 +176,10 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			// hasPermission() is its own Rule-interface entry point (used by e.g. file-storage's
 			// generic checkPermissionsByReference), not routed through _canEditBoard, so it needs
 			// its own guard.
-			const isPollNode = isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode);
+			const isPollNode =
+				isPollElement(authorizable.boardNode) ||
+				isPollVote(authorizable.boardNode) ||
+				isCheckboxElement(authorizable.boardNode);
 			const isAssignmentNode =
 				isAssignmentElement(authorizable.boardNode) ||
 				isAssignmentSubmission(authorizable.boardNode) ||
@@ -188,6 +192,14 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 					? Permission.BOARD_VIEW
 					: Permission.BOARD_EDIT;
 			const writePermissions = Array.from(new Set([requiredBoardPermission, ...context.requiredPermissions]));
+			if (isCheckboxElement(authorizable.boardNode)) {
+				return (
+					userWithBoardRoles.userId === authorizable.boardNode.creatorId &&
+					isTeacherMember(userWithBoardRoles) &&
+					!authorizable.boardConfiguration.isLocked &&
+					this.hasAllPermissions(user, authorizable, writePermissions)
+				);
+			}
 			return this.hasAllPermissions(user, authorizable, writePermissions);
 		}
 
@@ -537,6 +549,10 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	if (!isBoard) return false;
 
 	const member = authorizable.users.find(({ userId }) => userId === user.id);
+	if (isCheckboxElement(authorizable.boardNode)) {
+		// A board-wide editor is not necessarily this checkbox's teacher author.
+		if (!member || !isTeacherMember(member) || authorizable.boardNode.creatorId !== user.id) return false;
+	}
 	if (isAiQuestionElement(authorizable.boardNode)) {
 		if (member && isStudentMember(member)) {
 			// A school-level student must never edit the teacher's question configuration,
@@ -556,7 +572,11 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	const hasEditPermission = permissions.includes(Permission.BOARD_EDIT);
 	if (hasEditPermission) return true;
 
-	if (isPollElement(authorizable.boardNode) || isPollVote(authorizable.boardNode)) {
+	if (
+		isPollElement(authorizable.boardNode) ||
+		isPollVote(authorizable.boardNode) ||
+		isCheckboxElement(authorizable.boardNode)
+	) {
 		// A poll's questions, status and deadline are configuration with real consequences
 		// for participants (e.g. accepting/rejecting votes). The readersCanEdit collaboration
 		// toggle must never grant a student write access here, same reasoning as the board
