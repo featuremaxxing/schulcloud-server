@@ -1,3 +1,4 @@
+import type { AiQuestionElementResponse } from './ai-question-element.response';
 import type { AssignmentElementResponse } from './assignment-element.response';
 import type { CollaborativeTextEditorElementResponse } from './collaborative-text-editor-element.response';
 import type { DeletedElementResponse } from './deleted-element.response';
@@ -12,6 +13,7 @@ import type { RichTextElementResponse } from './rich-text-element.response';
 import type { VideoConferenceElementResponse } from './video-conference-element.response';
 
 export type AnyContentElementResponse =
+	| AiQuestionElementResponse
 	| AssignmentElementResponse
 	| FileElementResponse
 	| LinkElementResponse

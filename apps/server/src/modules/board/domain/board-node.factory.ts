@@ -1,6 +1,8 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable, NotImplementedException, UnprocessableEntityException } from '@nestjs/common';
 import { EntityId, InputFormat } from '@shared/domain/types';
+import { AiQuestionAnswer } from './ai-question-answer.do';
+import { AiQuestionElement } from './ai-question-element.do';
 import { AssignmentElement } from './assignment-element.do';
 import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
@@ -58,7 +60,7 @@ export class BoardNodeFactory {
 		return pinnedCard;
 	}
 
-	public buildContentElement(type: ContentElementType): AnyContentElement {
+	public buildContentElement(type: ContentElementType, creatorId?: EntityId): AnyContentElement {
 		let element!: AnyContentElement;
 
 		switch (type) {
@@ -135,6 +137,14 @@ export class BoardNodeFactory {
 					inputFormat: InputFormat.RICH_TEXT_CK5,
 				});
 				break;
+			case ContentElementType.AI_QUESTION:
+				element = new AiQuestionElement({
+					...this.getBaseProps(),
+					question: '',
+					creatorId,
+					onlyCreatorCanEdit: false,
+				});
+				break;
 			default:
 				handleNonExhaustiveSwitch(type);
 		}
@@ -168,6 +178,17 @@ export class BoardNodeFactory {
 		});
 
 		return submission;
+	}
+
+	// An answer is not a content element and cannot be created via buildContentElement - it
+	// is created explicitly by the AI module, once per student, below an AiQuestionElement.
+	public buildAiQuestionAnswer(userId: EntityId): AiQuestionAnswer {
+		const answer = new AiQuestionAnswer({
+			...this.getBaseProps(),
+			userId,
+		});
+
+		return answer;
 	}
 
 	// Created lazily, on the first teacher-authored feedback artifact for a submission - see

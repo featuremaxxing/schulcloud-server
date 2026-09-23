@@ -7,6 +7,7 @@ import { SCHULCONNEX_CLIENT_CONFIG_TOKEN, SchulconnexClientConfig } from '@infra
 import { SchulconnexClientModule } from '@infra/schulconnex-client/schulconnex-client.module';
 import { AccountApiModule } from '@modules/account/account-api.module';
 import { ALERT_PUBLIC_API_CONFIG, AlertModule, AlertPublicApiConfig } from '@modules/alert';
+import { AiQuestionApiModule } from '@modules/ai/ai-question-api.module';
 import { AuthenticationApiModule } from '@modules/authentication/authentication-api.module';
 import { AuthorizationReferenceApiModule } from '@modules/authorization-reference/authorization-reference.api.module';
 import { AuthorizationRulesModule } from '@modules/authorization-rules';
@@ -139,6 +140,7 @@ const serverModules = [
 	UserLoginMigrationApiModule,
 	BoardApiModule,
 	AssignmentApiModule,
+	AiQuestionApiModule,
 	GroupApiModule,
 	TeamApiModule,
 	MetaTagExtractorApiModule,

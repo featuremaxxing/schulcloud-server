@@ -11,10 +11,14 @@ import {
 	isAssignmentElement,
 	isAssignmentFeedback,
 	isAssignmentSubmission,
+	isAiQuestionAnswer,
+	isAiQuestionElement,
 	isDrawingElement,
 	isEligibleVoter,
 	isPollElement,
 	isPollVote,
+	isStudentMember,
+	isTeacherMember,
 	isVideoConferenceElement,
 	MediaBoard,
 	UserWithBoardRoles,
@@ -81,6 +85,11 @@ export const BoardOperationValues = [
 	'updateOwnAssignmentSubmission',
 	'deleteOwnAssignmentSubmission',
 	'gradeAssignmentSubmission',
+
+	// element / aiQuestionElement
+	'manageAiQuestion',
+	'createOwnAiQuestionAnswer',
+	'updateOwnAiQuestionAnswer',
 
 	// mediaBoard
 	'collapseMediaBoard',
@@ -171,9 +180,13 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 				isAssignmentElement(authorizable.boardNode) ||
 				isAssignmentSubmission(authorizable.boardNode) ||
 				isAssignmentFeedback(authorizable.boardNode);
+			const isAiQuestionNode =
+				isAiQuestionElement(authorizable.boardNode) || isAiQuestionAnswer(authorizable.boardNode);
 
 			const requiredBoardPermission =
-				isReader && readersCanEdit && !isPollNode && !isAssignmentNode ? Permission.BOARD_VIEW : Permission.BOARD_EDIT;
+				isReader && readersCanEdit && !isPollNode && !isAssignmentNode && !isAiQuestionNode
+					? Permission.BOARD_VIEW
+					: Permission.BOARD_EDIT;
 			const writePermissions = Array.from(new Set([requiredBoardPermission, ...context.requiredPermissions]));
 			return this.hasAllPermissions(user, authorizable, writePermissions);
 		}
@@ -260,6 +273,14 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 			updateOwnAssignmentSubmission: _isOwnAssignmentSubmission,
 			deleteOwnAssignmentSubmission: _isOwnAssignmentSubmission,
 			gradeAssignmentSubmission: _canEditBoard,
+
+			// element / aiQuestionElement
+			// Real board-edit check, same reasoning as gradeAssignmentSubmission above: every
+			// teacher with board-edit rights may read the config (instructions, expected
+			// answer) and every answer given - the readersCanEdit toggle must never grant that.
+			manageAiQuestion: _canManageAiQuestion,
+			createOwnAiQuestionAnswer: _isPlainBoardReader,
+			updateOwnAiQuestionAnswer: _isOwnAiQuestionAnswer,
 
 			// mediaBoard
 			collapseMediaBoard: _canManageBoard,
@@ -515,6 +536,22 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 	const isBoard = authorizable.rootNode instanceof ColumnBoard || authorizable.rootNode instanceof MediaBoard;
 	if (!isBoard) return false;
 
+	const member = authorizable.users.find(({ userId }) => userId === user.id);
+	if (isAiQuestionElement(authorizable.boardNode)) {
+		if (member && isStudentMember(member)) {
+			// A school-level student must never edit the teacher's question configuration,
+			// even when they have an EDITOR room role rather than the collaboration toggle.
+			return false;
+		}
+		if (
+			authorizable.boardNode.onlyCreatorCanEdit &&
+			authorizable.boardNode.creatorId &&
+			authorizable.boardNode.creatorId !== user.id
+		) {
+			return false;
+		}
+	}
+
 	const permissions = authorizable.getUserPermissions(user.id);
 	const hasEditPermission = permissions.includes(Permission.BOARD_EDIT);
 	if (hasEditPermission) return true;
@@ -541,7 +578,23 @@ const _canEditBoard = (user: User, authorizable: BoardNodeAuthorizable): boolean
 		return false;
 	}
 
+	if (isAiQuestionElement(authorizable.boardNode)) {
+		// An AI question carries the teacher's instructions and the expected answer - the
+		// grading reference itself. Letting a reader-with-readersCanEdit write here would
+		// both leak the solution (a reader can already see broadcast content, but a writer
+		// could also change the question after the fact) and let students reconfigure their
+		// own attempt limits. Answering stays a separate, narrower path (see
+		// createOwnAiQuestionAnswer/updateOwnAiQuestionAnswer), unaffected by this carve-out.
+		return false;
+	}
+
 	return isReader && readersCanEdit;
+};
+
+const _canManageAiQuestion = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	const member = authorizable.users.find(({ userId }) => userId === user.id);
+
+	return !!member && isTeacherMember(member) && _isBoardEditor(user, authorizable);
 };
 
 const canEditBoardTitle = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
@@ -749,6 +802,22 @@ const _isOwnAssignmentSubmission = (user: User, authorizable: BoardNodeAuthoriza
 
 	const { boardNode } = authorizable;
 	if (!isAssignmentSubmission(boardNode)) {
+		return false;
+	}
+
+	return boardNode.userId === user.id;
+};
+
+// Deliberately checks ownership only - business-rule checks (whether the element still
+// allows multiple attempts) are the AI use case's job, so it can throw specific,
+// clearly-worded exceptions. Read access to one's own answer goes through the same check.
+const _isOwnAiQuestionAnswer = (user: User, authorizable: BoardNodeAuthorizable): boolean => {
+	if (authorizable.boardConfiguration.isLocked) {
+		return false;
+	}
+
+	const { boardNode } = authorizable;
+	if (!isAiQuestionAnswer(boardNode)) {
 		return false;
 	}
 

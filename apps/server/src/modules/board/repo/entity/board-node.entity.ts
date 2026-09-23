@@ -230,4 +230,57 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// per-criterion points when the parent element has a rubric - see AssignmentSubmissionCriterionPoints
 	@Property({ nullable: true })
 	criterionPoints: AssignmentSubmissionCriterionPoints[] | undefined;
+
+	// AiQuestionElement
+	// --------------------------------------------------------------------------
+	@Property({ type: 'string', nullable: true })
+	question: string | undefined;
+
+	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
+	@Property({ type: 'string', nullable: true })
+	aiInstructions: string | undefined;
+
+	// grading reference for the AI, withheld from students (see AiQuestionElement)
+	@Property({ type: 'string', nullable: true })
+	expectedAnswer: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	allowMultipleAttempts: boolean | undefined;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	creatorId: EntityId | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	onlyCreatorCanEdit: boolean | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	gradeLevel: number | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	subject: string | undefined;
+
+	// AiQuestionAnswer
+	// --------------------------------------------------------------------------
+	// the student's latest answer text; persisted together with aiResponse
+	@Property({ type: 'string', nullable: true })
+	answer: string | undefined;
+
+	// the AI's assessment of `answer`, persisted together with it
+	@Property({ type: 'string', nullable: true })
+	aiResponse: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	aiFlagged: boolean | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	aiFlagReason: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	studentFlagged: boolean | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	answeredAt: Date | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	attemptCount: number | undefined;
 }

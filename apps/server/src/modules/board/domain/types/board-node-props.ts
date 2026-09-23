@@ -165,6 +165,40 @@ export interface AssignmentFeedbackProps extends BoardNodeProps {
 	userId?: EntityId;
 }
 
+export interface AiQuestionElementProps extends BoardNodeProps {
+	question: string;
+	// user who originally created the element; absent only on legacy elements
+	creatorId?: EntityId;
+	// false/absent = every teacher editor may change it; true = creator only
+	onlyCreatorCanEdit?: boolean;
+	// optional context for age-appropriate assessment
+	gradeLevel?: number;
+	subject?: string;
+	// when set, the AI assigns 0..maxPoints
+	maxPoints?: number;
+	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
+	aiInstructions?: string;
+	// grading reference for the AI, withheld from students (see AiQuestionElement)
+	expectedAnswer?: string;
+	// whether a student may replace their answer; absent/false = single attempt
+	allowMultipleAttempts?: boolean;
+}
+
+export interface AiQuestionAnswerProps extends BoardNodeProps {
+	userId: EntityId;
+	// answer and aiResponse are persisted together by the use case, after the AI
+	// call succeeded - an answer node with only one of them must not exist
+	answer?: string;
+	aiResponse?: string;
+	points?: number;
+	maxPoints?: number;
+	aiFlagged?: boolean;
+	aiFlagReason?: string;
+	studentFlagged?: boolean;
+	answeredAt?: Date;
+	attemptCount?: number;
+}
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -186,6 +220,8 @@ export interface MediaLineProps extends BoardNodeProps {
 type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | MediaLineProps;
 
 export type AnyBoardNodeProps =
+	| AiQuestionAnswerProps
+	| AiQuestionElementProps
 	| AssignmentElementProps
 	| AssignmentFeedbackProps
 	| AssignmentSubmissionProps

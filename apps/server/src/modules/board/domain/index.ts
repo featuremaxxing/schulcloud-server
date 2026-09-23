@@ -1,3 +1,5 @@
+export * from './ai-question-answer.do';
+export * from './ai-question-element.do';
 export * from './assignment-element.do';
 export * from './assignment-feedback.do';
 export * from './assignment-status.enum';

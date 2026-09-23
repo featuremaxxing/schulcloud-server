@@ -11,4 +11,5 @@ export enum ContentElementType {
 	H5P = 'h5p',
 	POLL = 'poll',
 	ASSIGNMENT = 'assignment',
+	AI_QUESTION = 'aiQuestion',
 }

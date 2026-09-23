@@ -17,6 +17,8 @@ export enum BoardNodeType {
 	POLL_VOTE = 'poll-vote',
 	ASSIGNMENT_ELEMENT = 'assignment-element',
 	ASSIGNMENT_SUBMISSION = 'assignment-submission',
+	AI_QUESTION_ELEMENT = 'ai-question-element',
+	AI_QUESTION_ANSWER = 'ai-question-answer',
 	ASSIGNMENT_FEEDBACK = 'assignment-feedback',
 
 	MEDIA_BOARD = 'media-board',

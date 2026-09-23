@@ -5,6 +5,7 @@ import { InputFormat } from '@shared/domain/types';
 import {
 	type AnyElementContentBody,
 	AssignmentContentBody,
+	AiQuestionContentBody,
 	DrawingContentBody,
 	ExternalToolContentBody,
 	FileContentBody,
@@ -18,6 +19,7 @@ import {
 } from '../../controller/dto';
 import type {
 	AssignmentElement,
+	AiQuestionElement,
 	AnyContentElement,
 	DrawingElement,
 	ExternalToolElement,
@@ -36,6 +38,7 @@ import {
 	countEligibleVoters,
 	H5pElement,
 	isAssignmentElement,
+	isAiQuestionElement,
 	isDrawingElement,
 	isExternalToolElement,
 	isFileElement,
@@ -86,6 +89,8 @@ export class ContentElementUpdateService {
 			this.updatePollElement(element, content, authorizableUsers ?? []);
 		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
 			this.updateAssignmentElement(element, content);
+		} else if (isAiQuestionElement(element) && content instanceof AiQuestionContentBody) {
+			this.updateAiQuestionElement(element, content);
 		} else {
 			throw new Error(`Cannot update element of type: '${element.constructor.name}'`);
 		}
@@ -318,5 +323,29 @@ export class ContentElementUpdateService {
 		// per-criterion grading logic that actually depends on this
 		element.maxPoints = content.maxPoints;
 		element.criteria = content.criteria;
+	}
+
+	// The broadcast element content (and therefore every autosave PATCH) carries only
+	// question/allowMultipleAttempts - the private aiInstructions/expectedAnswer are
+	// served to editors through the AI module's config endpoint instead. Absent fields
+	// therefore mean "unchanged" (otherwise every keystroke on the question would wipe
+	// the teacher's instructions); an empty string clears the field.
+	public updateAiQuestionElement(element: AiQuestionElement, content: AiQuestionContentBody): void {
+		element.question = sanitizeRichText(content.question, InputFormat.PLAIN_TEXT);
+		if (content.aiInstructions !== undefined) {
+			element.aiInstructions = content.aiInstructions
+				? sanitizeRichText(content.aiInstructions, InputFormat.PLAIN_TEXT)
+				: undefined;
+		}
+		if (content.expectedAnswer !== undefined) {
+			element.expectedAnswer = content.expectedAnswer
+				? sanitizeRichText(content.expectedAnswer, InputFormat.PLAIN_TEXT)
+				: undefined;
+		}
+		element.allowMultipleAttempts = content.allowMultipleAttempts ?? false;
+		element.onlyCreatorCanEdit = content.onlyCreatorCanEdit ?? false;
+		element.gradeLevel = content.gradeLevel;
+		element.subject = content.subject ? sanitizeRichText(content.subject, InputFormat.PLAIN_TEXT) : undefined;
+		element.maxPoints = content.maxPoints;
 	}
 }

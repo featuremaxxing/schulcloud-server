@@ -1,3 +1,4 @@
+export * from './ai-question-element.response';
 export * from './any-content-element.response';
 export * from './assignment-element.response';
 export * from './collaborative-text-editor-element.response';
