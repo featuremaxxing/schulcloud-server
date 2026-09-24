@@ -187,19 +187,20 @@ export class BoardNodeRepo {
 		return votes.map((entity) => new TreeBuilder().build(entity)) as PollVote[];
 	}
 
-	// Light-weight overview query for the assignment list: instead of loading entire
-	// board trees (findByExternalReference), it loads the assignment elements of the
-	// given boards. The caller must pass the boards the rooms actually reference
+	// Light-weight overview query: instead of loading entire board trees
+	// (findByExternalReference), it loads only the elements of the given type(s) that live
+	// on the given boards. The caller must pass the boards the rooms actually reference
 	// (RoomContentService.getBoardOrder) - a room's database can contain older boards
-	// that are no longer linked, and their assignments must not surface in the list.
+	// that are no longer linked, and their elements must not surface in an overview.
 	// With onlyVisible, boards in draft state (isVisible=false) are skipped - students
-	// cannot open them (canFindBoard rejects non-editors), so the list must not offer
+	// cannot open them (canFindBoard rejects non-editors), so an overview must not offer
 	// deep links into them either.
-	public async findAssignmentElementsByBoardIds(
+	public async findElementsByBoardIds(
 		boardIds: EntityId[],
+		types: BoardNodeType[],
 		options: { onlyVisible?: boolean } = {}
-	): Promise<AssignmentElement[]> {
-		if (boardIds.length === 0) {
+	): Promise<AnyBoardNode[]> {
+		if (boardIds.length === 0 || types.length === 0) {
 			return [];
 		}
 
@@ -224,13 +225,24 @@ export class BoardNodeRepo {
 		// and can never contain a regex metacharacter, but that is an invariant of the callers,
 		// not of this method.
 		const elements = await this.em.find(BoardNodeEntity, {
-			type: BoardNodeType.ASSIGNMENT_ELEMENT,
+			type: { $in: types },
 			$or: reachableBoardIds.map((boardId) => {
 				return { path: { $re: `^,${escapeRegExp(boardId)},` } };
 			}),
 		});
 
-		return elements.map((entity) => new TreeBuilder().build(entity)) as AssignmentElement[];
+		return elements.map((entity) => new TreeBuilder().build(entity));
+	}
+
+	// Thin wrapper kept for the assignment overview, which already depends on this exact
+	// signature and return type - see findElementsByBoardIds for the shared implementation.
+	public async findAssignmentElementsByBoardIds(
+		boardIds: EntityId[],
+		options: { onlyVisible?: boolean } = {}
+	): Promise<AssignmentElement[]> {
+		const elements = await this.findElementsByBoardIds(boardIds, [BoardNodeType.ASSIGNMENT_ELEMENT], options);
+
+		return elements as AssignmentElement[];
 	}
 
 	// Direct children of the given assignment elements. Matches paths ending in

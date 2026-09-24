@@ -28,6 +28,7 @@ export * from './poll-answer';
 export * from './poll-audience';
 export * from './poll-element.do';
 export * from './poll-vote.do';
+export * from './progress';
 export * from './rich-text-element.do';
 export * from './type-mapping';
 export * from './types';

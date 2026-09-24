@@ -4,6 +4,7 @@ export * from './assignment-element-entity.factory';
 export * from './assignment-feedback-entity.factory';
 export * from './assignment-submission-entity.factory';
 export * from './card-entity.factory';
+export * from './checkbox-element-entity.factory';
 export * from './collaborative-text-editor-entity.factory';
 export * from './column-board-entity.factory';
 export * from './column-entity.factory';

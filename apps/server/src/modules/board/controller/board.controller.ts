@@ -11,12 +11,13 @@ import {
 	Param,
 	Patch,
 	Post,
+	Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RequestTimeout } from '@shared/common/decorators';
 import { ApiValidationError } from '@shared/common/error';
 import { BOARD_INCOMING_REQUEST_TIMEOUT_COPY_API_KEY } from '../timeout.config';
-import { BoardUc } from '../uc';
+import { BoardProgressUc, BoardUc } from '../uc';
 import {
 	BoardResponse,
 	BoardUrlParams,
@@ -29,13 +30,17 @@ import {
 } from './dto';
 import { BoardContextResponse } from './dto/board/board-context.reponse';
 import { ReadersCanEditBodyParams } from './dto/board/readers-can-edit.body.params';
-import { BoardResponseMapper, ColumnResponseMapper, CreateBoardResponseMapper } from './mapper';
+import { BoardProgressResponse, ProgressQueryParams } from './dto/progress';
+import { BoardResponseMapper, ColumnResponseMapper, CreateBoardResponseMapper, ProgressResponseMapper } from './mapper';
 
 @ApiTags('Board')
 @JwtAuthentication()
 @Controller('boards')
 export class BoardController {
-	constructor(private readonly boardUc: BoardUc) {}
+	constructor(
+		private readonly boardUc: BoardUc,
+		private readonly boardProgressUc: BoardProgressUc
+	) {}
 
 	@ApiOperation({ summary: 'Create a new board.' })
 	@ApiResponse({ status: 201, type: CreateBoardResponse })
@@ -193,5 +198,28 @@ export class BoardController {
 		@CurrentUser() currentUser: ICurrentUser
 	): Promise<void> {
 		await this.boardUc.updateLayout(currentUser.userId, urlParams.boardId, bodyParams.layout);
+	}
+
+	@ApiOperation({
+		summary:
+			'Get the checkbox/assignment/poll completion progress of a board - own progress for a student, class progress for a teacher.',
+	})
+	@ApiResponse({ status: 200, type: BoardProgressResponse })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@Get(':boardId/progress')
+	public async getBoardProgress(
+		@Param() urlParams: BoardUrlParams,
+		@Query() queryParams: ProgressQueryParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<BoardProgressResponse> {
+		const result = await this.boardProgressUc.getBoardProgress(
+			currentUser.userId,
+			urlParams.boardId,
+			queryParams.details
+		);
+
+		return ProgressResponseMapper.mapBoard(result);
 	}
 }
