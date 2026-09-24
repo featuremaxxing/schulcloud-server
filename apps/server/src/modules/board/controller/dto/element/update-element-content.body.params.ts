@@ -30,6 +30,38 @@ abstract class ElementContentBody {
 	type!: ContentElementType;
 }
 
+export class CheckboxContentBody {
+	@IsString()
+	@MaxLength(2000)
+	@ApiProperty()
+	text!: string;
+
+	@IsBoolean()
+	@ApiProperty()
+	requireTeacherConfirmation!: boolean;
+
+	@IsEnum(PollAudience)
+	@ApiProperty({ enum: PollAudience, enumName: 'PollAudience' })
+	audience!: PollAudience;
+
+	@IsArray()
+	@IsEnum(BoardRoles, { each: true })
+	@IsOptional()
+	@ArrayMaxSize(3)
+	@ApiPropertyOptional({ enum: BoardRoles, enumName: 'BoardRoles', isArray: true })
+	audienceRoles?: BoardRoles[];
+}
+
+export class CheckboxElementContentBody extends ElementContentBody {
+	@ApiProperty({ enum: ContentElementType })
+	type!: ContentElementType.CHECKBOX;
+
+	@ValidateNested()
+	@Type(() => CheckboxContentBody)
+	@ApiProperty({ type: CheckboxContentBody })
+	content!: CheckboxContentBody;
+}
+
 export class FileContentBody {
 	@IsString()
 	@ApiProperty({})
@@ -430,7 +462,8 @@ export type AnyElementContentBody =
 	| VideoConferenceContentBody
 	| FileFolderContentBody
 	| H5pContentBody
-	| PollContentBody;
+	| PollContentBody
+	| CheckboxContentBody;
 
 export class UpdateElementContentBodyParams {
 	@ValidateNested()
@@ -447,6 +480,7 @@ export class UpdateElementContentBodyParams {
 				{ value: FileFolderElementContentBody, name: ContentElementType.FILE_FOLDER },
 				{ value: H5pElementContentBody, name: ContentElementType.H5P },
 				{ value: PollElementContentBody, name: ContentElementType.POLL },
+				{ value: CheckboxElementContentBody, name: ContentElementType.CHECKBOX },
 				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
 				{ value: AiQuestionElementContentBody, name: ContentElementType.AI_QUESTION },
 			],
@@ -464,6 +498,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(FileFolderElementContentBody) },
 			{ $ref: getSchemaPath(H5pElementContentBody) },
 			{ $ref: getSchemaPath(PollElementContentBody) },
+			{ $ref: getSchemaPath(CheckboxElementContentBody) },
 			{ $ref: getSchemaPath(AssignmentElementContentBody) },
 			{ $ref: getSchemaPath(AiQuestionElementContentBody) },
 		],
@@ -478,6 +513,7 @@ export class UpdateElementContentBodyParams {
 		| FileFolderElementContentBody
 		| H5pElementContentBody
 		| PollElementContentBody
+		| CheckboxElementContentBody
 		| AssignmentElementContentBody
 		| AiQuestionElementContentBody;
 }

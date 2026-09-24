@@ -18,6 +18,8 @@ import {
 	AnyContentElementResponse,
 	AiQuestionElementContentBody,
 	AiQuestionElementResponse,
+	CheckboxElementContentBody,
+	CheckboxElementResponse,
 	AssignmentElementContentBody,
 	AssignmentElementResponse,
 	ContentElementUrlParams,
@@ -111,6 +113,7 @@ export class ElementController {
 		FileFolderElementContentBody,
 		H5pElementContentBody,
 		PollElementContentBody,
+		CheckboxElementContentBody,
 		AssignmentElementContentBody,
 		AiQuestionElementContentBody
 	)
@@ -127,6 +130,7 @@ export class ElementController {
 				{ $ref: getSchemaPath(FileFolderElementResponse) },
 				{ $ref: getSchemaPath(H5pElementResponse) },
 				{ $ref: getSchemaPath(PollElementResponse) },
+				{ $ref: getSchemaPath(CheckboxElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 				{ $ref: getSchemaPath(AiQuestionElementResponse) },
 			],

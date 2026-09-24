@@ -20,6 +20,7 @@ import {
 	BoardFeature,
 	BoardLayout,
 	BoardNodeFactory,
+	canManageCheckboxDescendants,
 	Column,
 	ColumnBoard,
 	isColumn,
@@ -92,11 +93,12 @@ export class BoardUc {
 	}
 
 	public async deleteBoard(userId: EntityId, boardId: EntityId): Promise<ColumnBoard> {
-		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId); // TODO decide to refactor returned object vs return boardNodeId
+		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId, 3); // TODO decide to refactor returned object vs return boardNodeId
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(board);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('deleteBoard', user, boardNodeAuthorizable));
+		throwForbiddenIfFalse(canManageCheckboxDescendants(board, userId));
 
 		await this.boardNodeService.delete(board);
 		return board;

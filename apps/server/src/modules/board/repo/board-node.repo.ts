@@ -1,6 +1,6 @@
 import { FilterQuery, Utils } from '@mikro-orm/core';
 import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
 import {
 	AnyBoardNode,
@@ -9,6 +9,9 @@ import {
 	AiQuestionAnswer,
 	BoardExternalReference,
 	BoardNodeType,
+	CheckboxEntry,
+	PollAudience,
+	BoardRoles,
 	getBoardNodeType,
 	PollVote,
 } from '../domain';
@@ -93,6 +96,71 @@ export class BoardNodeRepo {
 
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.persist(boardNode).flush();
+	}
+
+	// Compare-and-swap the complete entries array. Concurrent students can never overwrite
+	// each other's updates: a loser rereads the latest array and retries the mutation.
+	public async mutateCheckboxEntries(
+		id: EntityId,
+		change: (entries: CheckboxEntry[]) => CheckboxEntry[]
+	): Promise<CheckboxEntry[]> {
+		const collection = this.em.getCollection(BoardNodeEntity);
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			const current = await collection.findOne({ _id: new ObjectId(id), type: BoardNodeType.CHECKBOX_ELEMENT });
+			if (!current) throw new ConflictException('Checkbox was removed');
+			const before = current.entries;
+			const after = change(
+				(before ?? []).map((entry) => {
+					return { ...entry };
+				})
+			);
+			if (JSON.stringify(after) === JSON.stringify(before ?? [])) return after;
+			const result = await collection.updateOne(
+				{ _id: current._id, type: BoardNodeType.CHECKBOX_ELEMENT, entries: before ?? { $exists: false } },
+				{ $set: { entries: after, updatedAt: new Date() } }
+			);
+			if (result.modifiedCount === 1) return after;
+		}
+		throw new ConflictException('Concurrent checkbox update; retry the request');
+	}
+
+	public async updateCheckboxContent(
+		id: EntityId,
+		text: string,
+		mode: boolean,
+		previousMode: boolean,
+		audience: PollAudience = PollAudience.STUDENTS,
+		previousAudience: PollAudience = PollAudience.STUDENTS,
+		audienceRoles?: BoardRoles[],
+		previousAudienceRoles?: BoardRoles[]
+	): Promise<void> {
+		const collection = this.em.getCollection(BoardNodeEntity);
+		const rolesChanged = JSON.stringify(audienceRoles ?? []) !== JSON.stringify(previousAudienceRoles ?? []);
+		const result = await collection.updateOne(
+			{
+				_id: new ObjectId(id),
+				type: BoardNodeType.CHECKBOX_ELEMENT,
+				...(mode !== previousMode || audience !== previousAudience || rolesChanged
+					? { $or: [{ entries: { $exists: false } }, { entries: { $size: 0 } }] }
+					: {}),
+				// A stale teacher request may not silently revert a concurrent mode change.
+				$and: [
+					{ $or: [{ requireTeacherConfirmation: previousMode }, { requireTeacherConfirmation: { $exists: false } }] },
+					{ $or: [{ audience: previousAudience }, { audience: { $exists: false } }] },
+					{ $or: [{ audienceRoles: previousAudienceRoles ?? [] }, { audienceRoles: { $exists: false } }] },
+				],
+			},
+			{
+				$set: {
+					text,
+					requireTeacherConfirmation: mode,
+					audience,
+					audienceRoles: audienceRoles ?? [],
+					updatedAt: new Date(),
+				},
+			}
+		);
+		if (!result.matchedCount) throw new ConflictException('Confirmation mode cannot change after checkbox activity');
 	}
 
 	// Direct children of the given poll elements. Matches paths ending in ',<elementId>,' -

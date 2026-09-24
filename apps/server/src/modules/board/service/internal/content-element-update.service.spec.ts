@@ -4,6 +4,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { InputFormat } from '@shared/domain/types';
 import {
 	DrawingContentBody,
+	CheckboxContentBody,
 	ExternalToolContentBody,
 	FileContentBody,
 	FileFolderContentBody,
@@ -15,6 +16,8 @@ import {
 } from '../../controller/dto';
 import {
 	BoardRoles,
+	CheckboxElement,
+	ROOT_PATH,
 	PollAnswerMode,
 	PollAudience,
 	PollChartType,
@@ -54,6 +57,7 @@ describe('ContentElementUpdateService', () => {
 
 		service = module.get(ContentElementUpdateService);
 		repo = module.get(BoardNodeRepo);
+		repo.updateCheckboxContent.mockResolvedValue();
 	});
 
 	afterAll(async () => {
@@ -62,6 +66,34 @@ describe('ContentElementUpdateService', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+	});
+
+	it('updates checkbox text but locks confirmation mode once any student has acted', async () => {
+		const element = new CheckboxElement({
+			id: new ObjectId().toHexString(),
+			path: ROOT_PATH,
+			level: 0,
+			position: 0,
+			children: [],
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			text: '',
+			requireTeacherConfirmation: false,
+			entries: [],
+		});
+		const content = new CheckboxContentBody();
+		content.text = '<script>alert(1)</script>Task';
+		content.requireTeacherConfirmation = true;
+		await service.updateContent(element, content);
+		expect(element.text).not.toContain('<script>');
+		expect(element.requireTeacherConfirmation).toBe(true);
+		element.entries = [{ userId: new ObjectId().toHexString(), checked: false, approved: false }];
+		content.requireTeacherConfirmation = false;
+		await expect(service.updateContent(element, content)).rejects.toThrow('Checkbox mode and audience cannot change');
+		content.text = 'Another task';
+		content.requireTeacherConfirmation = true;
+		await service.updateContent(element, content);
+		expect(element.text).toBe('Another task');
 	});
 
 	describe('when the element is a FileElement', () => {

@@ -113,6 +113,21 @@ export interface PollVoteProps extends BoardNodeProps {
 	answers: PollAnswer[];
 }
 
+export interface CheckboxEntry {
+	userId: EntityId;
+	checked: boolean;
+	approved: boolean;
+}
+
+export interface CheckboxElementProps extends BoardNodeProps {
+	text: string;
+	requireTeacherConfirmation: boolean;
+	creatorId?: EntityId;
+	audience?: PollAudience;
+	audienceRoles?: BoardRoles[];
+	entries?: CheckboxEntry[];
+}
+
 export interface AssignmentRubricCriterion {
 	id: string;
 	name: string;
@@ -241,4 +256,5 @@ export type AnyBoardNodeProps =
 	| H5pElementProps
 	| PollElementProps
 	| PollVoteProps
+	| CheckboxElementProps
 	| MediaBoardNodeProps;

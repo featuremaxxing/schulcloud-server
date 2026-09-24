@@ -16,6 +16,8 @@ import { BOARD_CONFIG_TOKEN, type BoardConfig } from '@modules/board/board.confi
 import {
 	AssignmentElement,
 	Card,
+	CheckboxElement,
+	ROOT_PATH,
 	CollaborativeTextEditorElement,
 	Column,
 	ColumnBoard,
@@ -117,6 +119,30 @@ describe(BoardNodeCopyService.name, () => {
 
 		return { copyContext };
 	};
+
+	it('copies checkbox configuration without student states', () => {
+		const original = new CheckboxElement({
+			id: new ObjectId().toHexString(),
+			path: ROOT_PATH,
+			level: 0,
+			position: 0,
+			children: [],
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			text: 'Finish this task',
+			requireTeacherConfirmation: true,
+			entries: [{ userId: new ObjectId().toHexString(), checked: true, approved: true }],
+		});
+		const { copyContext } = setupContext();
+		const result = service.copyCheckboxElement(original, copyContext);
+		const copy = result.copyEntity as CheckboxElement;
+		expect(copy.id).not.toBe(original.id);
+		expect(copy.text).toBe(original.text);
+		expect(copy.requireTeacherConfirmation).toBe(true);
+		expect(copy.entries).toEqual([]);
+		expect(copy.creatorId).toEqual(copyContext.userId);
+		expect(result.status).toBe(CopyStatusEnum.SUCCESS);
+	});
 
 	describe('copy poll element', () => {
 		const setup = () => {

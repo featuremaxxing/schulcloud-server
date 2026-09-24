@@ -1,6 +1,7 @@
 export * from './ai-question-element-response.mapper';
 export * from './assignment-element-response.mapper';
 export * from './board-response.mapper';
+export * from './checkbox-element-response.mapper';
 export * from './card-response.mapper';
 export * from './collaborative-text-editor-element-response.mapper';
 export * from './column-response.mapper';

@@ -19,6 +19,7 @@ import {
 	AssignmentSubmission,
 	BoardNodeType,
 	Card,
+	CheckboxElement,
 	CollaborativeTextEditorElement,
 	Column,
 	ColumnBoard,
@@ -117,6 +118,9 @@ export class BoardNodeCopyService {
 				break;
 			case BoardNodeType.POLL_ELEMENT:
 				result = await this.copyPollElement(boardNode as PollElement, context);
+				break;
+			case BoardNodeType.CHECKBOX_ELEMENT:
+				result = this.copyCheckboxElement(boardNode as CheckboxElement, context);
 				break;
 			case BoardNodeType.POLL_VOTE:
 				result = this.copyPollVote(boardNode as PollVote);
@@ -676,6 +680,16 @@ export class BoardNodeCopyService {
 		};
 
 		return Promise.resolve(result);
+	}
+
+	public copyCheckboxElement(original: CheckboxElement, context?: CopyContext): CopyStatus {
+		const copy = new CheckboxElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+			creatorId: context?.userId ?? original.creatorId,
+			entries: [],
+		});
+		return { copyEntity: copy, type: CopyElementType.CHECKBOX_ELEMENT, status: CopyStatusEnum.SUCCESS, elements: [] };
 	}
 
 	// A vote never gets copied - see copyPollElement. This case only exists so the type

@@ -5,6 +5,7 @@ import { AssignmentElement } from './assignment-element.do';
 import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
+import { CheckboxElement } from './checkbox-element.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
 import { Column } from './column.do';
@@ -48,6 +49,7 @@ const BoardNodeTypeToConstructor = {
 	[BoardNodeType.DELETED_ELEMENT]: DeletedElement,
 	[BoardNodeType.H5P_ELEMENT]: H5pElement,
 	[BoardNodeType.POLL_ELEMENT]: PollElement,
+	[BoardNodeType.CHECKBOX_ELEMENT]: CheckboxElement,
 	[BoardNodeType.POLL_VOTE]: PollVote,
 } as const;
 

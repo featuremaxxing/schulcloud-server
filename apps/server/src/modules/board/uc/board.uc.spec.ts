@@ -8,14 +8,15 @@ import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
 import { User } from '@modules/user/repo';
 import { userFactory } from '@modules/user/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
 import { CopyElementType, type CopyStatus, CopyStatusEnum } from '../../copy-helper';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
-import { BoardNodeFactory } from '../domain';
+import { BoardNodeFactory, CheckboxElement, ROOT_PATH } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
-import { boardNodeAuthorizableFactory, columnBoardFactory, columnFactory } from '../testing';
+import { boardNodeAuthorizableFactory, cardFactory, columnBoardFactory, columnFactory } from '../testing';
 import { BoardUc } from './board.uc';
 
 describe(BoardUc.name, () => {
@@ -112,6 +113,36 @@ describe(BoardUc.name, () => {
 
 		return { user, board, boardId, column };
 	};
+
+	describe('deleteBoard with checkbox descendants', () => {
+		it('rejects deletion of a board containing another teacher’s checkbox', async () => {
+			const { user, board } = setup();
+			const checkbox = new CheckboxElement({
+				id: 'checkbox-id',
+				path: ROOT_PATH,
+				level: 0,
+				position: 0,
+				children: [],
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				creatorId: 'other-teacher-id',
+				text: 'Task',
+				requireTeacherConfirmation: false,
+				entries: [],
+			});
+			board.addChild(columnFactory.build({ children: [cardFactory.build({ children: [checkbox] })] }));
+			boardNodeService.findByClassAndId.mockResolvedValue(board);
+			boardNodeRule.can.mockReturnValue(true);
+			authorizationService.getUserWithPermissions.mockResolvedValue(user);
+			boardNodeAuthorizableService.getBoardAuthorizable.mockResolvedValue(
+				boardNodeAuthorizableFactory.build({ boardNode: board })
+			);
+
+			await expect(uc.deleteBoard(user.id, board.id)).rejects.toThrow(ForbiddenException);
+			expect(boardNodeService.findByClassAndId).toHaveBeenCalledWith(expect.anything(), board.id, 3);
+			expect(boardNodeService.delete).not.toHaveBeenCalled();
+		});
+	});
 
 	describe('copyColumnBoard', () => {
 		describe('when something goes wrong', () => {

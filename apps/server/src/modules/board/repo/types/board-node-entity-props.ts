@@ -22,6 +22,7 @@ import type {
 	MediaLineProps,
 	PollElementProps,
 	PollVoteProps,
+	CheckboxElementProps,
 	RichTextElementProps,
 } from '../../domain';
 
@@ -70,4 +71,5 @@ export interface BoardNodeEntityProps
 		ComponentProps<MediaLineProps>,
 		ComponentProps<DeletedElementProps>,
 		ComponentProps<PollElementProps>,
-		ComponentProps<PollVoteProps> {}
+		ComponentProps<PollVoteProps>,
+		ComponentProps<CheckboxElementProps> {}

@@ -11,7 +11,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { Permission } from '@shared/domain/interface';
 import { setupEntities } from '@testing/database';
 import { studentPermissions, userPermissions } from '@testing/user-role-permissions';
-import { type BoardConfiguration, PollAudience } from '../domain';
+import { type BoardConfiguration, CheckboxElement, PollAudience, ROOT_PATH } from '../domain';
 import {
 	assignmentElementFactory,
 	assignmentFeedbackFactory,
@@ -1983,6 +1983,44 @@ describe(BoardNodeRule.name, () => {
 			});
 
 			expect(res).toBe(false);
+		});
+	});
+
+	describe('checkbox owner permissions', () => {
+		it('permits only its teacher author to edit, move and delete, even when other users are board editors', () => {
+			const owner = userFactory.asTeacher().buildWithId();
+			const colleague = userFactory.asTeacher().buildWithId();
+			const studentEditor = userFactory.asStudent().buildWithId();
+			const element = new CheckboxElement({
+				id: new ObjectId().toHexString(),
+				path: ROOT_PATH,
+				level: 0,
+				position: 0,
+				children: [],
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				text: 'Task',
+				requireTeacherConfirmation: true,
+				creatorId: owner.id,
+				entries: [],
+			});
+			const authorizable = boardNodeAuthorizableFactory.build({
+				users: [
+					{ userId: owner.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: colleague.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: studentEditor.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.STUDENT] },
+				],
+				boardNode: element,
+				rootNode: columnBoardFactory.build(),
+			});
+			for (const operation of ['updateElement', 'deleteElement', 'moveElement'] as const) {
+				expect(boardNodeRule.can(operation, owner, authorizable)).toBe(true);
+				expect(boardNodeRule.can(operation, colleague, authorizable)).toBe(false);
+				expect(boardNodeRule.can(operation, studentEditor, authorizable)).toBe(false);
+			}
+			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(true);
+			expect(boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
+			expect(boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
 		});
 	});
 

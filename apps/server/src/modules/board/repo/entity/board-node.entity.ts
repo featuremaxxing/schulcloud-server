@@ -9,6 +9,7 @@ import {
 	BoardLayout,
 	BoardNodeType,
 	BoardRoles,
+	type CheckboxEntry,
 	ContentElementType,
 	Colors,
 	type PollAnswer,
@@ -158,6 +159,13 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 
 	@Property({ type: 'boolean', nullable: true })
 	allowVoteChange: boolean | undefined;
+
+	// CheckboxElement (entries contain only IDs and state; names come from current membership)
+	@Property({ type: 'boolean', nullable: true })
+	requireTeacherConfirmation: boolean | undefined;
+
+	@Property({ nullable: true })
+	entries: CheckboxEntry[] | undefined;
 
 	// PinnedCard
 	// --------------------------------------------------------------------------
