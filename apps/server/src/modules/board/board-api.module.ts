@@ -24,7 +24,16 @@ import {
 } from './controller';
 import { CopyRoomBoardsStep } from './saga';
 import { BOARD_TIMEOUT_CONFIG_TOKEN, BoardTimeoutConfig } from './timeout.config';
-import { BoardErrorReportUc, BoardUc, CardUc, ColumnUc, ElementUc, LearningRoomUc, PollUc } from './uc';
+import {
+	BoardErrorReportUc,
+	BoardProgressUc,
+	BoardUc,
+	CardUc,
+	ColumnUc,
+	ElementUc,
+	LearningRoomUc,
+	PollUc,
+} from './uc';
 
 @Module({
 	imports: [
@@ -53,6 +62,7 @@ import { BoardErrorReportUc, BoardUc, CardUc, ColumnUc, ElementUc, LearningRoomU
 	providers: [
 		BoardUc,
 		BoardErrorReportUc,
+		BoardProgressUc,
 		ColumnUc,
 		CardUc,
 		ElementUc,

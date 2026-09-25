@@ -1,5 +1,6 @@
 import { CurrentUser, ICurrentUser, JwtAuthentication } from '@infra/auth-guard';
 import { ErrorResponse } from '@infra/error';
+import { ProgressQueryParams, ProgressResponseMapper, RoomProgressResponse } from '@modules/board';
 import { CopyApiResponse, CopyMapper } from '@modules/copy-helper';
 import {
 	Body,
@@ -172,6 +173,27 @@ export class RoomController {
 		const response = RoomMapper.mapToRoomBoardListResponse(boards);
 
 		return response;
+	}
+
+	@Get(':roomId/progress')
+	@ApiOperation({
+		summary:
+			'Get the checkbox/assignment/poll completion progress across the boards of a room - own progress for a student, class progress for a teacher.',
+	})
+	@ApiResponse({ status: HttpStatus.OK, description: 'Returns the room progress', type: RoomProgressResponse })
+	@ApiResponse({ status: HttpStatus.BAD_REQUEST, type: ApiValidationError })
+	@ApiResponse({ status: HttpStatus.UNAUTHORIZED, type: UnauthorizedException })
+	@ApiResponse({ status: HttpStatus.FORBIDDEN, type: ForbiddenException })
+	@ApiResponse({ status: HttpStatus.NOT_FOUND, type: NotFoundException })
+	@ApiResponse({ status: '5XX', type: ErrorResponse })
+	public async getRoomProgress(
+		@CurrentUser() currentUser: ICurrentUser,
+		@Param() urlParams: RoomUrlParams,
+		@Query() queryParams: ProgressQueryParams
+	): Promise<RoomProgressResponse> {
+		const results = await this.roomContentUc.getRoomProgress(currentUser.userId, urlParams.roomId, queryParams.details);
+
+		return ProgressResponseMapper.mapRoom(urlParams.roomId, results);
 	}
 
 	@ApiOperation({ summary: 'Move a single board item.' })

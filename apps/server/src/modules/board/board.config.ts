@@ -57,6 +57,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardAssignmentEnabled = false;
 
+	@ConfigProperty('FEATURE_BOARD_PROGRESS_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureBoardProgressEnabled = false;
+
 	@ConfigProperty('FEATURE_PERSONAL_LEARNING_ROOM_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

@@ -20,6 +20,7 @@ import {
 	assignmentElementFactory,
 	assignmentSubmissionFactory,
 	cardFactory,
+	checkboxElementFactory,
 	columnBoardFactory,
 	columnFactory,
 	pollElementFactory,
@@ -320,6 +321,66 @@ describe('BoardNodeRepo', () => {
 			await setupBoard();
 
 			const result = await repo.findAssignmentElementsByBoardIds([]);
+
+			expect(result).toHaveLength(0);
+		});
+	});
+
+	describe('findElementsByBoardIds', () => {
+		const setupBoard = async () => {
+			const assignment = assignmentElementFactory.build();
+			const checkbox = checkboxElementFactory.build();
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.Room, id: '000000000000000000000001' },
+				children: [columnFactory.build({ children: [cardFactory.build({ children: [assignment, checkbox] })] })],
+			});
+			await repo.save(board);
+			em.clear();
+
+			return { board, assignment, checkbox };
+		};
+
+		it('should find elements of several requested types on the given boards', async () => {
+			const { board, assignment, checkbox } = await setupBoard();
+
+			const result = await repo.findElementsByBoardIds(
+				[board.id],
+				[BoardNodeType.ASSIGNMENT_ELEMENT, BoardNodeType.CHECKBOX_ELEMENT]
+			);
+
+			expect(result.map((element) => element.id).sort()).toEqual([assignment.id, checkbox.id].sort());
+		});
+
+		it('should only return the requested type', async () => {
+			const { board, checkbox } = await setupBoard();
+
+			const result = await repo.findElementsByBoardIds([board.id], [BoardNodeType.CHECKBOX_ELEMENT]);
+
+			expect(result).toHaveLength(1);
+			expect(result[0].id).toEqual(checkbox.id);
+		});
+
+		it('should return nothing for an empty type list', async () => {
+			const { board } = await setupBoard();
+
+			const result = await repo.findElementsByBoardIds([board.id], []);
+
+			expect(result).toHaveLength(0);
+		});
+
+		it('should skip draft boards when onlyVisible is set', async () => {
+			const assignment = assignmentElementFactory.build();
+			const board = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.Room, id: '000000000000000000000001' },
+				isVisible: false,
+				children: [columnFactory.build({ children: [cardFactory.build({ children: [assignment] })] })],
+			});
+			await repo.save(board);
+			em.clear();
+
+			const result = await repo.findElementsByBoardIds([board.id], [BoardNodeType.ASSIGNMENT_ELEMENT], {
+				onlyVisible: true,
+			});
 
 			expect(result).toHaveLength(0);
 		});

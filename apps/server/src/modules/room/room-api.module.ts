@@ -3,6 +3,7 @@ import { ConfigurationModule } from '@infra/configuration';
 import { LoggerModule } from '@infra/logger';
 import { AccountModule } from '@modules/account/account.module';
 import { AuthorizationModule } from '@modules/authorization';
+import { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from '@modules/board';
 import { CopyHelperModule } from '@modules/copy-helper';
 import { SagaModule } from '@modules/saga';
 import { SchoolModule } from '@modules/school';
@@ -41,6 +42,7 @@ import { ROOM_TIMEOUT_CONFIG_TOKEN, RoomTimeoutConfig } from './timeout.config';
 		SagaModule,
 		ConfigurationModule.register(ROOM_PUBLIC_API_CONFIG_TOKEN, RoomPublicApiConfig),
 		ConfigurationModule.register(ROOM_TIMEOUT_CONFIG_TOKEN, RoomTimeoutConfig),
+		ConfigurationModule.register(BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig),
 	],
 	controllers: [RoomController, RoomInvitationLinkController],
 	providers: [

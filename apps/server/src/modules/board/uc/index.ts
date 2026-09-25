@@ -1,5 +1,6 @@
 export * from './board.uc';
 export * from './board-error-report.uc';
+export * from './board-progress.uc';
 export * from './card.uc';
 export * from './column.uc';
 export * from './element.uc';
