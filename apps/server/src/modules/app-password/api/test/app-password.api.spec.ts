@@ -43,8 +43,9 @@ describe('app passwords (api)', () => {
 		em.clear();
 
 		const teacherClient = await new TestApiClientBuilder(app, 'app-passwords').build(teacherAccount);
+		const studentClient = await new TestApiClientBuilder(app, 'app-passwords').build(studentAccount);
 
-		return { teacherUser, teacherClient, foreignAppPassword };
+		return { teacherUser, teacherClient, studentClient, foreignAppPassword };
 	};
 
 	it('should create, list and revoke an app password without ever listing the secret', async () => {
@@ -76,6 +77,18 @@ describe('app passwords (api)', () => {
 		const deleteResponse = await teacherClient.delete(foreignAppPassword.id);
 		expect(deleteResponse.status).toEqual(HttpStatus.NOT_FOUND);
 		expect(await em.count(AppPasswordEntity, { id: foreignAppPassword.id })).toEqual(1);
+	});
+
+	it('should not let students create app passwords, but let them list and revoke their own', async () => {
+		const { studentClient, foreignAppPassword } = await setup();
+
+		const create = await studentClient.post(undefined, { name: 'Handy' });
+		const list = await studentClient.get();
+		const revoke = await studentClient.delete(foreignAppPassword.id);
+
+		expect(create.status).toEqual(HttpStatus.FORBIDDEN);
+		expect((list.body as AppPasswordListResponse).data).toHaveLength(1);
+		expect(revoke.status).toEqual(HttpStatus.NO_CONTENT);
 	});
 
 	it('should reject an empty name', async () => {

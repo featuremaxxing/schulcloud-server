@@ -1,10 +1,11 @@
-import { AppPasswordService } from '@modules/app-password';
+import { AppPasswordService, canUseAppPasswords } from '@modules/app-password';
 import { AuthenticationService } from '@modules/authentication';
 import { AuthorizationService } from '@modules/authorization';
 import { type User } from '@modules/user/repo';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
 import { WEBDAV_CONFIG_TOKEN, WebDavConfig } from './webdav.config';
+import { WebDavError } from './webdav.error';
 
 export interface WebDavPrincipal {
 	user: User;
@@ -35,6 +36,7 @@ export class WebDavAuthService {
 	/**
 	 * Resolves the user behind an "Authorization: Basic ..." header. The username is not
 	 * checked - clients need one, but the app password alone identifies its owner.
+	 * Throws a 403 WebDavError for users who may not use the drive (see canUseAppPasswords).
 	 */
 	public async authenticate(authorizationHeader: string | undefined): Promise<WebDavPrincipal | null> {
 		const token = WebDavAuthService.extractBasicPassword(authorizationHeader);
@@ -53,6 +55,10 @@ export class WebDavAuthService {
 		} catch {
 			// the owner has been deleted in the meantime
 			return null;
+		}
+
+		if (!canUseAppPasswords(user.getRoles().map((role) => role.name))) {
+			throw WebDavError.forbidden('The network drive is only available to teachers');
 		}
 
 		return { user, getFilesStorageJwt: () => this.getFilesStorageJwt(user) };

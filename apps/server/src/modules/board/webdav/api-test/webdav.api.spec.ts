@@ -372,17 +372,17 @@ describe('webdav drive (api)', () => {
 		});
 	});
 
-	describe('as a student (board reader)', () => {
-		it('should allow reading but not changing the board', async () => {
+	describe('as a student', () => {
+		// the drive is for teachers only (see canUseAppPasswords); a student may still hold an
+		// app password created before, it must not open the drive
+		it('should refuse every request, including reading', async () => {
 			const { studentToken } = await setup();
 
+			const root = await dav('PROPFIND', '/webdav/', studentToken).set('Depth', '1');
 			const read = await dav('PROPFIND', `${cardPath}/`, studentToken).set('Depth', '1');
-			const mkcol = await dav('MKCOL', `${cardPath}/Ordner`, studentToken);
 			const put = await dav('PUT', `${cardPath}/x.txt`, studentToken).send('x');
 
-			expect(read.status).toEqual(207);
-			expect(mkcol.status).toEqual(HttpStatus.FORBIDDEN);
-			expect(put.status).toEqual(HttpStatus.FORBIDDEN);
+			expect([root.status, read.status, put.status]).toEqual([403, 403, 403]);
 		});
 	});
 });

@@ -6,4 +6,4 @@
  *********************************************************** */
 
 export { AppPasswordModule } from './app-password.module';
-export { AppPasswordService, VerifiedAppPassword } from './domain';
+export { AppPasswordService, canUseAppPasswords, VerifiedAppPassword } from './domain';
