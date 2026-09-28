@@ -261,6 +261,54 @@ describe('webdav drive (api)', () => {
 			expect(filesStorage.files.size).toEqual(0);
 		});
 
+		it('should keep system files readable without storing them in the board', async () => {
+			const { teacherToken, card } = await setup();
+
+			await dav('PUT', `${cardPath}/._notizen.txt`, teacherToken).send('metadata');
+			const propfind = await dav('PROPFIND', `${cardPath}/._notizen.txt`, teacherToken).set('Depth', '0');
+			const get = await dav('GET', `${cardPath}/._notizen.txt`, teacherToken);
+			const listing = await dav('PROPFIND', `${cardPath}/`, teacherToken).set('Depth', '1');
+			const deleted = await dav('DELETE', `${cardPath}/._notizen.txt`, teacherToken);
+			const afterDelete = await dav('PROPFIND', `${cardPath}/._notizen.txt`, teacherToken).set('Depth', '0');
+
+			expect(propfind.status).toEqual(207);
+			expect(Buffer.from(get.body as Buffer).toString()).toEqual('metadata');
+			expect(listing.text).not.toContain('._notizen.txt');
+			expect(deleted.status).toEqual(HttpStatus.NO_CONTENT);
+			expect(afterDelete.status).toEqual(HttpStatus.NOT_FOUND);
+			expect(await childrenOf(card.id)).toHaveLength(0);
+		});
+
+		it('should support the Finder write sequence (empty PUT, LOCK, PUT, metadata, UNLOCK)', async () => {
+			const { teacherToken, card } = await setup();
+			const lockBody =
+				'<?xml version="1.0"?><D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype><D:owner><D:href>finder</D:href></D:owner></D:lockinfo>';
+
+			const lockNew = await dav('LOCK', `${cardPath}/bericht.txt`, teacherToken)
+				.set('Content-Type', 'text/xml')
+				.send(lockBody);
+			const placeholder = await dav('PROPFIND', `${cardPath}/bericht.txt`, teacherToken).set('Depth', '0');
+			const emptyPut = await dav('PUT', `${cardPath}/bericht.txt`, teacherToken).set('Content-Length', '0');
+			const contentPut = await dav('PUT', `${cardPath}/bericht.txt`, teacherToken)
+				.set('If', `(${String(lockNew.headers['lock-token'])})`)
+				.send('Inhalt');
+			const metadata = await dav('PUT', `${cardPath}/._bericht.txt`, teacherToken).send('meta');
+			const metadataCheck = await dav('PROPFIND', `${cardPath}/._bericht.txt`, teacherToken).set('Depth', '0');
+			const unlock = await dav('UNLOCK', `${cardPath}/bericht.txt`, teacherToken).set(
+				'Lock-Token',
+				String(lockNew.headers['lock-token'])
+			);
+			const get = await dav('GET', `${cardPath}/bericht.txt`, teacherToken);
+
+			expect(lockNew.status).toEqual(HttpStatus.CREATED);
+			expect(placeholder.status).toEqual(207);
+			expect([emptyPut.status, contentPut.status]).toEqual([HttpStatus.CREATED, HttpStatus.NO_CONTENT]);
+			expect([metadata.status, metadataCheck.status, unlock.status]).toEqual([201, 207, 204]);
+			expect(get.text).toEqual('Inhalt');
+			expect(await childrenOf(card.id)).toHaveLength(1);
+			expect(filesStorage.files.size).toEqual(1);
+		});
+
 		it('should not overwrite JSON content with the body parser', async () => {
 			const { teacherToken } = await setup();
 			const json = '{ "a" :   1 }';

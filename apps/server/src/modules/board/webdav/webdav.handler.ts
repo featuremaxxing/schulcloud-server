@@ -8,6 +8,7 @@ import { AnyBoardNode, ContentElementType, isFileElement } from '../domain';
 import { BoardUc, CardUc, ColumnUc, ElementUc } from '../uc';
 import { WebDavFilesStorageClient } from './webdav-files-storage.client';
 import { WebDavLockStore } from './webdav-lock.store';
+import { MAX_VIRTUAL_FILE_BYTES, WebDavVirtualFile, WebDavVirtualFileStore } from './webdav-virtual-file.store';
 import { isSystemFileName, sanitizeName } from './webdav-names';
 import {
 	BoardResource,
@@ -58,6 +59,7 @@ export class WebDavHandler {
 		private readonly resolver: WebDavResourceResolver,
 		private readonly filesStorageClient: WebDavFilesStorageClient,
 		private readonly lockStore: WebDavLockStore,
+		private readonly virtualFiles: WebDavVirtualFileStore,
 		private readonly boardUc: BoardUc,
 		private readonly columnUc: ColumnUc,
 		private readonly cardUc: CardUc,
@@ -123,7 +125,19 @@ export class WebDavHandler {
 			return;
 		}
 
-		const resource = await this.resolveOrFail(ctx.session, ctx.segments);
+		const resource = await this.resolver.resolve(ctx.session, ctx.segments);
+		if (!resource) {
+			const virtualFile = this.virtualFiles.get(ctx.session.userId, ctx.segments);
+			if (!virtualFile) {
+				throw WebDavError.notFound();
+			}
+			const entry = WebDavHandler.virtualPropEntry(ctx.hrefPrefix, ctx.segments, virtualFile);
+			ctx.res
+				.status(207)
+				.type(XML_CONTENT_TYPE)
+				.send(renderMultiStatus([entry]));
+			return;
+		}
 		const resources = [resource];
 		if (depth !== '0' && isCollection(resource)) {
 			resources.push(...(await this.resolver.listChildren(ctx.session, resource)));
@@ -136,7 +150,8 @@ export class WebDavHandler {
 
 	private async proppatch(ctx: WebDavRequestContext): Promise<void> {
 		const body = await WebDavHandler.readBody(ctx.req);
-		if (!WebDavHandler.isSystemFile(ctx.segments)) {
+		const isVirtual = !!this.virtualFiles.get(ctx.session.userId, ctx.segments);
+		if (!isVirtual && !WebDavHandler.isSystemFile(ctx.segments)) {
 			await this.resolveOrFail(ctx.session, ctx.segments);
 		}
 
@@ -147,7 +162,20 @@ export class WebDavHandler {
 	}
 
 	private async get(ctx: WebDavRequestContext, withBody: boolean): Promise<void> {
-		const resource = await this.resolveOrFail(ctx.session, ctx.segments);
+		const resource = await this.resolver.resolve(ctx.session, ctx.segments);
+		if (!resource) {
+			const virtualFile = this.virtualFiles.get(ctx.session.userId, ctx.segments);
+			if (!virtualFile) {
+				throw WebDavError.notFound();
+			}
+			ctx.res.status(HttpStatus.OK).set({
+				'Content-Type': 'application/octet-stream',
+				'Content-Length': String(virtualFile.content.length),
+				'Last-Modified': virtualFile.updatedAt.toUTCString(),
+			});
+			ctx.res.end(withBody ? virtualFile.content : undefined);
+			return;
+		}
 
 		if (isCollection(resource)) {
 			await this.sendCollectionPage(ctx, resource, withBody);
@@ -208,9 +236,10 @@ export class WebDavHandler {
 	private async put(ctx: WebDavRequestContext): Promise<void> {
 		const name = WebDavHandler.lastSegment(ctx.segments);
 		if (isSystemFileName(name)) {
-			// accept and drop, see isSystemFileName
-			await WebDavHandler.discardBody(ctx.req);
-			ctx.res.status(HttpStatus.CREATED).end();
+			// kept aside, never stored in the board - see WebDavVirtualFileStore
+			const content = await WebDavHandler.readBinaryBody(ctx.req, MAX_VIRTUAL_FILE_BYTES);
+			const created = this.virtualFiles.set(ctx.session.userId, ctx.segments, content);
+			ctx.res.status(created ? HttpStatus.CREATED : HttpStatus.NO_CONTENT).end();
 			return;
 		}
 		WebDavHandler.checkName(name);
@@ -233,6 +262,8 @@ export class WebDavHandler {
 			await this.createFile(ctx.session, parent, name, ctx.req, contentLength);
 			ctx.res.status(HttpStatus.CREATED).end();
 		}
+		// a placeholder from a LOCK before the first PUT is now a real file
+		this.virtualFiles.delete(ctx.session.userId, ctx.segments);
 	}
 
 	private async mkcol(ctx: WebDavRequestContext): Promise<void> {
@@ -283,7 +314,8 @@ export class WebDavHandler {
 
 		const resource = await this.resolver.resolve(ctx.session, ctx.segments);
 		if (!resource) {
-			if (WebDavHandler.isSystemFile(ctx.segments)) {
+			const wasVirtual = this.virtualFiles.delete(ctx.session.userId, ctx.segments);
+			if (wasVirtual || WebDavHandler.isSystemFile(ctx.segments)) {
 				ctx.res.status(HttpStatus.NO_CONTENT).end();
 				return;
 			}
@@ -306,7 +338,8 @@ export class WebDavHandler {
 		const overwrite = (WebDavHandler.headerValue(ctx.req.headers.overwrite) ?? 'T').toUpperCase() !== 'F';
 
 		if (WebDavHandler.isSystemFile(ctx.segments) || isSystemFileName(destinationName)) {
-			ctx.res.status(HttpStatus.CREATED).end();
+			const found = this.virtualFiles.copy(ctx.session.userId, ctx.segments, destinationSegments, mode === 'move');
+			ctx.res.status(found ? HttpStatus.CREATED : HttpStatus.NOT_FOUND).end();
 			return;
 		}
 		WebDavHandler.checkName(destinationName);
@@ -363,11 +396,20 @@ export class WebDavHandler {
 			return;
 		}
 
-		// Locking an unmapped URL would create an empty file (RFC 4918 7.3). The board has
-		// no empty files, so the lock is granted and the resource appears with the PUT
-		// that follows it.
+		// Locking an unmapped URL creates an empty resource (RFC 4918 7.3). Until the PUT
+		// that follows it, that is a placeholder - an empty file element in the board would
+		// be left behind whenever a client gives up in between.
+		const { userId } = ctx.session;
 		const exists =
-			WebDavHandler.isSystemFile(ctx.segments) || !!(await this.resolver.resolve(ctx.session, ctx.segments));
+			!!this.virtualFiles.get(userId, ctx.segments) || !!(await this.resolver.resolve(ctx.session, ctx.segments));
+		if (!exists) {
+			const parent = await this.resolveParentOrConflict(ctx.session, ctx.segments);
+			const isSystemFile = WebDavHandler.isSystemFile(ctx.segments);
+			if (!isSystemFile && !WebDavHandler.isFileTarget(parent)) {
+				throw WebDavError.forbidden('Files can only be stored in cards and folders');
+			}
+			this.virtualFiles.set(userId, ctx.segments, Buffer.alloc(0), !isSystemFile);
+		}
 		const lock = this.lockStore.create(href, await parseLockOwner(body), timeout);
 
 		ctx.res
@@ -632,6 +674,19 @@ export class WebDavHandler {
 		return entry;
 	}
 
+	private static virtualPropEntry(hrefPrefix: string, segments: string[], file: WebDavVirtualFile): WebDavPropEntry {
+		return {
+			href: WebDavHandler.buildHref(hrefPrefix, segments, false),
+			displayName: WebDavHandler.lastSegment(segments),
+			isCollection: false,
+			contentLength: file.content.length,
+			contentType: 'application/octet-stream',
+			createdAt: file.createdAt,
+			updatedAt: file.updatedAt,
+			etag: `"virtual-${file.updatedAt.getTime()}"`,
+		};
+	}
+
 	private static boardNodeOf(resource: BoardResource | ColumnResource | CardResource | FolderResource): AnyBoardNode {
 		switch (resource.kind) {
 			case 'board':
@@ -755,6 +810,25 @@ export class WebDavHandler {
 		}
 
 		return Buffer.concat(chunks).toString('utf8');
+	}
+
+	// reads up to maxBytes and silently drops the rest
+	private static async readBinaryBody(req: Request, maxBytes: number): Promise<Buffer> {
+		if (req.readableEnded) {
+			return Buffer.alloc(0);
+		}
+
+		const chunks: Buffer[] = [];
+		let size = 0;
+		for await (const chunk of req as AsyncIterable<Buffer | string>) {
+			const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+			if (size < maxBytes) {
+				chunks.push(buffer.subarray(0, maxBytes - size));
+			}
+			size += buffer.length;
+		}
+
+		return Buffer.concat(chunks);
 	}
 
 	private static async discardBody(req: Request): Promise<void> {

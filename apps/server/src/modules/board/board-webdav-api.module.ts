@@ -23,6 +23,7 @@ import { WebDavAuthService } from './webdav/webdav-auth.service';
 import { WebDavFilesStorageClient } from './webdav/webdav-files-storage.client';
 import { WebDavLockStore } from './webdav/webdav-lock.store';
 import { WebDavResourceResolver } from './webdav/webdav-resource.resolver';
+import { WebDavVirtualFileStore } from './webdav/webdav-virtual-file.store';
 import { WebDavController } from './webdav/webdav.controller';
 import { WebDavHandler } from './webdav/webdav.handler';
 
@@ -56,6 +57,7 @@ import { WebDavHandler } from './webdav/webdav.handler';
 		WebDavHandler,
 		WebDavLockStore,
 		WebDavResourceResolver,
+		WebDavVirtualFileStore,
 	],
 })
 @RegisterTimeoutConfig(WEBDAV_TIMEOUT_CONFIG_TOKEN)
