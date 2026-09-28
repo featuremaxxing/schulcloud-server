@@ -11,6 +11,7 @@ import { CourseNews, News, SchoolNews, TeamNews } from '@modules/news/repo';
 import { ExternalToolPseudonymEntity } from '@modules/pseudonym/entity';
 import { RegistrationPinEntity } from '@modules/registration-pin/entity';
 import { Role } from '@modules/role/repo';
+import { AppPasswordEntity } from '@modules/app-password/repo';
 import { RoomArrangementEntity } from '@modules/room';
 import { RoomMembershipEntity } from '@modules/room-membership';
 import { FederalStateEntity, SchoolEntity, SchoolYearEntity, StorageProviderEntity } from '@modules/school/repo';
@@ -58,6 +59,7 @@ export const ENTITIES = [
 	LessonEntity,
 	Material,
 	RoomArrangementEntity,
+	AppPasswordEntity,
 ];
 
 export const TEST_ENTITIES = [...ENTITIES];

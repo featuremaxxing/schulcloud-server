@@ -14,7 +14,7 @@ import { MikroORM } from '@mikro-orm/core';
 import { AccountService } from '@modules/account';
 import { AccountUc } from '@modules/account/api/account.uc';
 import { SystemRule } from '@modules/authorization-rules';
-import { ColumnBoardService } from '@modules/board';
+import { ColumnBoardService, createWebDavPreMiddleware, WEBDAV_ROUTE } from '@modules/board';
 import { CollaborativeStorageUc } from '@modules/collaborative-storage/uc/collaborative-storage.uc';
 import { GroupService } from '@modules/group';
 import { InternalServerModule } from '@modules/internal-server/internal-server.app.module';
@@ -49,6 +49,8 @@ async function bootstrap(): Promise<void> {
 	const nestExpress = express();
 	// See: https://docs.nestjs.com/migration-guide#query-parameters-parsing
 	nestExpress.set('query parser', 'extended');
+	// must run before the middleware NestJS registers itself (CORS, body parsers)
+	nestExpress.use(createWebDavPreMiddleware(WEBDAV_ROUTE));
 	const nestExpressAdapter = new ExpressAdapter(nestExpress);
 	const nestApp = await NestFactory.create(ServerModule, nestExpressAdapter);
 	const orm = nestApp.get(MikroORM);

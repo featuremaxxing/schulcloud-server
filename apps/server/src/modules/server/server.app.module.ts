@@ -8,6 +8,7 @@ import { SchulconnexClientModule } from '@infra/schulconnex-client/schulconnex-c
 import { AccountApiModule } from '@modules/account/account-api.module';
 import { ALERT_PUBLIC_API_CONFIG, AlertModule, AlertPublicApiConfig } from '@modules/alert';
 import { AiQuestionApiModule } from '@modules/ai/ai-question-api.module';
+import { AppPasswordApiModule } from '@modules/app-password/app-password-api.module';
 import { AuthenticationApiModule } from '@modules/authentication/authentication-api.module';
 import { AuthorizationReferenceApiModule } from '@modules/authorization-reference/authorization-reference.api.module';
 import { AuthorizationRulesModule } from '@modules/authorization-rules';
@@ -15,6 +16,7 @@ import { AssignmentApiModule } from '@modules/assignment/assignment-api.module';
 import { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from '@modules/board';
 import { BOARD_CONTEXT_PUBLIC_API_CONFIG, BoardContextPublicApiConfig } from '@modules/board-context';
 import { BoardApiModule } from '@modules/board/board-api.module';
+import { BoardWebDavApiModule } from '@modules/board/board-webdav-api.module';
 import { MediaBoardApiModule } from '@modules/board/media-board-api.module';
 import { MoinSchuleClassModule } from '@modules/class-moin-schule/moin-schule-class.module';
 import { CollaborativeStorageModule } from '@modules/collaborative-storage';
@@ -139,6 +141,8 @@ const serverModules = [
 	ToolApiModule,
 	UserLoginMigrationApiModule,
 	BoardApiModule,
+	BoardWebDavApiModule,
+	AppPasswordApiModule,
 	AssignmentApiModule,
 	AiQuestionApiModule,
 	GroupApiModule,

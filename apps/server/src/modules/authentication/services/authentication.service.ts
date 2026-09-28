@@ -79,6 +79,25 @@ export class AuthenticationService {
 		return jwtToken;
 	}
 
+	/**
+	 * Mints a regular, short-lived JWT for a user who authenticated without the login flow
+	 * (e.g. a WebDAV client with an app password), so the server can call other services
+	 * like the file storage on the user's behalf. Throws if the account is deactivated.
+	 */
+	public async generateJwtForUser(user: User, expiresIn: number): Promise<string> {
+		const account = await this.accountService.findByUserIdOrFail(user.id);
+		if (account.deactivatedAt !== undefined && account.deactivatedAt.getTime() <= Date.now()) {
+			throw new UserAccountDeactivatedLoggableException();
+		}
+
+		const currentUser = CurrentUserMapper.userToICurrentUser(account.id, user, false, account.systemId);
+		const createJwtPayload = new JwtPayloadBuilder(currentUser).build();
+
+		const jwtToken = await this.generateJwtAndAddToWhitelist(createJwtPayload, expiresIn);
+
+		return jwtToken;
+	}
+
 	public async removeJwtFromWhitelist(jwtToken: string): Promise<void> {
 		const decodedJwt = JwtPayloadVo.fromJwtToken(jwtToken);
 

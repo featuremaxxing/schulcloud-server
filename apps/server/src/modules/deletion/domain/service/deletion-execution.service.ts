@@ -80,6 +80,7 @@ export class DeletionExecutionService {
 			[ModuleName.USER_REGISTRATIONPIN]: DomainName.REGISTRATIONPIN,
 			[ModuleName.NEWS]: DomainName.NEWS,
 			[ModuleName.ROOM]: DomainName.ROOM,
+			[ModuleName.APP_PASSWORD]: DomainName.APP_PASSWORD,
 		} as const;
 
 		if (mapping[moduleName]) {
