@@ -9,6 +9,7 @@ export * from './drawing-element.response';
 export * from './element-with-parent-hierarchy.response';
 export * from './external-tool-element.response';
 export * from './file-element.response';
+export * from './file-area-link-element.response';
 export * from './file-folder-element.response';
 export * from './link-element.response';
 export * from './poll-element.response';

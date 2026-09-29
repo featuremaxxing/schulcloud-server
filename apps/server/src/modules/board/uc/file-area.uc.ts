@@ -5,13 +5,14 @@ import { EntityId } from '@shared/domain/types';
 import { BoardNodeRule, BoardOperation } from '../authorisation/board-node.rule';
 import {
 	AnyBoardNode,
+	BoardExternalReferenceType,
 	BoardNodeFactory,
 	ColumnBoard,
 	FileAreaFolder,
 	isColumnBoard,
 	isFileAreaFolder,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, FileAreaNotifier } from '../service';
+import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, FileAreaNotifier } from '../service';
 import { sanitizeName } from '../webdav/webdav-names';
 
 @Injectable()
@@ -22,8 +23,29 @@ export class FileAreaUc {
 		private readonly boardNodeRule: BoardNodeRule,
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeFactory: BoardNodeFactory,
-		private readonly fileAreaNotifier: FileAreaNotifier
+		private readonly fileAreaNotifier: FileAreaNotifier,
+		private readonly columnBoardService: ColumnBoardService
 	) {}
+
+	// the file areas of a room the user can read, e.g. to pick a link target
+	public async listFileAreasOfRoom(userId: EntityId, roomId: EntityId): Promise<ColumnBoard[]> {
+		const boards = await this.columnBoardService.findByExternalReference(
+			{ type: BoardExternalReferenceType.Room, id: roomId },
+			0
+		);
+		const fileAreas = boards.filter((board) => board.isFileArea());
+		if (fileAreas.length === 0) {
+			return [];
+		}
+
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(fileAreas);
+
+		return authorizables
+			.filter((authorizable) => this.boardNodeRule.can('findBoard', user, authorizable))
+			.map((authorizable) => authorizable.boardNode as ColumnBoard)
+			.sort((a, b) => a.title.localeCompare(b.title));
+	}
 
 	public async listFolders(
 		userId: EntityId,

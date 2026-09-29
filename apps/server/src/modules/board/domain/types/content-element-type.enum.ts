@@ -13,4 +13,5 @@ export enum ContentElementType {
 	CHECKBOX = 'checkbox',
 	ASSIGNMENT = 'assignment',
 	AI_QUESTION = 'aiQuestion',
+	FILE_AREA_LINK = 'fileAreaLink',
 }

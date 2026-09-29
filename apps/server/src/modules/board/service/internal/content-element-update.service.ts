@@ -9,6 +9,7 @@ import {
 	AiQuestionContentBody,
 	DrawingContentBody,
 	ExternalToolContentBody,
+	FileAreaLinkContentBody,
 	FileContentBody,
 	FileFolderContentBody,
 	H5pContentBody,
@@ -43,6 +44,7 @@ import {
 	isAiQuestionElement,
 	isDrawingElement,
 	isExternalToolElement,
+	isFileAreaLinkElement,
 	isFileElement,
 	isFileFolderElement,
 	isH5pElement,
@@ -118,6 +120,14 @@ export class ContentElementUpdateService {
 			return;
 		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
 			this.updateAssignmentElement(element, content);
+		} else if (isFileAreaLinkElement(element) && content instanceof FileAreaLinkContentBody) {
+			// the target was checked by the use case (same room, readable, folder of the file area)
+			element.setTarget({
+				fileAreaId: content.fileAreaId,
+				targetType: content.targetType,
+				targetId: content.targetId,
+				title: content.title,
+			});
 		} else if (isAiQuestionElement(element) && content instanceof AiQuestionContentBody) {
 			this.updateAiQuestionElement(element, content);
 		} else {

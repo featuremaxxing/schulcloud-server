@@ -167,6 +167,17 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ nullable: true })
 	entries: CheckboxEntry[] | undefined;
 
+	// FileAreaLinkElement
+	// --------------------------------------------------------------------------
+	@Property({ type: ObjectIdType, nullable: true })
+	fileAreaId: EntityId | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	targetType: 'file' | 'folder' | undefined;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	targetId: EntityId | undefined;
+
 	// PinnedCard
 	// --------------------------------------------------------------------------
 	@Index()

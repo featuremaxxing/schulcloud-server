@@ -74,6 +74,17 @@ export interface FileFolderElementProps extends BoardNodeProps {
 	title: string;
 }
 
+export type FileAreaLinkTargetType = 'file' | 'folder';
+
+// a link from a card to a file or folder of a file area in the same room
+export interface FileAreaLinkElementProps extends BoardNodeProps {
+	fileAreaId?: EntityId;
+	targetType?: FileAreaLinkTargetType;
+	targetId?: EntityId;
+	// the name of the target when it was linked, shown when the target is gone
+	title: string;
+}
+
 export interface FileAreaFolderProps extends BoardNodeProps {
 	title: string;
 }
@@ -253,6 +264,7 @@ export type AnyBoardNodeProps =
 	| ExternalToolElementProps
 	| FileElementProps
 	| FileFolderElementProps
+	| FileAreaLinkElementProps
 	| LinkElementProps
 	| RichTextElementProps
 	| VideoConferenceElementProps

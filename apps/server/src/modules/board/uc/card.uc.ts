@@ -1,13 +1,15 @@
 import { LegacyLogger } from '@infra/logger';
 import { AuthorizationService } from '@modules/authorization';
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
 
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
+import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
 import {
 	AnyBoardNode,
 	AnyContentElement,
+	BoardExternalReferenceType,
 	canManageCheckboxDescendants,
 	BoardNodeFactory,
 	Card,
@@ -15,6 +17,7 @@ import {
 	ContentElementType,
 	isAiQuestionElement,
 	isCheckboxElement,
+	isColumnBoard,
 	isTeacherMember,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
@@ -28,7 +31,8 @@ export class CardUc {
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly logger: LegacyLogger,
-		private readonly boardNodeRule: BoardNodeRule
+		private readonly boardNodeRule: BoardNodeRule,
+		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig
 	) {
 		this.logger.setContext(CardUc.name);
 	}
@@ -120,6 +124,10 @@ export class CardUc {
 			);
 		}
 
+		if (type === ContentElementType.FILE_AREA_LINK) {
+			await this.checkFileAreaLinkAllowed(card);
+		}
+
 		if (type === ContentElementType.AI_QUESTION) {
 			throwForbiddenIfFalse(this.boardNodeRule.can('manageAiQuestion', user, boardNodeAuthorizable));
 		}
@@ -133,6 +141,18 @@ export class CardUc {
 		await this.boardNodeService.addToParent(card, element, toPosition);
 
 		return element;
+	}
+
+	// links to file areas only make sense in rooms: file areas live in rooms, and the link must
+	// point into the same room
+	private async checkFileAreaLinkAllowed(card: Card): Promise<void> {
+		if (!this.config.featureBoardFileAreaEnabled) {
+			throw new BadRequestException('File areas are not enabled');
+		}
+		const board = await this.boardNodeService.findRoot(card, 0);
+		if (!isColumnBoard(board) || board.context.type !== BoardExternalReferenceType.Room) {
+			throw new BadRequestException('File area links can only be added to boards in rooms');
+		}
 	}
 
 	public async moveElement(

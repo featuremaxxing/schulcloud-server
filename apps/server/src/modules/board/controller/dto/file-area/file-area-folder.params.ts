@@ -14,6 +14,12 @@ export class FileAreaBoardUrlParams {
 	boardId!: string;
 }
 
+export class FileAreaRoomUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the room.', required: true, nullable: false })
+	roomId!: string;
+}
+
 export class CreateFileAreaFolderBodyParams {
 	@IsMongoId()
 	@ApiProperty({ description: 'The id of the parent: the file area board or another folder.', required: true })

@@ -6,6 +6,7 @@ import { type CollaborativeTextEditorElement, isCollaborativeTextEditorElement }
 import { type DeletedElement, isDeletedElement } from '../deleted-element.do';
 import { type DrawingElement, isDrawingElement } from '../drawing-element.do';
 import { type ExternalToolElement, isExternalToolElement } from '../external-tool-element.do';
+import { type FileAreaLinkElement, isFileAreaLinkElement } from '../file-area-link-element.do';
 import { type FileElement, isFileElement } from '../file-element.do';
 import { type FileFolderElement, isFileFolderElement } from '../file-folder-element.do';
 import { type H5pElement, isH5pElement } from '../h5p-element.do';
@@ -24,6 +25,7 @@ export type AnyContentElement =
 	| DrawingElement
 	| ExternalToolElement
 	| FileElement
+	| FileAreaLinkElement
 	| FileFolderElement
 	| LinkElement
 	| RichTextElement
@@ -41,6 +43,7 @@ export const isContentElement = (boardNode: AnyBoardNode): boardNode is AnyConte
 		isDrawingElement(boardNode) ||
 		isExternalToolElement(boardNode) ||
 		isFileElement(boardNode) ||
+		isFileAreaLinkElement(boardNode) ||
 		isFileFolderElement(boardNode) ||
 		isLinkElement(boardNode) ||
 		isRichTextElement(boardNode) ||

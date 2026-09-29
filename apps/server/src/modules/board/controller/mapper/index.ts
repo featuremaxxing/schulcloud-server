@@ -9,6 +9,7 @@ export * from './content-element-response.factory';
 export * from './create-board-response.mapper';
 export * from './deleted-element-response.mapper';
 export * from './external-tool-element-response.mapper';
+export * from './file-area-link-element-response.mapper';
 export * from './file-element-response.mapper';
 export * from './link-element-response.mapper';
 export * from './parent-node-info-response.mapper';

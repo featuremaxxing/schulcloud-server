@@ -30,6 +30,7 @@ import {
 	FileElement,
 	FileElementFactory,
 	FileAreaFolder,
+	FileAreaLinkElement,
 	FileFolderElement,
 	FileFolderElementFactory,
 	getBoardNodeType,
@@ -114,6 +115,9 @@ export class BoardNodeCopyService {
 			case BoardNodeType.FILE_FOLDER_ELEMENT:
 				result = await this.copyFileFolderElement(boardNode as FileFolderElement, context);
 				break;
+			case BoardNodeType.FILE_AREA_LINK_ELEMENT:
+				result = this.copyFileAreaLinkElement(boardNode as FileAreaLinkElement);
+				break;
 			case BoardNodeType.FILE_AREA_FOLDER:
 				result = await this.copyFileAreaFolder(boardNode as FileAreaFolder, context);
 				break;
@@ -165,7 +169,7 @@ export class BoardNodeCopyService {
 
 		// a file area also keeps files directly on the board
 		const elements = original.isFileArea()
-			? [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))]
+			? [...childrenResults, ...(await this.copyFileAreaFiles(original, context, copy))]
 			: childrenResults;
 		const status = this.copyHelperService.deriveStatusFromElements(elements);
 
@@ -180,6 +184,22 @@ export class BoardNodeCopyService {
 		return result;
 	}
 
+	// The link keeps pointing to the same file or folder. In a copied room the original file area
+	// is not readable for the new members, the element then shows the target as unavailable.
+	public copyFileAreaLinkElement(original: FileAreaLinkElement): CopyStatus {
+		const copy = new FileAreaLinkElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		return {
+			copyEntity: copy,
+			type: CopyElementType.FILE_AREA_LINK_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			originalEntity: original,
+		};
+	}
+
 	public async copyFileAreaFolder(original: FileAreaFolder, context: CopyContext): Promise<CopyStatus> {
 		const childrenResults = await this.copyChildrenOf(original, context);
 
@@ -188,7 +208,7 @@ export class BoardNodeCopyService {
 			...this.buildSpecificProps(childrenResults),
 		});
 
-		const elements = [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))];
+		const elements = [...childrenResults, ...(await this.copyFileAreaFiles(original, context, copy))];
 
 		const result: CopyStatus = {
 			copyEntity: copy,
@@ -275,6 +295,30 @@ export class BoardNodeCopyService {
 		};
 
 		return result;
+	}
+
+	// Like copyFilesOfParent, but keeps which file became which copy: file area link elements
+	// on copied boards are pointed to the copies afterwards (see ColumnBoardLinkService).
+	private async copyFileAreaFiles(
+		original: FileAreaFolder | ColumnBoard,
+		context: CopyContext,
+		copy: FileAreaFolder | ColumnBoard
+	): Promise<CopyStatus[]> {
+		const fileCopies = await context.copyFilesOfParent(original.id, copy.id);
+
+		return fileCopies.map((fileCopy): CopyStatus => {
+			const status: CopyStatus = {
+				type: CopyElementType.FILE,
+				status: fileCopy.id ? CopyStatusEnum.SUCCESS : CopyStatusEnum.FAIL,
+				title: fileCopy.name ?? `(old fileid: ${fileCopy.sourceId})`,
+			};
+			if (fileCopy.id) {
+				status.originalEntity = { id: fileCopy.sourceId };
+				status.copyEntity = { id: fileCopy.id };
+			}
+
+			return status;
+		});
 	}
 
 	private async copyFilesOfParent(
