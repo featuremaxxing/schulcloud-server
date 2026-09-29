@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AnyBoardNode, isLinkElement } from '../../domain';
+import { AnyBoardNode, isFileAreaLinkElement, isLinkElement } from '../../domain';
 import { BoardNodeRepo } from '../../repo/board-node.repo';
 
 @Injectable()
@@ -19,6 +19,14 @@ export class ColumnBoardLinkService {
 		if (isLinkElement(boardNode)) {
 			for (const [searchValue, replaceValue] of Object.entries(replacementMap)) {
 				boardNode.url = boardNode.url.replace(searchValue, replaceValue);
+			}
+		}
+		if (isFileAreaLinkElement(boardNode) && boardNode.fileAreaId && boardNode.targetType && boardNode.targetId) {
+			// a copied room gets its own file areas: point the link to the copy of its file area and target
+			const fileAreaId = replacementMap[boardNode.fileAreaId];
+			const targetId = replacementMap[boardNode.targetId];
+			if (fileAreaId && targetId) {
+				boardNode.setTarget({ fileAreaId, targetType: boardNode.targetType, targetId, title: boardNode.title });
 			}
 		}
 		boardNode.children.forEach((bn) => this.updateLinkElements(bn, replacementMap));

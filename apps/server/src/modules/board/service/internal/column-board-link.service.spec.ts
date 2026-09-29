@@ -7,6 +7,7 @@ import {
 	cardFactory,
 	columnBoardFactory,
 	columnFactory,
+	fileAreaLinkElementFactory,
 	linkElementFactory,
 	richTextElementFactory,
 } from '../../testing';
@@ -176,6 +177,43 @@ describe(ColumnBoardLinkService.name, () => {
 					expect(linkElement2.url).not.toContain(copiedCardId);
 				});
 			});
+		});
+	});
+
+	describe('when a board has file area links', () => {
+		const setup = (idMap: Record<string, string>) => {
+			const link = fileAreaLinkElementFactory.build({
+				fileAreaId: 'oldArea',
+				targetType: 'folder',
+				targetId: 'oldFolder',
+				title: 'Material',
+			});
+			const card = cardFactory.build({ children: [link] });
+			const column = columnFactory.build({ children: [card] });
+			const board = columnBoardFactory.build({ children: [column] });
+
+			return { board, link, idMap };
+		};
+
+		it('should point the link to the copied file area and target', async () => {
+			const { board, link, idMap } = setup({ oldArea: 'newArea', oldFolder: 'newFolder' });
+
+			await service.rewriteLinkUrlsInBoardNode(board, idMap);
+
+			expect([link.fileAreaId, link.targetType, link.targetId, link.title]).toEqual([
+				'newArea',
+				'folder',
+				'newFolder',
+				'Material',
+			]);
+		});
+
+		it('should keep the link when its file area was not copied', async () => {
+			const { board, link, idMap } = setup({ someBoard: 'otherBoard' });
+
+			await service.rewriteLinkUrlsInBoardNode(board, idMap);
+
+			expect([link.fileAreaId, link.targetId]).toEqual(['oldArea', 'oldFolder']);
 		});
 	});
 });

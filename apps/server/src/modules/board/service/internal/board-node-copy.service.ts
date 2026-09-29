@@ -169,7 +169,7 @@ export class BoardNodeCopyService {
 
 		// a file area also keeps files directly on the board
 		const elements = original.isFileArea()
-			? [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))]
+			? [...childrenResults, ...(await this.copyFileAreaFiles(original, context, copy))]
 			: childrenResults;
 		const status = this.copyHelperService.deriveStatusFromElements(elements);
 
@@ -208,7 +208,7 @@ export class BoardNodeCopyService {
 			...this.buildSpecificProps(childrenResults),
 		});
 
-		const elements = [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))];
+		const elements = [...childrenResults, ...(await this.copyFileAreaFiles(original, context, copy))];
 
 		const result: CopyStatus = {
 			copyEntity: copy,
@@ -295,6 +295,30 @@ export class BoardNodeCopyService {
 		};
 
 		return result;
+	}
+
+	// Like copyFilesOfParent, but keeps which file became which copy: file area link elements
+	// on copied boards are pointed to the copies afterwards (see ColumnBoardLinkService).
+	private async copyFileAreaFiles(
+		original: FileAreaFolder | ColumnBoard,
+		context: CopyContext,
+		copy: FileAreaFolder | ColumnBoard
+	): Promise<CopyStatus[]> {
+		const fileCopies = await context.copyFilesOfParent(original.id, copy.id);
+
+		return fileCopies.map((fileCopy): CopyStatus => {
+			const status: CopyStatus = {
+				type: CopyElementType.FILE,
+				status: fileCopy.id ? CopyStatusEnum.SUCCESS : CopyStatusEnum.FAIL,
+				title: fileCopy.name ?? `(old fileid: ${fileCopy.sourceId})`,
+			};
+			if (fileCopy.id) {
+				status.originalEntity = { id: fileCopy.sourceId };
+				status.copyEntity = { id: fileCopy.id };
+			}
+
+			return status;
+		});
 	}
 
 	private async copyFilesOfParent(
