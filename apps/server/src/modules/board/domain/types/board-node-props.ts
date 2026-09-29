@@ -74,6 +74,10 @@ export interface FileFolderElementProps extends BoardNodeProps {
 	title: string;
 }
 
+export interface FileAreaFolderProps extends BoardNodeProps {
+	title: string;
+}
+
 export interface DeletedElementProps extends BoardNodeProps {
 	title: string;
 	deletedElementType: ContentElementType;

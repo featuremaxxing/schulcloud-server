@@ -5,6 +5,6 @@
  * Do not export *.app.module.ts here; import them directly. *
  *********************************************************** */
 
-export { MongoIoAdapter } from './mongodb-ioadapter';
+export { MongoIoAdapter, SOCKETIO_ADAPTER_COLLECTION_NAME } from './mongodb-ioadapter';
 export { Socket } from './types';
 export { WsValidationPipe } from './ws-validation.pipe';

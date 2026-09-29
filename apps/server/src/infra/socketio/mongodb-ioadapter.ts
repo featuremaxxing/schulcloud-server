@@ -4,7 +4,8 @@ import { createAdapter } from '@socket.io/mongo-adapter';
 import { MongoClient } from 'mongodb';
 import { type Server, type ServerOptions } from 'socket.io';
 
-const COLLECTION_NAME = 'socketio-adapter-events';
+// shared with processes that only emit into board rooms (see @socket.io/mongo-emitter)
+export const SOCKETIO_ADAPTER_COLLECTION_NAME = 'socketio-adapter-events';
 
 export class MongoIoAdapter extends IoAdapter {
 	private adapterConstructor: ReturnType<typeof createAdapter> | undefined = undefined;
@@ -13,7 +14,7 @@ export class MongoIoAdapter extends IoAdapter {
 		const mongoClient = new MongoClient(dbConfig.dbUrl);
 		await mongoClient.connect();
 
-		const mongoCollection = mongoClient.db().collection(COLLECTION_NAME);
+		const mongoCollection = mongoClient.db().collection(SOCKETIO_ADAPTER_COLLECTION_NAME);
 		await mongoCollection.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600, background: true });
 
 		this.adapterConstructor = createAdapter(mongoCollection, {

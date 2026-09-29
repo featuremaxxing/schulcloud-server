@@ -6,7 +6,7 @@ import { CopyStatus, CopyStatusEnum } from '@modules/copy-helper';
 import { CourseService } from '@modules/course';
 import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
-import { forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { FeatureDisabledLoggableException } from '@shared/common/loggable-exception';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { Permission } from '@shared/domain/interface';
@@ -49,6 +49,15 @@ export class BoardUc {
 	}
 
 	public async createBoard(userId: EntityId, params: CreateBoardBodyParams): Promise<ColumnBoard> {
+		if (params.layout === BoardLayout.FILES) {
+			if (!this.config.featureBoardFileAreaEnabled) {
+				throw new BadRequestException('File areas are not enabled');
+			}
+			if (params.parentType !== BoardExternalReferenceType.Room) {
+				throw new BadRequestException('File areas can only be created in rooms');
+			}
+		}
+
 		await this.checkBoardCreatePermission(userId, { type: params.parentType, id: params.parentId });
 
 		const board = this.boardNodeFactory.buildColumnBoard({
@@ -241,6 +250,10 @@ export class BoardUc {
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(board);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('updateBoardLayout', user, boardNodeAuthorizable));
+
+		if (layout === BoardLayout.FILES || board.layout === BoardLayout.FILES) {
+			throw new BadRequestException('The layout of a file area cannot be changed');
+		}
 
 		await this.boardNodeService.updateLayout(board, layout);
 		return board;

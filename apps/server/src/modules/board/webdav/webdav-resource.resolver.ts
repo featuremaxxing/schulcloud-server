@@ -8,10 +8,12 @@ import {
 	BoardExternalReferenceType,
 	Card,
 	ColumnBoard,
+	FileAreaFolder,
 	FileElement,
 	FileFolderElement,
 	isCard,
 	isColumn,
+	isFileAreaFolder,
 	isFileElement,
 	isFileFolderElement,
 } from '../domain';
@@ -19,6 +21,7 @@ import { BoardNodeAuthorizableService, ColumnBoardService } from '../service';
 import { assignUniqueNames, sanitizeName } from './webdav-names';
 import { WebDavFileRecord, WebDavFilesStorageClient } from './webdav-files-storage.client';
 import {
+	AreaFolderResource,
 	BoardResource,
 	CONTEXT_LIST_NAMES,
 	FALLBACK_NAMES,
@@ -142,7 +145,11 @@ export class WebDavResourceResolver {
 				});
 			}
 			case 'board':
-				return this.loadColumns(session, collection);
+				return collection.board.isFileArea()
+					? this.loadAreaChildren(session, collection, collection.board.id)
+					: this.loadColumns(session, collection);
+			case 'areaFolder':
+				return this.loadAreaChildren(session, collection, collection.folder.id);
 			case 'column': {
 				const cards = collection.column.children.filter((child): child is Card => isCard(child));
 
@@ -207,6 +214,65 @@ export class WebDavResourceResolver {
 			default:
 				return [];
 		}
+	}
+
+	// A file area has no columns and cards: subfolders and files of a folder (or of the area itself)
+	// share one namespace, folders first.
+	private async loadAreaChildren(
+		session: WebDavSession,
+		collection: BoardResource | AreaFolderResource,
+		containerId: string
+	): Promise<ChildWithoutSegments[]> {
+		const board = await this.getBoardTree(session, collection.board.id);
+		const container = collection.kind === 'board' ? board : this.findFolder(board, containerId);
+		const folders = container ? container.children.filter(isFileAreaFolder) : [];
+		const files = await this.getFiles(session, collection.context, containerId);
+
+		type AreaEntry = { folder: FileAreaFolder } | { fileRecord: WebDavFileRecord };
+		const entries: AreaEntry[] = [
+			...folders.map((folder): AreaEntry => {
+				return { folder };
+			}),
+			...files.map((fileRecord): AreaEntry => {
+				return { fileRecord };
+			}),
+		];
+
+		return assignUniqueNames(
+			entries,
+			(entry) =>
+				'folder' in entry
+					? sanitizeName(entry.folder.title, FALLBACK_NAMES.folder)
+					: sanitizeName(entry.fileRecord.name, FALLBACK_NAMES.file),
+			(entry) => 'fileRecord' in entry
+		).map(({ entry, name }): ChildWithoutSegments =>
+			'folder' in entry
+				? { kind: 'areaFolder', context: collection.context, board, folder: entry.folder, name }
+				: {
+						kind: 'areaFile',
+						context: collection.context,
+						board,
+						parentId: containerId,
+						fileRecord: entry.fileRecord,
+						name,
+					}
+		);
+	}
+
+	private findFolder(node: AnyBoardNode, folderId: string): FileAreaFolder | undefined {
+		for (const child of node.children) {
+			if (isFileAreaFolder(child)) {
+				if (child.id === folderId) {
+					return child;
+				}
+				const found = this.findFolder(child, folderId);
+				if (found) {
+					return found;
+				}
+			}
+		}
+
+		return undefined;
 	}
 
 	private async loadColumns(session: WebDavSession, collection: BoardResource): Promise<ChildWithoutSegments[]> {

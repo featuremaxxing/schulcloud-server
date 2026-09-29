@@ -11,6 +11,7 @@ export * from './column-entity.factory';
 export * from './drawing-element-entity.factory';
 export * from './external-tool-element-entity.factory';
 export * from './file-element-entity.factory';
+export * from './file-area-folder-entity.factory';
 export * from './file-folder-element-entity.factory';
 export * from './link-element-entity.factory';
 export * from './media-board-entity.factory';

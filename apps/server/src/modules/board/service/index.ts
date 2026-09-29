@@ -6,3 +6,4 @@ export * from './column-board.service';
 export * from './event';
 export * from './learning-room';
 export * from './media-board';
+export * from './file-area-notifier.service';

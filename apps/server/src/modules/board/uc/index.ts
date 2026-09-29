@@ -7,3 +7,4 @@ export * from './element.uc';
 export * from './learning-room';
 export * from './media-board';
 export * from './poll.uc';
+export * from './file-area.uc';

@@ -57,6 +57,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardAssignmentEnabled = false;
 
+	@ConfigProperty('FEATURE_BOARD_FILE_AREA_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureBoardFileAreaEnabled = false;
+
 	@ConfigProperty('FEATURE_BOARD_PROGRESS_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

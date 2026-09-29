@@ -15,6 +15,8 @@ import {
 	DrawingElement,
 	ExternalToolElement,
 	FileElement,
+	ColumnBoard,
+	FileAreaFolder,
 	FileFolderElement,
 	H5pElement,
 	isAssignmentFeedback,
@@ -23,6 +25,8 @@ import {
 	isDrawingElement,
 	isExternalToolElement,
 	isFileElement,
+	isColumnBoard,
+	isFileAreaFolder,
 	isFileFolderElement,
 	isH5pElement,
 	isLinkElement,
@@ -51,7 +55,12 @@ export class BoardNodeDeleteHooksService {
 
 	private async singleAfterDelete(boardNode: AnyBoardNode): Promise<void> {
 		// TODO improve this e.g. using exhaustive check or discriminated union
-		if (isFileElement(boardNode) || isFileFolderElement(boardNode)) {
+		if (
+			isFileElement(boardNode) ||
+			isFileFolderElement(boardNode) ||
+			isFileAreaFolder(boardNode) ||
+			(isColumnBoard(boardNode) && boardNode.isFileArea())
+		) {
 			this.afterDeleteFileElement(boardNode);
 		} else if (isLinkElement(boardNode)) {
 			await this.afterDeleteLinkElement(boardNode);
@@ -80,7 +89,7 @@ export class BoardNodeDeleteHooksService {
 		await Promise.allSettled(boardNode.children.map((child: AnyBoardNode): Promise<void> => this.afterDelete(child)));
 	}
 
-	public afterDeleteFileElement(fileElement: FileElement | FileFolderElement): void {
+	public afterDeleteFileElement(fileElement: FileElement | FileFolderElement | FileAreaFolder | ColumnBoard): void {
 		this.filesStorageClientAdapterService.deleteFilesOfParent(fileElement.id).catch((err: Error) => {
 			this.errorHandler.exec(err);
 		});

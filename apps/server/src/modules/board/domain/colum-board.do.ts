@@ -1,6 +1,7 @@
 import { BoardNode } from './board-node.do';
 import { Column } from './column.do';
-import type { AnyBoardNode, BoardExternalReference, BoardLayout, ColumnBoardProps } from './types';
+import { FileAreaFolder } from './file-area-folder.do';
+import { type AnyBoardNode, type BoardExternalReference, BoardLayout, type ColumnBoardProps } from './types';
 
 export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 	get title(): string {
@@ -46,7 +47,14 @@ export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 		this.props.readersCanEdit = readersCanEdit;
 	}
 
+	public isFileArea(): boolean {
+		return this.props.layout === BoardLayout.FILES;
+	}
+
 	public canHaveChild(childNode: AnyBoardNode): boolean {
+		if (this.isFileArea()) {
+			return childNode instanceof FileAreaFolder;
+		}
 		const allowed = childNode instanceof Column;
 		return allowed;
 	}
