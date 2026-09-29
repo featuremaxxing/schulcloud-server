@@ -50,3 +50,29 @@ export class FileAreaFoldersResponse {
 		this.allowedOperations = props.allowedOperations;
 	}
 }
+
+export class FileAreaResponse {
+	@ApiProperty()
+	id: string;
+
+	@ApiProperty()
+	title: string;
+
+	@ApiProperty({ description: 'Whether students can see the file area.' })
+	isVisible: boolean;
+
+	constructor(props: FileAreaResponse) {
+		this.id = props.id;
+		this.title = props.title;
+		this.isVisible = props.isVisible;
+	}
+}
+
+export class FileAreaListResponse {
+	@ApiProperty({ type: [FileAreaResponse] })
+	data: FileAreaResponse[];
+
+	constructor(data: FileAreaResponse[]) {
+		this.data = data;
+	}
+}

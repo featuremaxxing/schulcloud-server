@@ -22,6 +22,9 @@ import {
 	FileAreaFolderResponse,
 	FileAreaFolderUrlParams,
 	FileAreaFoldersResponse,
+	FileAreaListResponse,
+	FileAreaResponse,
+	FileAreaRoomUrlParams,
 	MoveFileAreaFolderBodyParams,
 	RenameFileAreaFolderBodyParams,
 } from './dto';
@@ -41,6 +44,21 @@ const toResponse = (folder: FileAreaFolder): FileAreaFolderResponse =>
 @Controller()
 export class FileAreaController {
 	constructor(private readonly fileAreaUc: FileAreaUc) {}
+
+	@ApiOperation({ summary: 'List the file areas of a room the user can read.' })
+	@ApiResponse({ status: 200, type: FileAreaListResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@Get('rooms/:roomId/file-areas')
+	public async listFileAreasOfRoom(
+		@Param() urlParams: FileAreaRoomUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<FileAreaListResponse> {
+		const boards = await this.fileAreaUc.listFileAreasOfRoom(currentUser.userId, urlParams.roomId);
+
+		return new FileAreaListResponse(
+			boards.map((board) => new FileAreaResponse({ id: board.id, title: board.title, isVisible: board.isVisible }))
+		);
+	}
 
 	@ApiOperation({ summary: 'List all folders of a file area as a flat list.' })
 	@ApiResponse({ status: 200, type: FileAreaFoldersResponse })

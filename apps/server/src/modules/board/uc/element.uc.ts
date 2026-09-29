@@ -1,12 +1,22 @@
 import { Logger } from '@infra/logger';
 import { AuthorizationService } from '@modules/authorization';
 import { BoardContextApiHelperService } from '@modules/board-context';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
 import { EntityId } from '@shared/domain/types';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
-import { AnyElementContentBody } from '../controller/dto';
-import { AnyContentElement, BoardNodeFactory, ContentElementWithParentHierarchy, isAiQuestionElement } from '../domain';
+import { AnyElementContentBody, FileAreaLinkContentBody } from '../controller/dto';
+import {
+	AnyContentElement,
+	BoardExternalReferenceType,
+	BoardNodeFactory,
+	ColumnBoard,
+	ContentElementWithParentHierarchy,
+	FileAreaFolder,
+	FileAreaLinkElement,
+	isAiQuestionElement,
+	isFileAreaLinkElement,
+} from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
 
 @Injectable()
@@ -60,12 +70,46 @@ export class ElementUc {
 			element.creatorId ??= userId;
 		}
 
+		if (isFileAreaLinkElement(element) && content instanceof FileAreaLinkContentBody) {
+			await this.checkFileAreaLinkTarget(user, element, content);
+		}
+
 		// boardNodeAuthorizable.users is only used for polls (see
 		// ContentElementUpdateService.updatePollElement) - already loaded above, so passing
 		// it through here is free even for every other element type.
 		await this.boardNodeService.updateContent(element, content, boardNodeAuthorizable.users);
 
 		return element;
+	}
+
+	// The target must be a file area in the same room as the card, readable for the user. A linked
+	// folder must belong to that file area and gives the link its name. Files are checked by the
+	// file storage whenever they are read - its permission check follows the file area.
+	private async checkFileAreaLinkTarget(
+		user: Awaited<ReturnType<AuthorizationService['getUserWithPermissions']>>,
+		element: FileAreaLinkElement,
+		content: FileAreaLinkContentBody
+	): Promise<void> {
+		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, element.rootId, 0);
+		const fileArea = await this.boardNodeService.findByClassAndId(ColumnBoard, content.fileAreaId, 0);
+		const isSameRoom =
+			board.context.type === BoardExternalReferenceType.Room &&
+			fileArea.context.type === BoardExternalReferenceType.Room &&
+			fileArea.context.id === board.context.id;
+		if (!fileArea.isFileArea() || !isSameRoom) {
+			throw new BadRequestException('The target must be a file area in the same room');
+		}
+
+		const fileAreaAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(fileArea);
+		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, fileAreaAuthorizable));
+
+		if (content.targetType === 'folder') {
+			const folder = await this.boardNodeService.findByClassAndId(FileAreaFolder, content.targetId, 0);
+			if (folder.rootId !== fileArea.id) {
+				throw new BadRequestException('The folder does not belong to this file area');
+			}
+			content.title = folder.title;
+		}
 	}
 
 	public async deleteElement(userId: EntityId, elementId: EntityId): Promise<EntityId> {

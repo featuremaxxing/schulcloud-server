@@ -30,6 +30,7 @@ import {
 	FileElement,
 	FileElementFactory,
 	FileAreaFolder,
+	FileAreaLinkElement,
 	FileFolderElement,
 	FileFolderElementFactory,
 	getBoardNodeType,
@@ -114,6 +115,9 @@ export class BoardNodeCopyService {
 			case BoardNodeType.FILE_FOLDER_ELEMENT:
 				result = await this.copyFileFolderElement(boardNode as FileFolderElement, context);
 				break;
+			case BoardNodeType.FILE_AREA_LINK_ELEMENT:
+				result = this.copyFileAreaLinkElement(boardNode as FileAreaLinkElement);
+				break;
 			case BoardNodeType.FILE_AREA_FOLDER:
 				result = await this.copyFileAreaFolder(boardNode as FileAreaFolder, context);
 				break;
@@ -178,6 +182,22 @@ export class BoardNodeCopyService {
 		};
 
 		return result;
+	}
+
+	// The link keeps pointing to the same file or folder. In a copied room the original file area
+	// is not readable for the new members, the element then shows the target as unavailable.
+	public copyFileAreaLinkElement(original: FileAreaLinkElement): CopyStatus {
+		const copy = new FileAreaLinkElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		return {
+			copyEntity: copy,
+			type: CopyElementType.FILE_AREA_LINK_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			originalEntity: original,
+		};
 	}
 
 	public async copyFileAreaFolder(original: FileAreaFolder, context: CopyContext): Promise<CopyStatus> {

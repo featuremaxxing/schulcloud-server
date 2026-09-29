@@ -10,6 +10,7 @@ import { DeletedElementResponseMapper } from './deleted-element-response.mapper'
 import { DrawingElementResponseMapper } from './drawing-element-response.mapper';
 import { ExternalToolElementResponseMapper } from './external-tool-element-response.mapper';
 import { FileElementResponseMapper } from './file-element-response.mapper';
+import { FileAreaLinkElementResponseMapper } from './file-area-link-element-response.mapper';
 import { FileFolderElementResponseMapper } from './file-folder-element-response.mapper';
 import { H5pElementResponseMapper } from './h5p-element-response.mapper';
 import { LinkElementResponseMapper } from './link-element-response.mapper';
@@ -28,6 +29,7 @@ export class ContentElementResponseFactory {
 		DeletedElementResponseMapper.getInstance(),
 		VideoConferenceElementResponseMapper.getInstance(),
 		FileFolderElementResponseMapper.getInstance(),
+		FileAreaLinkElementResponseMapper.getInstance(),
 		H5pElementResponseMapper.getInstance(),
 		PollElementResponseMapper.getInstance(),
 		AssignmentElementResponseMapper.getInstance(),

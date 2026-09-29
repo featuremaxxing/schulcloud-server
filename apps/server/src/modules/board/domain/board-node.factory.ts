@@ -14,6 +14,7 @@ import { Column } from './column.do';
 import { DrawingElement } from './drawing-element.do';
 import { ExternalToolElement } from './external-tool-element.do';
 import { FileAreaFolder } from './file-area-folder.do';
+import { FileAreaLinkElement } from './file-area-link-element.do';
 import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
@@ -77,6 +78,12 @@ export class BoardNodeFactory {
 					...this.getBaseProps(),
 					caption: '',
 					alternativeText: '',
+				});
+				break;
+			case ContentElementType.FILE_AREA_LINK:
+				element = new FileAreaLinkElement({
+					...this.getBaseProps(),
+					title: '',
 				});
 				break;
 			case ContentElementType.FILE_FOLDER:

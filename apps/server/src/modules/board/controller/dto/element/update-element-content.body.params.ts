@@ -62,6 +62,35 @@ export class CheckboxElementContentBody extends ElementContentBody {
 	content!: CheckboxContentBody;
 }
 
+export class FileAreaLinkContentBody {
+	@IsMongoId()
+	@ApiProperty({ description: 'The file area the target belongs to.' })
+	fileAreaId!: string;
+
+	@IsEnum(['file', 'folder'])
+	@ApiProperty({ enum: ['file', 'folder'], enumName: 'FileAreaLinkTargetType' })
+	targetType!: 'file' | 'folder';
+
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the file record or of the folder.' })
+	targetId!: string;
+
+	@IsString()
+	@MaxLength(255)
+	@ApiProperty({ description: 'The name of the file. Folder names are taken from the folder itself.' })
+	title!: string;
+}
+
+export class FileAreaLinkElementContentBody extends ElementContentBody {
+	@ApiProperty({ enum: ContentElementType })
+	type!: ContentElementType.FILE_AREA_LINK;
+
+	@ValidateNested()
+	@Type(() => FileAreaLinkContentBody)
+	@ApiProperty({ type: FileAreaLinkContentBody })
+	content!: FileAreaLinkContentBody;
+}
+
 export class FileContentBody {
 	@IsString()
 	@ApiProperty({})
@@ -463,7 +492,8 @@ export type AnyElementContentBody =
 	| FileFolderContentBody
 	| H5pContentBody
 	| PollContentBody
-	| CheckboxContentBody;
+	| CheckboxContentBody
+	| FileAreaLinkContentBody;
 
 export class UpdateElementContentBodyParams {
 	@ValidateNested()
@@ -483,6 +513,7 @@ export class UpdateElementContentBodyParams {
 				{ value: CheckboxElementContentBody, name: ContentElementType.CHECKBOX },
 				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
 				{ value: AiQuestionElementContentBody, name: ContentElementType.AI_QUESTION },
+				{ value: FileAreaLinkElementContentBody, name: ContentElementType.FILE_AREA_LINK },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -501,6 +532,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(CheckboxElementContentBody) },
 			{ $ref: getSchemaPath(AssignmentElementContentBody) },
 			{ $ref: getSchemaPath(AiQuestionElementContentBody) },
+			{ $ref: getSchemaPath(FileAreaLinkElementContentBody) },
 		],
 	})
 	data!:
@@ -515,5 +547,6 @@ export class UpdateElementContentBodyParams {
 		| PollElementContentBody
 		| CheckboxElementContentBody
 		| AssignmentElementContentBody
-		| AiQuestionElementContentBody;
+		| AiQuestionElementContentBody
+		| FileAreaLinkElementContentBody;
 }

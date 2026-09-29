@@ -1,32 +1,16 @@
-import { CourseService } from '@modules/course';
 import { RoomService } from '@modules/room';
 import { RoomMembershipService } from '@modules/room-membership';
 import { Injectable } from '@nestjs/common';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
-import {
-	AnyBoardNode,
-	BoardExternalReferenceType,
-	Card,
-	ColumnBoard,
-	FileAreaFolder,
-	FileElement,
-	FileFolderElement,
-	isCard,
-	isColumn,
-	isFileAreaFolder,
-	isFileElement,
-	isFileFolderElement,
-} from '../domain';
+import { AnyBoardNode, BoardExternalReferenceType, ColumnBoard, FileAreaFolder, isFileAreaFolder } from '../domain';
 import { BoardNodeAuthorizableService, ColumnBoardService } from '../service';
-import { assignUniqueNames, sanitizeName } from './webdav-names';
 import { WebDavFileRecord, WebDavFilesStorageClient } from './webdav-files-storage.client';
+import { assignUniqueNames, sanitizeName } from './webdav-names';
 import {
-	AreaFolderResource,
-	BoardResource,
-	CONTEXT_LIST_NAMES,
 	FALLBACK_NAMES,
 	isCollection,
 	WebDavCollection,
+	WebDavContainer,
 	WebDavContext,
 	WebDavResource,
 } from './webdav-resource';
@@ -34,32 +18,23 @@ import { WebDavSession } from './webdav-session';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type ChildWithoutSegments = DistributiveOmit<WebDavResource, 'segments'> & { name: string };
-
-// how an entry of a card is shown: a folder element as a directory, a file element as its file
-type UnnamedCardEntry =
-	{ type: 'folder'; element: FileFolderElement } | { type: 'file'; element: FileElement; fileRecord: WebDavFileRecord };
-type CardEntry = UnnamedCardEntry & { name: string };
-
-const CONTEXT_TYPES: WebDavContext['type'][] = [BoardExternalReferenceType.Course, BoardExternalReferenceType.Room];
+type ContainerEntry = { folder: FileAreaFolder } | { fileRecord: WebDavFileRecord };
 
 const byCreation = (a: { createdAt?: Date; id: string }, b: { createdAt?: Date; id: string }): number =>
 	(a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || a.id.localeCompare(b.id);
 
 /**
- * Maps the boards a user can see onto a directory tree:
+ * Maps the file areas a user can read onto a directory tree:
  *
- *   /Kurse/<course>/<board>/<column>/<card>/<file>
- *   /Kurse/<course>/<board>/<column>/<card>/<folder element>/<file>
- *   /Räume/<room>/<board>/...
+ *   /<room>/<file area>/<folder>/.../<file>
  *
- * Names are derived from titles on every request (there is no stored mapping), so the
- * order in which siblings are listed decides which duplicate gets the " (2)" suffix. That
- * order is the board order for columns, cards and elements and the creation order above.
+ * Only file areas (boards with layout FILES) are part of the drive; other boards and courses
+ * are not. Names are derived from titles on every request (there is no stored mapping), so the
+ * order in which siblings are listed decides which duplicate gets the " (2)" suffix.
  */
 @Injectable()
 export class WebDavResourceResolver {
 	constructor(
-		private readonly courseService: CourseService,
 		private readonly roomService: RoomService,
 		private readonly roomMembershipService: RoomMembershipService,
 		private readonly columnBoardService: ColumnBoardService,
@@ -103,10 +78,10 @@ export class WebDavResourceResolver {
 		return session.memoize(session.boardTrees, boardId, () => this.columnBoardService.findById(boardId));
 	}
 
-	public getFiles(session: WebDavSession, context: WebDavContext, elementId: string): Promise<WebDavFileRecord[]> {
-		return session.memoize(session.files, elementId, async () => {
+	public getFiles(session: WebDavSession, context: WebDavContext, parentId: string): Promise<WebDavFileRecord[]> {
+		return session.memoize(session.files, parentId, async () => {
 			const jwt = await session.principal.getFilesStorageJwt();
-			const files = await this.filesStorageClient.list(jwt, context.schoolId, elementId);
+			const files = await this.filesStorageClient.list(jwt, context.schoolId, parentId);
 
 			return files.sort(byCreation);
 		});
@@ -114,27 +89,19 @@ export class WebDavResourceResolver {
 
 	private async loadChildren(session: WebDavSession, collection: WebDavCollection): Promise<ChildWithoutSegments[]> {
 		switch (collection.kind) {
-			case 'root':
-				return CONTEXT_TYPES.map((contextType) => {
-					return {
-						kind: 'contextList' as const,
-						contextType,
-						name: CONTEXT_LIST_NAMES[contextType],
-					};
-				});
-			case 'contextList': {
-				const contexts = await this.getContexts(session, collection.contextType);
+			case 'root': {
+				const rooms = await this.getRoomsWithFileAreas(session);
 
 				return assignUniqueNames(
-					contexts,
-					(context) => sanitizeName(context.name, FALLBACK_NAMES.context),
+					rooms,
+					(room) => sanitizeName(room.name, FALLBACK_NAMES.context),
 					() => false
 				).map(({ entry, name }) => {
 					return { kind: 'context' as const, context: entry, name };
 				});
 			}
 			case 'context': {
-				const boards = await this.getReadableBoards(session, collection.context);
+				const boards = await this.getReadableFileAreas(session, collection.context);
 
 				return assignUniqueNames(
 					boards,
@@ -144,96 +111,27 @@ export class WebDavResourceResolver {
 					return { kind: 'board' as const, context: collection.context, board: entry, name };
 				});
 			}
-			case 'board':
-				return collection.board.isFileArea()
-					? this.loadAreaChildren(session, collection, collection.board.id)
-					: this.loadColumns(session, collection);
-			case 'areaFolder':
-				return this.loadAreaChildren(session, collection, collection.folder.id);
-			case 'column': {
-				const cards = collection.column.children.filter((child): child is Card => isCard(child));
-
-				return assignUniqueNames(
-					cards,
-					(card) => sanitizeName(card.title, FALLBACK_NAMES.card),
-					() => false
-				).map(({ entry, name }) => {
-					return {
-						kind: 'card' as const,
-						context: collection.context,
-						board: collection.board,
-						column: collection.column,
-						card: entry,
-						name,
-					};
-				});
-			}
-			case 'card': {
-				const entries = await this.getCardEntries(session, collection.context, collection.card);
-
-				return entries.map((entry) =>
-					entry.type === 'folder'
-						? {
-								kind: 'folder' as const,
-								context: collection.context,
-								board: collection.board,
-								card: collection.card,
-								element: entry.element,
-								name: entry.name,
-							}
-						: {
-								kind: 'file' as const,
-								context: collection.context,
-								board: collection.board,
-								card: collection.card,
-								element: entry.element,
-								fileRecord: entry.fileRecord,
-								name: entry.name,
-							}
-				);
-			}
-			case 'folder': {
-				const files = await this.getFiles(session, collection.context, collection.element.id);
-
-				return assignUniqueNames(
-					files,
-					(file) => sanitizeName(file.name, FALLBACK_NAMES.file),
-					() => true
-				).map(({ entry, name }) => {
-					return {
-						kind: 'file' as const,
-						context: collection.context,
-						board: collection.board,
-						card: collection.card,
-						element: collection.element,
-						fileRecord: entry,
-						name,
-					};
-				});
-			}
 			default:
-				return [];
+				return this.loadContainerChildren(session, collection);
 		}
 	}
 
-	// A file area has no columns and cards: subfolders and files of a folder (or of the area itself)
-	// share one namespace, folders first.
-	private async loadAreaChildren(
+	// subfolders and files of a folder (or of the file area itself) share one namespace, folders first
+	private async loadContainerChildren(
 		session: WebDavSession,
-		collection: BoardResource | AreaFolderResource,
-		containerId: string
+		collection: WebDavContainer
 	): Promise<ChildWithoutSegments[]> {
 		const board = await this.getBoardTree(session, collection.board.id);
+		const containerId = collection.kind === 'board' ? board.id : collection.folder.id;
 		const container = collection.kind === 'board' ? board : this.findFolder(board, containerId);
 		const folders = container ? container.children.filter(isFileAreaFolder) : [];
 		const files = await this.getFiles(session, collection.context, containerId);
 
-		type AreaEntry = { folder: FileAreaFolder } | { fileRecord: WebDavFileRecord };
-		const entries: AreaEntry[] = [
-			...folders.map((folder): AreaEntry => {
+		const entries: ContainerEntry[] = [
+			...folders.map((folder): ContainerEntry => {
 				return { folder };
 			}),
-			...files.map((fileRecord): AreaEntry => {
+			...files.map((fileRecord): ContainerEntry => {
 				return { fileRecord };
 			}),
 		];
@@ -245,18 +143,20 @@ export class WebDavResourceResolver {
 					? sanitizeName(entry.folder.title, FALLBACK_NAMES.folder)
 					: sanitizeName(entry.fileRecord.name, FALLBACK_NAMES.file),
 			(entry) => 'fileRecord' in entry
-		).map(({ entry, name }): ChildWithoutSegments =>
-			'folder' in entry
-				? { kind: 'areaFolder', context: collection.context, board, folder: entry.folder, name }
-				: {
-						kind: 'areaFile',
-						context: collection.context,
-						board,
-						parentId: containerId,
-						fileRecord: entry.fileRecord,
-						name,
-					}
-		);
+		).map(({ entry, name }): ChildWithoutSegments => {
+			if ('folder' in entry) {
+				return { kind: 'folder', context: collection.context, board, folder: entry.folder, name };
+			}
+
+			return {
+				kind: 'file',
+				context: collection.context,
+				board,
+				parentId: containerId,
+				fileRecord: entry.fileRecord,
+				name,
+			};
+		});
 	}
 
 	private findFolder(node: AnyBoardNode, folderId: string): FileAreaFolder | undefined {
@@ -275,114 +175,49 @@ export class WebDavResourceResolver {
 		return undefined;
 	}
 
-	private async loadColumns(session: WebDavSession, collection: BoardResource): Promise<ChildWithoutSegments[]> {
-		const board = await this.getBoardTree(session, collection.board.id);
-		const columns = board.children.filter(isColumn);
+	private getRoomsWithFileAreas(session: WebDavSession): Promise<WebDavContext[]> {
+		return session.memoize(session.contexts, 'rooms', async () => {
+			const roomAuthorizables = await this.roomMembershipService.getRoomAuthorizablesByUserId(session.userId);
+			const rooms = await this.roomService.getRoomsByIds(roomAuthorizables.map((authorizable) => authorizable.roomId));
+			const contexts = rooms.map((room): WebDavContext => {
+				return {
+					id: room.id,
+					name: room.name,
+					schoolId: room.schoolId,
+					createdAt: room.createdAt,
+					updatedAt: room.updatedAt,
+				};
+			});
 
-		return assignUniqueNames(
-			columns,
-			(column) => sanitizeName(column.title, FALLBACK_NAMES.column),
-			() => false
-		).map(({ entry, name }) => {
-			return {
-				kind: 'column' as const,
-				context: collection.context,
-				board,
-				column: entry,
-				name,
-			};
+			const withFileAreas = await Promise.all(
+				contexts.map(async (context) => {
+					const fileAreas = await this.getReadableFileAreas(session, context);
+
+					return fileAreas.length > 0 ? context : undefined;
+				})
+			);
+
+			return withFileAreas.filter((context): context is WebDavContext => !!context).sort(byCreation);
 		});
 	}
 
-	private async getCardEntries(session: WebDavSession, context: WebDavContext, card: Card): Promise<CardEntry[]> {
-		const elements = card.children.filter(
-			(child: AnyBoardNode): child is FileElement | FileFolderElement =>
-				isFileElement(child) || isFileFolderElement(child)
-		);
-
-		const entriesPerElement = await Promise.all(
-			elements.map(async (element): Promise<UnnamedCardEntry[]> => {
-				if (isFileFolderElement(element)) {
-					return [{ type: 'folder', element }];
-				}
-				// a file element holds a single file; an element without one (upload not
-				// finished or aborted) does not show up at all
-				const files = await this.getFiles(session, context, element.id);
-
-				return files.map((fileRecord): UnnamedCardEntry => {
-					return { type: 'file', element, fileRecord };
-				});
-			})
-		);
-
-		return assignUniqueNames(
-			entriesPerElement.flat(),
-			(entry) =>
-				entry.type === 'folder'
-					? sanitizeName(entry.element.title, FALLBACK_NAMES.folder)
-					: sanitizeName(entry.fileRecord.name, FALLBACK_NAMES.file),
-			(entry) => entry.type === 'file'
-		).map(({ entry, name }): CardEntry => {
-			return { ...entry, name };
-		});
-	}
-
-	private getContexts(session: WebDavSession, contextType: WebDavContext['type']): Promise<WebDavContext[]> {
-		return session.memoize(session.contexts, contextType, async () => {
-			const contexts =
-				contextType === BoardExternalReferenceType.Course
-					? await this.getCourseContexts(session)
-					: await this.getRoomContexts(session);
-
-			return contexts.sort(byCreation);
-		});
-	}
-
-	private async getCourseContexts(session: WebDavSession): Promise<WebDavContext[]> {
-		const { user } = session.principal;
-		const [courses] = await this.courseService.findAllByUserId(user.id, user.school.id, { onlyActiveCourses: true });
-
-		return courses.map((course) => {
-			return {
-				type: BoardExternalReferenceType.Course,
-				id: course.id,
-				name: course.name,
-				schoolId: course.school.id,
-				createdAt: course.createdAt,
-				updatedAt: course.updatedAt,
-			};
-		});
-	}
-
-	private async getRoomContexts(session: WebDavSession): Promise<WebDavContext[]> {
-		const roomAuthorizables = await this.roomMembershipService.getRoomAuthorizablesByUserId(session.userId);
-		const rooms = await this.roomService.getRoomsByIds(roomAuthorizables.map((authorizable) => authorizable.roomId));
-
-		return rooms.map((room) => {
-			return {
-				type: BoardExternalReferenceType.Room,
-				id: room.id,
-				name: room.name,
-				schoolId: room.schoolId,
-				createdAt: room.createdAt,
-				updatedAt: room.updatedAt,
-			};
-		});
-	}
-
-	private getReadableBoards(session: WebDavSession, context: WebDavContext): Promise<ColumnBoard[]> {
+	private getReadableFileAreas(session: WebDavSession, context: WebDavContext): Promise<ColumnBoard[]> {
 		return session.memoize(session.boardsOfContext, context.id, async () => {
-			const boards = await this.columnBoardService.findByExternalReference({ type: context.type, id: context.id }, 0);
-			if (boards.length === 0) {
+			const boards = await this.columnBoardService.findByExternalReference(
+				{ type: BoardExternalReferenceType.Room, id: context.id },
+				0
+			);
+			const fileAreas = boards.filter((board) => board.isFileArea());
+			if (fileAreas.length === 0) {
 				return [];
 			}
 
-			const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(boards);
-			const readableBoards = authorizables
+			const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(fileAreas);
+			const readable = authorizables
 				.filter((authorizable) => this.boardNodeRule.can('findBoard', session.principal.user, authorizable))
 				.map((authorizable) => authorizable.boardNode as ColumnBoard);
 
-			return readableBoards.sort(byCreation);
+			return readable.sort(byCreation);
 		});
 	}
 }
