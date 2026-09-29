@@ -16,6 +16,8 @@ import { BOARD_CONFIG_TOKEN, type BoardConfig } from '@modules/board/board.confi
 import {
 	AssignmentElement,
 	Card,
+	CheckboxElement,
+	ROOT_PATH,
 	CollaborativeTextEditorElement,
 	Column,
 	ColumnBoard,
@@ -25,6 +27,7 @@ import {
 	FileElement,
 	FileFolderElement,
 	LinkElement,
+	PollElement,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -45,6 +48,8 @@ import {
 	mediaBoardFactory,
 	mediaExternalToolElementFactory,
 	mediaLineFactory,
+	pollElementFactory,
+	pollVoteFactory,
 	richTextElementFactory,
 	videoConferenceElementFactory,
 } from '../../testing';
@@ -114,6 +119,95 @@ describe(BoardNodeCopyService.name, () => {
 
 		return { copyContext };
 	};
+
+	it('copies checkbox configuration without student states', () => {
+		const original = new CheckboxElement({
+			id: new ObjectId().toHexString(),
+			path: ROOT_PATH,
+			level: 0,
+			position: 0,
+			children: [],
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			text: 'Finish this task',
+			requireTeacherConfirmation: true,
+			entries: [{ userId: new ObjectId().toHexString(), checked: true, approved: true }],
+		});
+		const { copyContext } = setupContext();
+		const result = service.copyCheckboxElement(original, copyContext);
+		const copy = result.copyEntity as CheckboxElement;
+		expect(copy.id).not.toBe(original.id);
+		expect(copy.text).toBe(original.text);
+		expect(copy.requireTeacherConfirmation).toBe(true);
+		expect(copy.entries).toEqual([]);
+		expect(copy.creatorId).toEqual(copyContext.userId);
+		expect(result.status).toBe(CopyStatusEnum.SUCCESS);
+	});
+
+	describe('copy poll element', () => {
+		const setup = () => {
+			const { copyContext } = setupContext();
+			// a vote below the element models the real-life state: participants already
+			// voted when the teacher copies the poll
+			const vote = pollVoteFactory.build();
+			const element = pollElementFactory.build({
+				children: [vote],
+				resultSnapshot: { frozenAt: new Date(), participantCount: 1, perQuestion: [] },
+				opensAt: new Date(),
+				allowVoteChange: true,
+			});
+
+			return { copyContext, element, vote };
+		};
+
+		it('should copy the poll element without its votes', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy).toBeInstanceOf(PollElement);
+			expect(copy.children).toHaveLength(0);
+		});
+
+		it('should copy the poll element without its resultSnapshot', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.resultSnapshot).toBeUndefined();
+		});
+
+		it('should copy the poll element without its opensAt', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.opensAt).toBeUndefined();
+		});
+
+		it('should carry over the allowVoteChange configuration', async () => {
+			const { copyContext, element } = setup();
+
+			const result = await service.copyPollElement(element, copyContext);
+
+			const copy = result.copyEntity as PollElement;
+			expect(copy.allowVoteChange).toBe(true);
+		});
+
+		it('should report copy success and never enter the vote copy case', async () => {
+			const { copyContext, element, vote } = setup();
+
+			const elementResult = await service.copyPollElement(element, copyContext);
+			const voteResult = service.copyPollVote(vote);
+
+			expect(elementResult.status).toEqual(CopyStatusEnum.SUCCESS);
+			expect(elementResult.elements).toHaveLength(0);
+			expect(voteResult.status).toEqual(CopyStatusEnum.NOT_DOING);
+		});
+	});
 
 	describe('copy assignment element', () => {
 		const setup = () => {

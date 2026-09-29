@@ -9,11 +9,13 @@ import { BoardNodeRule } from '../authorisation/board-node.rule';
 import {
 	BoardExternalReferenceType,
 	BoardNodeFactory,
+	canManageCheckboxDescendants,
 	Card,
 	Column,
 	ColumnBoard,
 	ContentElementType,
 	isCard,
+	isTeacherMember,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
 
@@ -33,11 +35,12 @@ export class ColumnUc {
 	}
 
 	public async deleteColumn(userId: EntityId, columnId: EntityId): Promise<EntityId> {
-		const column = await this.boardNodeService.findByClassAndId(Column, columnId);
+		const column = await this.boardNodeService.findByClassAndId(Column, columnId, 2);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(column);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('deleteColumn', user, boardNodeAuthorizable));
+		throwForbiddenIfFalse(canManageCheckboxDescendants(column, userId));
 
 		const { rootId } = column; // needs to be captured before deletion
 		await this.boardNodeService.delete(column);
@@ -67,8 +70,14 @@ export class ColumnUc {
 		const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(column);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('createCard', user, boardNodeAuthorizable));
+		if (requiredEmptyElements.includes(ContentElementType.CHECKBOX)) {
+			throwForbiddenIfFalse(
+				this.boardNodeRule.can('isBoardEditor', user, boardNodeAuthorizable) &&
+					boardNodeAuthorizable.users.some((member) => member.userId === userId && isTeacherMember(member))
+			);
+		}
 
-		const elements = requiredEmptyElements.map((type) => this.boardNodeFactory.buildContentElement(type));
+		const elements = requiredEmptyElements.map((type) => this.boardNodeFactory.buildContentElement(type, userId));
 		const card = this.boardNodeFactory.buildCard(elements);
 
 		await this.boardNodeService.addToParent(column, card, position);
@@ -82,7 +91,7 @@ export class ColumnUc {
 		toColumnId: EntityId,
 		toPosition?: number
 	): Promise<{ card: Card; fromBoard: ColumnBoard; toBoard: ColumnBoard; fromColumn: Column; toColumn: Column }> {
-		const card = await this.boardNodeService.findByClassAndId(Card, cardId);
+		const card = await this.boardNodeService.findByClassAndId(Card, cardId, 1);
 		if (!card.parentId) {
 			throw new InternalServerErrorException('Card has no parent column');
 		}
@@ -95,6 +104,7 @@ export class ColumnUc {
 		const toBoard = await this.columnBoardService.findById(toColumn.rootId, 0);
 
 		throwForbiddenIfFalse(this.boardNodeRule.can('moveCard', user, boardNodeAuthorizable));
+		throwForbiddenIfFalse(canManageCheckboxDescendants(card, userId));
 
 		// A personal board (learning room) may only ever move its own cards within
 		// itself. Without this, a client could hand the referenced id of a pinned

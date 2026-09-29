@@ -1,4 +1,6 @@
 import { type EntityId } from '@shared/domain/types';
+import { type AiQuestionElement, isAiQuestionElement } from '../ai-question-element.do';
+import { type CheckboxElement, isCheckboxElement } from '../checkbox-element.do';
 import { type AssignmentElement, isAssignmentElement } from '../assignment-element.do';
 import { type CollaborativeTextEditorElement, isCollaborativeTextEditorElement } from '../collaborative-text-editor.do';
 import { type DeletedElement, isDeletedElement } from '../deleted-element.do';
@@ -8,12 +10,15 @@ import { type FileElement, isFileElement } from '../file-element.do';
 import { type FileFolderElement, isFileFolderElement } from '../file-folder-element.do';
 import { type H5pElement, isH5pElement } from '../h5p-element.do';
 import { isLinkElement, type LinkElement } from '../link-element.do';
+import { isPollElement, type PollElement } from '../poll-element.do';
 import { isRichTextElement, type RichTextElement } from '../rich-text-element.do';
 import { isVideoConferenceElement, type VideoConferenceElement } from '../video-conference-element.do';
 import { type AnyBoardNode } from './any-board-node';
 import { type BoardExternalReferenceType } from './board-external-reference';
 
 export type AnyContentElement =
+	| AiQuestionElement
+	| CheckboxElement
 	| AssignmentElement
 	| CollaborativeTextEditorElement
 	| DrawingElement
@@ -24,10 +29,13 @@ export type AnyContentElement =
 	| RichTextElement
 	| DeletedElement
 	| VideoConferenceElement
-	| H5pElement;
+	| H5pElement
+	| PollElement;
 
 export const isContentElement = (boardNode: AnyBoardNode): boardNode is AnyContentElement => {
 	const result: boolean =
+		isAiQuestionElement(boardNode) ||
+		isCheckboxElement(boardNode) ||
 		isAssignmentElement(boardNode) ||
 		isCollaborativeTextEditorElement(boardNode) ||
 		isDrawingElement(boardNode) ||
@@ -38,7 +46,8 @@ export const isContentElement = (boardNode: AnyBoardNode): boardNode is AnyConte
 		isRichTextElement(boardNode) ||
 		isDeletedElement(boardNode) ||
 		isVideoConferenceElement(boardNode) ||
-		isH5pElement(boardNode);
+		isH5pElement(boardNode) ||
+		isPollElement(boardNode);
 
 	return result;
 };

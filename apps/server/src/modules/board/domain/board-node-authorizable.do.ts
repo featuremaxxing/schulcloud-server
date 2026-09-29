@@ -30,11 +30,18 @@ export interface BoardNodeAuthorizableProps extends AuthorizableObject {
 	rootNode: AnyBoardNode;
 	parentNode?: AnyBoardNode;
 	boardConfiguration: BoardConfiguration;
-	// Only populated when boardNode is an AssignmentSubmission - the userIds assigned to peer-review
-	// this specific submission (see BoardNodeAuthorizableService.getBoardAuthorizable and
-	// BoardNodeRule.hasPermissionForAssignmentSubmissionFile). A peer reviewer needs read access to
-	// the submission's file without being its owner or a board editor.
+	// Only populated when boardNode is an AssignmentSubmission or one of its AssignmentFeedback
+	// children - the userIds assigned to peer-review this submission (see
+	// BoardNodeAuthorizableService.getBoardAuthorizable and BoardNodeRule.
+	// hasPermissionForAssignmentSubmissionFile/hasPermissionForAssignmentFeedbackFile). A peer
+	// reviewer needs read access to the submission's file, and write access to their own
+	// feedback container, without being the submission's owner or a board editor.
 	peerReviewerIds?: EntityId[];
+	// Same population rule as peerReviewerIds, restricted to reviewers who have already
+	// submitted their review - a submission's owner may only read a reviewer's feedback
+	// container once that reviewer's review has actually been submitted (mirrors the release
+	// rule for the teacher's own container, gated on submission.returnedAt instead).
+	submittedPeerReviewerIds?: EntityId[];
 }
 
 export interface BoardConfiguration {
@@ -77,6 +84,10 @@ export class BoardNodeAuthorizable extends DomainObject<BoardNodeAuthorizablePro
 
 	get peerReviewerIds(): EntityId[] | undefined {
 		return this.props.peerReviewerIds;
+	}
+
+	get submittedPeerReviewerIds(): EntityId[] | undefined {
+		return this.props.submittedPeerReviewerIds;
 	}
 
 	public getUserPermissions(userId: EntityId): Permission[] {

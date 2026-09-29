@@ -1,7 +1,8 @@
 import { type EntityId } from '@shared/domain/types';
+import { isAssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentStatus } from './assignment-status.enum';
 import { BoardNode } from './board-node.do';
-import type { AssignmentSubmissionCriterionPoints, AssignmentSubmissionProps } from './types';
+import type { AnyBoardNode, AssignmentSubmissionCriterionPoints, AssignmentSubmissionProps } from './types';
 
 // A submission is never a content element itself (it cannot be added via the
 // "add element" dialog) but a regular node in the board tree, one per student,
@@ -101,19 +102,20 @@ export class AssignmentSubmission extends BoardNode<AssignmentSubmissionProps> {
 		return AssignmentStatus.OPEN;
 	}
 
-	// V1: a submission holds the student's submission file plus (since the feedback
-	// round) optional teacher audio, both attached directly to this node as file
-	// records (FileRecordParentType.BoardNode, distinguished by mime type) - no child
-	// board nodes. A dedicated feedback child node remains the designated shape if
-	// V2 adds more feedback artifacts (e.g. annotated PDFs).
+	// The submission's own file(s) attach directly to this node as file records
+	// (FileRecordParentType.BoardNode). Teacher-authored feedback (audio, annotated
+	// corrections) lives on a single, lazily-created AssignmentFeedback child instead -
+	// see that class's doc comment for why the split exists. That is the only child type
+	// allowed here; nothing else may be added via this node (e.g. not the generic
+	// "add element" flow, which never targets a submission anyway).
 	//
 	// TODO(Löschkonzept): submissions are personal data and must be deleted
 	// automatically 4 weeks after the end of the school year in which the parent
 	// assignment was created (SchoolYear entity + BoardNodeService.delete cascade,
 	// which removes attached files via the delete hook). Flagged 2026-09-15, see
 	// the deletion-concept work.
-	public canHaveChild(): boolean {
-		return false;
+	public canHaveChild(childNode: AnyBoardNode): boolean {
+		return isAssignmentFeedback(childNode);
 	}
 }
 

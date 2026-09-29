@@ -8,12 +8,19 @@ import {
 	AssignmentSubmissionCriterionPoints,
 	BoardLayout,
 	BoardNodeType,
+	BoardRoles,
+	type CheckboxEntry,
 	ContentElementType,
 	Colors,
+	type PollAnswer,
+	PollAudience,
+	type PollQuestion,
+	type PollResultSnapshot,
+	PollStatus,
 	ROOT_PATH,
 } from '../../domain';
 import type { BoardNodeEntityProps } from '../types';
-import { Context } from './embeddables';
+import { Context, PollQuestionEmbeddable, PollResultSnapshotEmbeddable } from './embeddables';
 
 @Entity({ tableName: 'boardnodes' })
 export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNodeEntityProps {
@@ -121,6 +128,45 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Enum({ type: 'ContentElementType', nullable: true })
 	deletedElementType: ContentElementType | undefined;
 
+	// PollElement
+	// --------------------------------------------------------------------------
+	@Embedded(() => PollQuestionEmbeddable, { array: true, nullable: true })
+	questions: PollQuestion[] | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	isAnonymous: boolean | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	showResultsLive: boolean | undefined;
+
+	@Enum({ type: 'PollStatus', nullable: true })
+	pollStatus: PollStatus | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	opensAt: Date | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	closesAt: Date | undefined;
+
+	@Embedded(() => PollResultSnapshotEmbeddable, { nullable: true, object: true })
+	resultSnapshot: PollResultSnapshot | undefined;
+
+	@Enum({ type: 'PollAudience', nullable: true })
+	audience: PollAudience | undefined;
+
+	@Enum({ nullable: true, array: true })
+	audienceRoles: BoardRoles[] | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	allowVoteChange: boolean | undefined;
+
+	// CheckboxElement (entries contain only IDs and state; names come from current membership)
+	@Property({ type: 'boolean', nullable: true })
+	requireTeacherConfirmation: boolean | undefined;
+
+	@Property({ nullable: true })
+	entries: CheckboxEntry[] | undefined;
+
 	// PinnedCard
 	// --------------------------------------------------------------------------
 	@Index()
@@ -154,10 +200,18 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: 'integer', nullable: true })
 	peerReviewCount: number | undefined;
 
-	// AssignmentSubmission
+	// PollVote, AssignmentSubmission
 	// --------------------------------------------------------------------------
 	@Property({ type: ObjectIdType, nullable: true })
 	userId: EntityId | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	votedAt: Date | undefined;
+
+	// Plain nested plain-object array (no @Embedded): MongoDB stores objects/arrays
+	// natively, so unlike a relational DB there is no need for a 'json' column type here.
+	@Property({ nullable: true })
+	answers: PollAnswer[] | undefined;
 
 	@Property({ type: 'Date', nullable: true })
 	submittedAt: Date | undefined;
@@ -184,4 +238,57 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	// per-criterion points when the parent element has a rubric - see AssignmentSubmissionCriterionPoints
 	@Property({ nullable: true })
 	criterionPoints: AssignmentSubmissionCriterionPoints[] | undefined;
+
+	// AiQuestionElement
+	// --------------------------------------------------------------------------
+	@Property({ type: 'string', nullable: true })
+	question: string | undefined;
+
+	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
+	@Property({ type: 'string', nullable: true })
+	aiInstructions: string | undefined;
+
+	// grading reference for the AI, withheld from students (see AiQuestionElement)
+	@Property({ type: 'string', nullable: true })
+	expectedAnswer: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	allowMultipleAttempts: boolean | undefined;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	creatorId: EntityId | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	onlyCreatorCanEdit: boolean | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	gradeLevel: number | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	subject: string | undefined;
+
+	// AiQuestionAnswer
+	// --------------------------------------------------------------------------
+	// the student's latest answer text; persisted together with aiResponse
+	@Property({ type: 'string', nullable: true })
+	answer: string | undefined;
+
+	// the AI's assessment of `answer`, persisted together with it
+	@Property({ type: 'string', nullable: true })
+	aiResponse: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	aiFlagged: boolean | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	aiFlagReason: string | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	studentFlagged: boolean | undefined;
+
+	@Property({ type: 'Date', nullable: true })
+	answeredAt: Date | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	attemptCount: number | undefined;
 }

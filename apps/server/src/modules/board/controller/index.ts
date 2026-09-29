@@ -5,3 +5,4 @@ export * from './column.controller';
 export * from './element.controller';
 export * from './learning-room';
 export * from './media-board';
+export * from './poll.controller';

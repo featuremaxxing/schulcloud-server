@@ -20,30 +20,38 @@ import { type PreparedBoardContext } from './prepared-board-context.interface';
 export class RoomBoardContext implements PreparedBoardContext {
 	public readonly type = BoardExternalReferenceType.Room;
 
-	private readonly usersWithBoardRoles: UserWithBoardRoles[];
-
 	private readonly hasOwner: boolean;
 
 	private readonly canEditorsManageVideoconference: boolean;
 
+	// Memoizes the one call to loadUserInfo across however many times this context's
+	// getUsersWithBoardRoles() is called within a request - see the constructor doc.
+	private usersWithBoardRolesPromise: Promise<UserWithBoardRoles[]> | undefined;
+
 	constructor(
 		private readonly room: Room,
 		private readonly roomAuthorizable: RoomAuthorizable,
-		// room memberships carry no user names or school roles - the resolver loads them
-		// separately so consumers (e.g. the assignment teacher overview, isStudentMember) can
-		// use them
-		private readonly userInfo: Map<
-			EntityId,
-			{ firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }
-		> = new Map()
+		// Room memberships carry no user names or school roles - the resolver would otherwise
+		// have to load them (a separate DB round-trip, UserService.getUserEntitiesWithRoles) on
+		// every single board-node access (getBoardAuthorizable runs on every board operation,
+		// including every socket message), even though most callers never read names/school
+		// roles at all (e.g. the assignment teacher overview, isStudentMember, do). Deferred to a
+		// loader instead, called at most once, only if getUsersWithBoardRoles() is actually invoked.
+		private readonly loadUserInfo: () => Promise<
+			Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>
+		> = () =>
+			Promise.resolve(new Map<EntityId, { firstName?: string; lastName?: string; schoolRoleNames?: RoleName[] }>())
 	) {
-		this.usersWithBoardRoles = this.computeUsersWithBoardRoles();
 		this.hasOwner = this.computeHasOwner();
 		this.canEditorsManageVideoconference = this.room.features.includes(RoomFeatures.EDITOR_MANAGE_VIDEOCONFERENCE);
 	}
 
-	public getUsersWithBoardRoles(): UserWithBoardRoles[] {
-		return this.usersWithBoardRoles;
+	public getUsersWithBoardRoles(): Promise<UserWithBoardRoles[]> {
+		if (!this.usersWithBoardRolesPromise) {
+			this.usersWithBoardRolesPromise = this.computeUsersWithBoardRoles();
+		}
+
+		return this.usersWithBoardRolesPromise;
 	}
 
 	public getBoardConfiguration(rootNode: MediaBoard | ColumnBoard): BoardConfiguration {
@@ -57,14 +65,18 @@ export class RoomBoardContext implements PreparedBoardContext {
 		};
 	}
 
-	private computeUsersWithBoardRoles(): UserWithBoardRoles[] {
+	private async computeUsersWithBoardRoles(): Promise<UserWithBoardRoles[]> {
+		const userInfo = await this.loadUserInfo();
+
 		return this.roomAuthorizable.members.map((member) => {
+			const info = userInfo.get(member.userId);
+
 			return {
 				userId: member.userId,
-				firstName: this.userInfo.get(member.userId)?.firstName,
-				lastName: this.userInfo.get(member.userId)?.lastName,
+				firstName: info?.firstName,
+				lastName: info?.lastName,
 				roles: this.getBoardRolesFromRoomMembership(member),
-				schoolRoleNames: this.userInfo.get(member.userId)?.schoolRoleNames,
+				schoolRoleNames: info?.schoolRoleNames,
 			};
 		});
 	}

@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
 	ArrayMaxSize,
 	IsArray,
+	IsBoolean,
 	IsDateString,
 	IsEnum,
 	IsInt,
@@ -11,10 +12,13 @@ import {
 	IsOptional,
 	IsString,
 	Max,
+	MaxLength,
 	Min,
 	ValidateNested,
 } from 'class-validator';
+import { BoardRoles } from '../../../domain/board-node-authorizable.do';
 import { ContentElementType } from '../../../domain/types';
+import { PollAnswerMode, PollAudience, PollChartType, PollStatus } from '../../../domain/types/poll.types';
 
 abstract class ElementContentBody {
 	@IsEnum(ContentElementType)
@@ -24,6 +28,38 @@ abstract class ElementContentBody {
 		enumName: 'ContentElementType',
 	})
 	type!: ContentElementType;
+}
+
+export class CheckboxContentBody {
+	@IsString()
+	@MaxLength(2000)
+	@ApiProperty()
+	text!: string;
+
+	@IsBoolean()
+	@ApiProperty()
+	requireTeacherConfirmation!: boolean;
+
+	@IsEnum(PollAudience)
+	@ApiProperty({ enum: PollAudience, enumName: 'PollAudience' })
+	audience!: PollAudience;
+
+	@IsArray()
+	@IsEnum(BoardRoles, { each: true })
+	@IsOptional()
+	@ArrayMaxSize(3)
+	@ApiPropertyOptional({ enum: BoardRoles, enumName: 'BoardRoles', isArray: true })
+	audienceRoles?: BoardRoles[];
+}
+
+export class CheckboxElementContentBody extends ElementContentBody {
+	@ApiProperty({ enum: ContentElementType })
+	type!: ContentElementType.CHECKBOX;
+
+	@ValidateNested()
+	@Type(() => CheckboxContentBody)
+	@ApiProperty({ type: CheckboxContentBody })
+	content!: CheckboxContentBody;
 }
 
 export class FileContentBody {
@@ -176,6 +212,116 @@ export class H5pElementContentBody extends ElementContentBody {
 	content!: H5pContentBody;
 }
 
+// Nest runs with no custom body-parser limit, i.e. the Express default of ~100kB - an
+// undocumented implicit limit on the whole request body. Question/option text lengths and
+// array sizes are capped defensively so a poll cannot alone exhaust that budget.
+export class PollOptionBody {
+	// Not necessarily a Mongo id: the client may send its own freshly generated id for a
+	// brand-new option (the server assigns one if missing, see updatePollElement()).
+	@IsString()
+	@IsOptional()
+	@MaxLength(64)
+	@ApiPropertyOptional()
+	id?: string;
+
+	@IsString()
+	@MaxLength(200)
+	@ApiProperty()
+	text!: string;
+}
+
+export class PollQuestionBody {
+	@IsString()
+	@IsOptional()
+	@MaxLength(64)
+	@ApiPropertyOptional()
+	id?: string;
+
+	@IsString()
+	@MaxLength(500)
+	@ApiProperty()
+	text!: string;
+
+	@IsEnum(PollAnswerMode)
+	@ApiProperty({ enum: PollAnswerMode, enumName: 'PollAnswerMode' })
+	answerMode!: PollAnswerMode;
+
+	@IsEnum(PollChartType)
+	@ApiProperty({ enum: PollChartType, enumName: 'PollChartType' })
+	chartType!: PollChartType;
+
+	@IsArray()
+	@ArrayMaxSize(10)
+	@ValidateNested({ each: true })
+	@Type(() => PollOptionBody)
+	@ApiProperty({ type: () => [PollOptionBody] })
+	options!: PollOptionBody[];
+}
+
+export class PollContentBody {
+	@IsString()
+	@IsOptional()
+	@MaxLength(500)
+	@ApiPropertyOptional()
+	title?: string;
+
+	@IsArray()
+	@ArrayMaxSize(20)
+	@ValidateNested({ each: true })
+	@Type(() => PollQuestionBody)
+	@ApiProperty({ type: () => [PollQuestionBody] })
+	questions!: PollQuestionBody[];
+
+	@IsBoolean()
+	@ApiProperty()
+	isAnonymous!: boolean;
+
+	@IsBoolean()
+	@ApiProperty()
+	showResultsLive!: boolean;
+
+	@IsEnum(PollStatus)
+	@ApiProperty({ enum: PollStatus, enumName: 'PollStatus' })
+	pollStatus!: PollStatus;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
+	opensAt?: string;
+
+	@IsDateString()
+	@IsOptional()
+	@ApiPropertyOptional()
+	closesAt?: string;
+
+	@IsEnum(PollAudience)
+	@IsOptional()
+	@ApiPropertyOptional({ enum: PollAudience, enumName: 'PollAudience' })
+	audience?: PollAudience;
+
+	@IsArray()
+	@IsEnum(BoardRoles, { each: true })
+	@IsOptional()
+	@ArrayMaxSize(3)
+	@ApiPropertyOptional({ enum: BoardRoles, enumName: 'BoardRoles', isArray: true })
+	audienceRoles?: BoardRoles[];
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional()
+	allowVoteChange?: boolean;
+}
+
+export class PollElementContentBody extends ElementContentBody {
+	@ApiProperty({ type: () => ContentElementType.POLL })
+	type!: ContentElementType.POLL;
+
+	@ValidateNested()
+	@Type(() => PollContentBody)
+	@ApiProperty()
+	content!: PollContentBody;
+}
+
 export class AssignmentRubricCriterionBody {
 	@IsString()
 	@ApiProperty({ description: 'client-generated id, stable across edits so submissions can reference it' })
@@ -247,7 +393,66 @@ export class AssignmentElementContentBody extends ElementContentBody {
 	content!: AssignmentContentBody;
 }
 
+export class AiQuestionContentBody {
+	@IsString()
+	@MaxLength(10000)
+	@ApiProperty({ description: 'the question the students see and answer' })
+	question!: string;
+
+	@IsString()
+	@MaxLength(10000)
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'guidance for the AI: what to consider, how to phrase the assessment' })
+	aiInstructions?: string;
+
+	@IsString()
+	@MaxLength(10000)
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'the reference answer the AI grades against, never shown to students' })
+	expectedAnswer?: string;
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'whether students may replace their answer; default false (single attempt)' })
+	allowMultipleAttempts?: boolean;
+
+	@IsBoolean()
+	@IsOptional()
+	@ApiPropertyOptional({ description: 'whether only the creating teacher may edit this element; default false' })
+	onlyCreatorCanEdit?: boolean;
+
+	@IsInt()
+	@Min(1)
+	@Max(13)
+	@IsOptional()
+	@ApiPropertyOptional({ minimum: 1, maximum: 13 })
+	gradeLevel?: number;
+
+	@IsString()
+	@MaxLength(100)
+	@IsOptional()
+	@ApiPropertyOptional()
+	subject?: string;
+
+	@IsInt()
+	@Min(1)
+	@Max(1000)
+	@IsOptional()
+	@ApiPropertyOptional({ minimum: 1, maximum: 1000 })
+	maxPoints?: number;
+}
+
+export class AiQuestionElementContentBody extends ElementContentBody {
+	@ApiProperty({ type: () => ContentElementType.AI_QUESTION })
+	type!: ContentElementType.AI_QUESTION;
+
+	@ValidateNested()
+	@ApiProperty()
+	content!: AiQuestionContentBody;
+}
+
 export type AnyElementContentBody =
+	| AiQuestionContentBody
 	| AssignmentContentBody
 	| FileContentBody
 	| DrawingContentBody
@@ -256,7 +461,9 @@ export type AnyElementContentBody =
 	| ExternalToolContentBody
 	| VideoConferenceContentBody
 	| FileFolderContentBody
-	| H5pContentBody;
+	| H5pContentBody
+	| PollContentBody
+	| CheckboxContentBody;
 
 export class UpdateElementContentBodyParams {
 	@ValidateNested()
@@ -272,7 +479,10 @@ export class UpdateElementContentBodyParams {
 				{ value: VideoConferenceElementContentBody, name: ContentElementType.VIDEO_CONFERENCE },
 				{ value: FileFolderElementContentBody, name: ContentElementType.FILE_FOLDER },
 				{ value: H5pElementContentBody, name: ContentElementType.H5P },
+				{ value: PollElementContentBody, name: ContentElementType.POLL },
+				{ value: CheckboxElementContentBody, name: ContentElementType.CHECKBOX },
 				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
+				{ value: AiQuestionElementContentBody, name: ContentElementType.AI_QUESTION },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -287,7 +497,10 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(VideoConferenceElementContentBody) },
 			{ $ref: getSchemaPath(FileFolderElementContentBody) },
 			{ $ref: getSchemaPath(H5pElementContentBody) },
+			{ $ref: getSchemaPath(PollElementContentBody) },
+			{ $ref: getSchemaPath(CheckboxElementContentBody) },
 			{ $ref: getSchemaPath(AssignmentElementContentBody) },
+			{ $ref: getSchemaPath(AiQuestionElementContentBody) },
 		],
 	})
 	data!:
@@ -299,5 +512,8 @@ export class UpdateElementContentBodyParams {
 		| VideoConferenceElementContentBody
 		| FileFolderElementContentBody
 		| H5pElementContentBody
-		| AssignmentElementContentBody;
+		| PollElementContentBody
+		| CheckboxElementContentBody
+		| AssignmentElementContentBody
+		| AiQuestionElementContentBody;
 }

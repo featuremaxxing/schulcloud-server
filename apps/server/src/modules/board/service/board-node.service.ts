@@ -9,10 +9,13 @@ import {
 	AssignmentElement,
 	AssignmentSubmission,
 	BoardExternalReferenceType,
+	type CheckboxEntry,
 	ColumnBoard,
 	isAnyMediaElement,
 	isContentElement,
 	MediaBoard,
+	PollVote,
+	type UserWithBoardRoles,
 } from '../domain';
 import { RoomBoardCreatedEvent } from '../domain/events/room-board-created.event';
 import { RoomBoardDeletedEvent } from '../domain/events/room-board-deleted.event';
@@ -94,15 +97,30 @@ export class BoardNodeService {
 		await this.boardNodeRepo.save(node);
 	}
 
-	public async updateContent(element: AnyContentElement, content: AnyElementContentBody): Promise<void> {
-		await this.contentElementUpdateService.updateContent(element, content);
+	public async updateContent(
+		element: AnyContentElement,
+		content: AnyElementContentBody,
+		authorizableUsers?: UserWithBoardRoles[]
+	): Promise<void> {
+		await this.contentElementUpdateService.updateContent(element, content, authorizableUsers);
 	}
 
-	// Generic escape hatch for callers (e.g. the assignment module) that mutate a node's
-	// props directly via its domain object setters instead of going through one of the
-	// typed update* methods above.
+	public findPollVotesByParentIds(parentIds: EntityId[], userId?: EntityId): Promise<PollVote[]> {
+		return this.boardNodeRepo.findPollVotesByParentIds(parentIds, userId);
+	}
+
+	// Generic escape hatch for callers (e.g. PollUc, the assignment module) that mutate a
+	// node's props directly via its domain object setters, or add a freshly built child node,
+	// instead of going through one of the typed update* methods above.
 	public async save(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
 		await this.boardNodeRepo.save(boardNode);
+	}
+
+	public mutateCheckboxEntries(
+		id: EntityId,
+		change: (entries: CheckboxEntry[]) => CheckboxEntry[]
+	): Promise<CheckboxEntry[]> {
+		return this.boardNodeRepo.mutateCheckboxEntries(id, change);
 	}
 
 	public async replace(oldNode: AnyBoardNode, newNode: AnyBoardNode): Promise<void> {

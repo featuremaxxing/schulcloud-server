@@ -2,6 +2,7 @@ import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Action, AuthorizationInjectionService } from '@modules/authorization';
 import { BoardRoles } from '@modules/board';
+import { RoleName } from '@modules/role';
 import { roleFactory } from '@modules/role/testing';
 import { UserService } from '@modules/user';
 import { User } from '@modules/user/repo';
@@ -10,14 +11,18 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { Permission } from '@shared/domain/interface';
 import { setupEntities } from '@testing/database';
 import { studentPermissions, userPermissions } from '@testing/user-role-permissions';
-import { type BoardConfiguration } from '../domain';
+import { type BoardConfiguration, CheckboxElement, PollAudience, ROOT_PATH } from '../domain';
 import {
 	assignmentElementFactory,
+	assignmentFeedbackFactory,
 	assignmentSubmissionFactory,
+	aiQuestionElementFactory,
 	boardNodeAuthorizableFactory,
 	columnBoardFactory,
 	drawingElementFactory,
 	fileElementFactory,
+	pollElementFactory,
+	pollVoteFactory,
 	videoConferenceElementFactory,
 } from '../testing';
 import { BoardNodeRule, type BoardOperation } from './board-node.rule';
@@ -903,7 +908,12 @@ describe(BoardNodeRule.name, () => {
 					expect(res).toBe(true);
 				});
 
-				it('should allow the teacher (board editor) to add a feedback file (audio) to a student’s submission', () => {
+				// Teacher-authored artifacts (audio feedback, annotated corrections) no longer
+				// attach to the submission node itself - they go to a separate AssignmentFeedback
+				// child node instead (see the sibling describe block below), specifically so a
+				// peer reviewer's read access to the submission file can never reach them. A
+				// teacher writing here would be writing into the student's own submission.
+				it('should NOT allow the teacher (board editor) to upload into a student’s submission', () => {
 					const owner = userFactory.asStudent().buildWithId();
 					const teacher = userFactory.asTeacher().buildWithId();
 					const submission = assignmentSubmissionFactory.build({ userId: owner.id, returnedAt: undefined });
@@ -927,7 +937,7 @@ describe(BoardNodeRule.name, () => {
 						requiredPermissions: [Permission.FILESTORAGE_CREATE],
 					});
 
-					expect(res).toBe(true);
+					expect(res).toBe(false);
 				});
 
 				it('should NOT allow the teacher (board editor) to remove files from a student’s submission', () => {
@@ -1079,6 +1089,340 @@ describe(BoardNodeRule.name, () => {
 				expect(res).toBe(true);
 			});
 		});
+
+		// A1: teacher-authored artifacts (audio feedback, annotated corrections) attach to
+		// their own AssignmentFeedback child node, precisely so a peer reviewer's read access
+		// to the submission stops at the student's own file and never reaches these.
+		describe('when boardDoAuthorizable.boardDo is an assignmentFeedback', () => {
+			const buildFeedbackAuthorizable = (options: {
+				owner: User;
+				returnedAt?: Date;
+				users: { userId: string; roles: BoardRoles[] }[];
+				authorId?: string;
+				peerReviewerIds?: string[];
+				submittedPeerReviewerIds?: string[];
+			}) => {
+				const submission = assignmentSubmissionFactory.build({
+					userId: options.owner.id,
+					returnedAt: options.returnedAt,
+				});
+				const feedback = assignmentFeedbackFactory.build({ userId: options.authorId });
+				const columnBoard = columnBoardFactory.build();
+
+				return boardNodeAuthorizableFactory.build({
+					users: options.users,
+					boardNode: feedback,
+					parentNode: submission,
+					rootNode: columnBoard,
+					boardConfiguration: { isLocked: false },
+					peerReviewerIds: options.peerReviewerIds,
+					submittedPeerReviewerIds: options.submittedPeerReviewerIds,
+				});
+			};
+
+			it('should allow a board editor to upload a feedback file', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(teacher, boardNodeAuthorizable, {
+					action: Action.write,
+					requiredPermissions: [Permission.FILESTORAGE_CREATE],
+				});
+
+				expect(res).toBe(true);
+			});
+
+			it('should allow a board editor to read a feedback file, even before the submission was returned', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					returnedAt: undefined,
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(teacher, boardNodeAuthorizable, {
+					action: Action.read,
+					requiredPermissions: [Permission.FILESTORAGE_VIEW],
+				});
+
+				expect(res).toBe(true);
+			});
+
+			it('should NOT allow the submission owner to read a feedback file before the submission was returned', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					returnedAt: undefined,
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+					action: Action.read,
+					requiredPermissions: [Permission.FILESTORAGE_VIEW],
+				});
+
+				expect(res).toBe(false);
+			});
+
+			it('should allow the submission owner to read a feedback file once the submission was returned', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					returnedAt: new Date(),
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+					action: Action.read,
+					requiredPermissions: [Permission.FILESTORAGE_VIEW],
+				});
+
+				expect(res).toBe(true);
+			});
+
+			// The core A1 regression test: a peer reviewer must never be able to read the
+			// feedback about the submission they are only assigned to review, no matter the
+			// return state.
+			it('should NOT allow a peer reviewer to read a feedback file, even after the submission was returned', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const reviewer = userFactory.asStudent().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					returnedAt: new Date(),
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: reviewer.id, roles: [BoardRoles.READER] },
+					],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+					action: Action.read,
+					requiredPermissions: [Permission.FILESTORAGE_VIEW],
+				});
+
+				expect(res).toBe(false);
+			});
+
+			it('should NOT allow the owner to upload/remove feedback files', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const boardNodeAuthorizable = buildFeedbackAuthorizable({
+					owner,
+					returnedAt: new Date(),
+					users: [{ userId: owner.id, roles: [BoardRoles.READER] }],
+				});
+
+				userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+				const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+					action: Action.write,
+					requiredPermissions: [Permission.FILESTORAGE_CREATE],
+				});
+
+				expect(res).toBe(false);
+			});
+
+			// A reviewer's own correction container - see AssignmentFeedback's doc comment for why
+			// there can be more than one feedback container per submission.
+			describe('a reviewer-authored container (authorId set)', () => {
+				it("should allow the container's own author to write to it while still an eligible reviewer", () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow the author to write once no longer an eligible reviewer (peer review turned off or reassigned)', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [], // no longer assigned
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should NOT allow a different reviewer to write to someone else’s correction container', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const otherReviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id, otherReviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+							{ userId: otherReviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(otherReviewer, boardNodeAuthorizable, {
+						action: Action.write,
+						requiredPermissions: [Permission.FILESTORAGE_CREATE],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should always allow the author to read their own container, regardless of submittedAt', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(reviewer, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow the submission owner to read a review before it was submitted', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(false);
+				});
+
+				it('should allow the submission owner to read a review once it was submitted', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id],
+						submittedPeerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(owner, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(true);
+				});
+
+				it('should NOT allow a different reviewer to read someone else’s submitted review', () => {
+					const owner = userFactory.asStudent().buildWithId();
+					const reviewer = userFactory.asStudent().buildWithId();
+					const otherReviewer = userFactory.asStudent().buildWithId();
+					const boardNodeAuthorizable = buildFeedbackAuthorizable({
+						owner,
+						authorId: reviewer.id,
+						peerReviewerIds: [reviewer.id, otherReviewer.id],
+						submittedPeerReviewerIds: [reviewer.id],
+						users: [
+							{ userId: owner.id, roles: [BoardRoles.READER] },
+							{ userId: reviewer.id, roles: [BoardRoles.READER] },
+							{ userId: otherReviewer.id, roles: [BoardRoles.READER] },
+						],
+					});
+
+					userService.resolvePermissions.mockReturnValueOnce([...userPermissions, ...studentPermissions]);
+
+					const res = boardNodeRule.hasPermission(otherReviewer, boardNodeAuthorizable, {
+						action: Action.read,
+						requiredPermissions: [Permission.FILESTORAGE_VIEW],
+					});
+
+					expect(res).toBe(false);
+				});
+			});
+		});
 	});
 
 	describe('can (assignment operations)', () => {
@@ -1184,6 +1528,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: true,
 					updateBoardTitle: true,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: true,
 
 					// column
 					copyColumn: true,
@@ -1220,12 +1565,22 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: true,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: true,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: false,
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: true,
+
+					// element / aiQuestionElement
+					manageAiQuestion: true,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: true,
@@ -1276,6 +1631,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: true,
 					updateBoardTitle: true,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: true,
 
 					// column
 					copyColumn: true,
@@ -1312,12 +1668,22 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: true,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: true,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: false,
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: true,
+
+					// element / aiQuestionElement
+					manageAiQuestion: true,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: true,
@@ -1369,6 +1735,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: false,
 					updateBoardTitle: false,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: false,
 
 					// column
 					copyColumn: false,
@@ -1405,12 +1772,25 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: false,
 
+					// element / pollElement
+					// this fixture's boardNode is a videoConferenceElement, not a poll - a
+					// board reader is not automatically an eligible voter for a node that
+					// isn't a poll at all (see _canVoteInPoll)
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: true,
+					managePoll: false,
 					// element / assignmentElement
 					viewAssignmentSubmissions: true,
 					createOwnAssignmentSubmission: true,
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: false,
+
+					// element / aiQuestionElement
+					manageAiQuestion: false,
+					createOwnAiQuestionAnswer: true,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: false,
@@ -1441,6 +1821,24 @@ describe(BoardNodeRule.name, () => {
 					const res = boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
 
 					expect(res.updateBoardTitle).toEqual(false);
+				});
+
+				// Regression test: a reader on a readersCanEdit board gets updateElement: true
+				// (readersCanEdit's whole point), but isBoardEditor must stay false regardless -
+				// the client uses isBoardEditor, not updateElement, to decide whether an
+				// assignment/poll element's teacher/manage view should render for this user (see
+				// AssignmentContentElement.vue/PollContentElement.vue canManage*).
+				it('should still report isBoardEditor as false, even though updateElement becomes true', () => {
+					const { user, boardNodeAuthorizable } = setup({
+						canReadersEdit: true,
+						canEditorsManageVideoconference: true,
+						isLocked: false,
+					});
+
+					const res = boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
+
+					expect(res.updateElement).toEqual(true);
+					expect(res.isBoardEditor).toEqual(false);
 				});
 			});
 		});
@@ -1475,6 +1873,7 @@ describe(BoardNodeRule.name, () => {
 					updateBoardLayout: false,
 					updateBoardTitle: false,
 					updateReadersCanEditSetting: false,
+					isBoardEditor: false,
 
 					// column
 					copyColumn: false,
@@ -1511,12 +1910,22 @@ describe(BoardNodeRule.name, () => {
 					// element / videoConferenceElement
 					manageVideoConference: false,
 
+					// element / pollElement
+					createOwnPollVote: false,
+					updateOwnPollVote: false,
+					viewPollResults: false,
+					managePoll: false,
 					// element / assignmentElement
 					viewAssignmentSubmissions: false,
 					createOwnAssignmentSubmission: false,
 					updateOwnAssignmentSubmission: false,
 					deleteOwnAssignmentSubmission: false,
 					gradeAssignmentSubmission: false,
+
+					// element / aiQuestionElement
+					manageAiQuestion: false,
+					createOwnAiQuestionAnswer: false,
+					updateOwnAiQuestionAnswer: false,
 
 					// mediaBoard
 					collapseMediaBoard: false,
@@ -1574,6 +1983,317 @@ describe(BoardNodeRule.name, () => {
 			});
 
 			expect(res).toBe(false);
+		});
+	});
+
+	describe('checkbox owner permissions', () => {
+		it('permits only its teacher author to edit, move and delete, even when other users are board editors', () => {
+			const owner = userFactory.asTeacher().buildWithId();
+			const colleague = userFactory.asTeacher().buildWithId();
+			const studentEditor = userFactory.asStudent().buildWithId();
+			const element = new CheckboxElement({
+				id: new ObjectId().toHexString(),
+				path: ROOT_PATH,
+				level: 0,
+				position: 0,
+				children: [],
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				text: 'Task',
+				requireTeacherConfirmation: true,
+				creatorId: owner.id,
+				entries: [],
+			});
+			const authorizable = boardNodeAuthorizableFactory.build({
+				users: [
+					{ userId: owner.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: colleague.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: studentEditor.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.STUDENT] },
+				],
+				boardNode: element,
+				rootNode: columnBoardFactory.build(),
+			});
+			for (const operation of ['updateElement', 'deleteElement', 'moveElement'] as const) {
+				expect(boardNodeRule.can(operation, owner, authorizable)).toBe(true);
+				expect(boardNodeRule.can(operation, colleague, authorizable)).toBe(false);
+				expect(boardNodeRule.can(operation, studentEditor, authorizable)).toBe(false);
+			}
+			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(true);
+			expect(boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
+			expect(boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
+		});
+	});
+
+	describe('AI question operations', () => {
+		it('should never let a student with an editor room role manage or update an AI question', () => {
+			const student = userFactory.asStudent().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build();
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [{ userId: student.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.STUDENT] }],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', student, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('updateElement', student, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('deleteElement', student, boardNodeAuthorizable)).toBe(false);
+		});
+
+		it('should let a teacher with an editor room role manage an unrestricted AI question', () => {
+			const teacher = userFactory.asTeacher().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build();
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] }],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', teacher, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', teacher, boardNodeAuthorizable)).toBe(true);
+		});
+
+		it('should only let the creator manage a creator-restricted AI question', () => {
+			const creator = userFactory.asTeacher().buildWithId();
+			const otherTeacher = userFactory.asTeacher().buildWithId();
+			const aiQuestion = aiQuestionElementFactory.build({
+				creatorId: creator.id,
+				onlyCreatorCanEdit: true,
+			});
+			const columnBoard = columnBoardFactory.build();
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [
+					{ userId: creator.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+					{ userId: otherTeacher.id, roles: [BoardRoles.EDITOR], schoolRoleNames: [RoleName.TEACHER] },
+				],
+				boardNode: aiQuestion,
+				rootNode: columnBoard,
+			});
+
+			expect(boardNodeRule.can('manageAiQuestion', creator, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('manageAiQuestion', otherTeacher, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', creator, boardNodeAuthorizable)).toBe(true);
+			expect(boardNodeRule.can('updateElement', otherTeacher, boardNodeAuthorizable)).toBe(false);
+		});
+	});
+
+	describe('poll operations', () => {
+		describe('createOwnPollVote', () => {
+			it('should allow a plain student reader to create a vote', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a board editor to create a vote via this operation', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should allow a board editor to vote when audience is TEACHERS', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a plain student reader to vote when audience is TEACHERS', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should allow both a reader and an editor to vote when audience is ALL', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({ audience: PollAudience.ALL });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: student.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(true);
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should honor audienceRoles when audience is CUSTOM', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build({
+					audience: PollAudience.CUSTOM,
+					audienceRoles: [BoardRoles.EDITOR],
+				});
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: student.id, roles: [BoardRoles.READER] },
+						{ userId: teacher.id, roles: [BoardRoles.EDITOR] },
+					],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+				expect(boardNodeRule.can('createOwnPollVote', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow voting on a node that is not a poll element', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					// default boardNode from the factory is a plain column, not a poll element
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('createOwnPollVote', student, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('updateOwnPollVote', () => {
+			it('should allow the owning student to update their own vote', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote] });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: owner.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', owner, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT allow a different student to update someone else’s vote', () => {
+				const owner = userFactory.asStudent().buildWithId();
+				const otherStudent = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote] });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [
+						{ userId: owner.id, roles: [BoardRoles.READER] },
+						{ userId: otherStudent.id, roles: [BoardRoles.READER] },
+					],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', otherStudent, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should NOT allow updating a vote whose poll no longer has the voter in its audience', () => {
+				// e.g. the poll's audience was changed from ALL to TEACHERS after the vote was
+				// cast (see U-R4: the client locks this once votes exist, this is the server-side
+				// belt to that suspenders)
+				const owner = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: owner.id });
+				const pollElement = pollElementFactory.build({ children: [vote], audience: PollAudience.TEACHERS });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: owner.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					parentNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('updateOwnPollVote', owner, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('managePoll', () => {
+			it('should allow a board editor to manage the poll', () => {
+				const teacher = userFactory.asTeacher().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: teacher.id, roles: [BoardRoles.EDITOR] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('managePoll', teacher, boardNodeAuthorizable)).toBe(true);
+			});
+
+			it('should NOT let a reader manage the poll even when readersCanEdit is on', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+					boardConfiguration: { canReadersEdit: true },
+				});
+
+				expect(boardNodeRule.can('managePoll', student, boardNodeAuthorizable)).toBe(false);
+			});
+
+			it('should NOT let a reader manage a poll vote even when readersCanEdit is on', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const vote = pollVoteFactory.build({ userId: student.id });
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: vote,
+					rootNode: columnBoard,
+					boardConfiguration: { canReadersEdit: true },
+				});
+
+				expect(boardNodeRule.can('managePoll', student, boardNodeAuthorizable)).toBe(false);
+			});
+		});
+
+		describe('viewPollResults', () => {
+			it('should allow a board reader to view results', () => {
+				const student = userFactory.asStudent().buildWithId();
+				const pollElement = pollElementFactory.build();
+				const columnBoard = columnBoardFactory.build();
+				const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+					users: [{ userId: student.id, roles: [BoardRoles.READER] }],
+					boardNode: pollElement,
+					rootNode: columnBoard,
+				});
+
+				expect(boardNodeRule.can('viewPollResults', student, boardNodeAuthorizable)).toBe(true);
+			});
 		});
 	});
 });

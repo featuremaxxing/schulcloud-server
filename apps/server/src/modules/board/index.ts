@@ -9,7 +9,10 @@ export { BOARD_PUBLIC_API_CONFIG_TOKEN, BoardPublicApiConfig } from './board.con
 export { BoardModule } from './board.module';
 export {
 	AnyBoardNode,
+	AiQuestionAnswer,
+	AiQuestionElement,
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentRubricCriterion,
 	AssignmentStatus,
 	AssignmentSubmission,
@@ -25,7 +28,10 @@ export {
 	Column,
 	ColumnBoard,
 	isAssignmentElement,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
+	isAiQuestionAnswer,
+	isAiQuestionElement,
 	isColumnBoard,
 	// modules/assignment/api/assignment.uc.ts
 	isStudentMember,
@@ -46,4 +52,20 @@ export {
 export { BoardNodeFactory } from './domain';
 // modules/assignment/api/assignment.uc.ts
 export { BoardNodeRule } from './authorisation/board-node.rule';
-export { BoardCommonToolService, BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from './service';
+export {
+	BoardCommonToolService,
+	BoardNodeAuthorizableService,
+	BoardNodeService,
+	BoardProgressResult,
+	BoardProgressService,
+	BoardWithAuth,
+	ColumnBoardService,
+	ProgressItemResult,
+	ProgressItemType,
+	ProgressStudentResult,
+} from './service';
+
+// modules/room/api/room.controller.ts, room-content.uc.ts - the room-progress endpoint
+// reuses the board module's progress DTOs/mapper instead of duplicating them.
+export { ProgressQueryParams, RoomProgressResponse } from './controller/dto/progress';
+export { ProgressResponseMapper } from './controller/mapper';

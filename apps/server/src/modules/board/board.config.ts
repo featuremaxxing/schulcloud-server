@@ -42,10 +42,25 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardH5pEnabled = true;
 
+	@ConfigProperty('FEATURE_COLUMN_BOARD_POLL_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureColumnBoardPollEnabled = false;
+
+	@ConfigProperty('FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureColumnBoardCheckboxEnabled = false;
+
 	@ConfigProperty('FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()
 	public featureColumnBoardAssignmentEnabled = false;
+
+	@ConfigProperty('FEATURE_BOARD_PROGRESS_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureBoardProgressEnabled = false;
 
 	@ConfigProperty('FEATURE_PERSONAL_LEARNING_ROOM_ENABLED')
 	@StringToBoolean()

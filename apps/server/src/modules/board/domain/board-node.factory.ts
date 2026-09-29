@@ -1,9 +1,13 @@
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Injectable, NotImplementedException, UnprocessableEntityException } from '@nestjs/common';
 import { EntityId, InputFormat } from '@shared/domain/types';
+import { AiQuestionAnswer } from './ai-question-answer.do';
+import { AiQuestionElement } from './ai-question-element.do';
 import { AssignmentElement } from './assignment-element.do';
+import { AssignmentFeedback } from './assignment-feedback.do';
 import { AssignmentSubmission } from './assignment-submission.do';
 import { Card } from './card.do';
+import { CheckboxElement } from './checkbox-element.do';
 import { CollaborativeTextEditorElement } from './collaborative-text-editor.do';
 import { ColumnBoard } from './colum-board.do';
 import { Column } from './column.do';
@@ -15,6 +19,8 @@ import { H5pElement } from './h5p-element.do';
 import { LinkElement } from './link-element.do';
 import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
+import { PollElement } from './poll-element.do';
+import { PollVote } from './poll-vote.do';
 import { RichTextElement } from './rich-text-element.do';
 import { handleNonExhaustiveSwitch } from './type-mapping';
 import {
@@ -24,6 +30,7 @@ import {
 	BoardNodeProps,
 	Colors,
 	ContentElementType,
+	PollStatus,
 } from './types';
 import { VideoConferenceElement } from './video-conference-element.do';
 
@@ -54,7 +61,7 @@ export class BoardNodeFactory {
 		return pinnedCard;
 	}
 
-	public buildContentElement(type: ContentElementType): AnyContentElement {
+	public buildContentElement(type: ContentElementType, creatorId?: EntityId): AnyContentElement {
 		let element!: AnyContentElement;
 
 		switch (type) {
@@ -114,12 +121,38 @@ export class BoardNodeFactory {
 					...this.getBaseProps(),
 				});
 				break;
+			case ContentElementType.POLL:
+				element = new PollElement({
+					...this.getBaseProps(),
+					questions: [],
+					isAnonymous: false,
+					showResultsLive: false,
+					pollStatus: PollStatus.DRAFT,
+				});
+				break;
+			case ContentElementType.CHECKBOX:
+				element = new CheckboxElement({
+					...this.getBaseProps(),
+					creatorId,
+					text: '',
+					requireTeacherConfirmation: false,
+					entries: [],
+				});
+				break;
 			case ContentElementType.ASSIGNMENT:
 				element = new AssignmentElement({
 					...this.getBaseProps(),
 					title: '',
 					text: '',
 					inputFormat: InputFormat.RICH_TEXT_CK5,
+				});
+				break;
+			case ContentElementType.AI_QUESTION:
+				element = new AiQuestionElement({
+					...this.getBaseProps(),
+					question: '',
+					creatorId,
+					onlyCreatorCanEdit: false,
 				});
 				break;
 			default:
@@ -133,6 +166,18 @@ export class BoardNodeFactory {
 		return element;
 	}
 
+	// A vote is not a content element and cannot be created via buildContentElement - it is
+	// created explicitly by PollUc, once per participant, below a PollElement.
+	public buildPollVote(userId: EntityId): PollVote {
+		const vote = new PollVote({
+			...this.getBaseProps(),
+			userId,
+			answers: [],
+		});
+
+		return vote;
+	}
+
 	// A submission is not a content element and cannot be created via buildContentElement -
 	// it is created explicitly by the assignment module, once per student, below an
 	// AssignmentElement.
@@ -143,6 +188,31 @@ export class BoardNodeFactory {
 		});
 
 		return submission;
+	}
+
+	// An answer is not a content element and cannot be created via buildContentElement - it
+	// is created explicitly by the AI module, once per student, below an AiQuestionElement.
+	public buildAiQuestionAnswer(userId: EntityId): AiQuestionAnswer {
+		const answer = new AiQuestionAnswer({
+			...this.getBaseProps(),
+			userId,
+		});
+
+		return answer;
+	}
+
+	// Created lazily, on the first teacher-authored feedback artifact for a submission - see
+	// AssignmentFeedback's doc comment.
+	// authorId omitted (or explicitly undefined) builds the teacher's own container; pass a
+	// reviewer's userId to build their correction container instead - see AssignmentFeedback's
+	// doc comment.
+	public buildAssignmentFeedback(authorId?: EntityId): AssignmentFeedback {
+		const feedback = new AssignmentFeedback({
+			...this.getBaseProps(),
+			userId: authorId,
+		});
+
+		return feedback;
 	}
 
 	private getBaseProps(): BoardNodeProps {

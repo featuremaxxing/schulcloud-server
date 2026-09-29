@@ -4,6 +4,8 @@ import type { AnyBoardNode } from './any-board-node';
 import type { BoardExternalReference } from './board-external-reference';
 import type { BoardLayout } from './board-layout.enum';
 import type { ContentElementType } from './content-element-type.enum';
+import type { BoardRoles } from '../board-node-authorizable.do';
+import type { PollAnswer, PollAudience, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
 
 export interface BoardNodeProps {
 	id: EntityId;
@@ -82,6 +84,50 @@ export interface H5pElementProps extends BoardNodeProps {
 	contentId?: string;
 }
 
+export interface PollElementProps extends BoardNodeProps {
+	title?: string;
+	questions: PollQuestion[];
+	isAnonymous: boolean;
+	showResultsLive: boolean;
+	pollStatus: PollStatus;
+	// When the poll starts accepting votes - undefined means "no gate, open immediately once
+	// pollStatus is OPEN" (see PollElement.isOpen), matching how closesAt already behaves.
+	opensAt?: Date;
+	closesAt?: Date;
+	resultSnapshot?: PollResultSnapshot;
+	// Who is eligible to vote - defaults to STUDENTS (see PollElement.audience getter) so
+	// existing polls keep behaving exactly as before this field existed.
+	audience?: PollAudience;
+	// Only meaningful when audience is CUSTOM.
+	audienceRoles?: BoardRoles[];
+	// Whether a voter may revise an already-submitted answer to an already-answered question.
+	// Defaults to false (see PollElement.allowVoteChange getter) - a question the voter hasn't
+	// answered yet (skipped, or added after they voted) stays answerable either way, this only
+	// locks answers that already exist. See poll-answer.ts mergePollAnswers.
+	allowVoteChange?: boolean;
+}
+
+export interface PollVoteProps extends BoardNodeProps {
+	userId: EntityId;
+	votedAt?: Date;
+	answers: PollAnswer[];
+}
+
+export interface CheckboxEntry {
+	userId: EntityId;
+	checked: boolean;
+	approved: boolean;
+}
+
+export interface CheckboxElementProps extends BoardNodeProps {
+	text: string;
+	requireTeacherConfirmation: boolean;
+	creatorId?: EntityId;
+	audience?: PollAudience;
+	audienceRoles?: BoardRoles[];
+	entries?: CheckboxEntry[];
+}
+
 export interface AssignmentRubricCriterion {
 	id: string;
 	name: string;
@@ -125,6 +171,49 @@ export interface AssignmentSubmissionProps extends BoardNodeProps {
 	criterionPoints?: AssignmentSubmissionCriterionPoints[];
 }
 
+export interface AssignmentFeedbackProps extends BoardNodeProps {
+	// undefined = the teacher's own feedback container; set = a specific reviewer's own
+	// correction container. Reuses the same entity column AssignmentSubmissionProps.userId
+	// already maps onto (see BoardNodeEntity.userId) rather than adding a new one - the two
+	// node types are never confused because their BoardNodeType differs. See AssignmentFeedback's
+	// doc comment for why containers are split by author at all.
+	userId?: EntityId;
+}
+
+export interface AiQuestionElementProps extends BoardNodeProps {
+	question: string;
+	// user who originally created the element; absent only on legacy elements
+	creatorId?: EntityId;
+	// false/absent = every teacher editor may change it; true = creator only
+	onlyCreatorCanEdit?: boolean;
+	// optional context for age-appropriate assessment
+	gradeLevel?: number;
+	subject?: string;
+	// when set, the AI assigns 0..maxPoints
+	maxPoints?: number;
+	// teacher-authored guidance for the AI, withheld from students (see AiQuestionElement)
+	aiInstructions?: string;
+	// grading reference for the AI, withheld from students (see AiQuestionElement)
+	expectedAnswer?: string;
+	// whether a student may replace their answer; absent/false = single attempt
+	allowMultipleAttempts?: boolean;
+}
+
+export interface AiQuestionAnswerProps extends BoardNodeProps {
+	userId: EntityId;
+	// answer and aiResponse are persisted together by the use case, after the AI
+	// call succeeded - an answer node with only one of them must not exist
+	answer?: string;
+	aiResponse?: string;
+	points?: number;
+	maxPoints?: number;
+	aiFlagged?: boolean;
+	aiFlagReason?: string;
+	studentFlagged?: boolean;
+	answeredAt?: Date;
+	attemptCount?: number;
+}
+
 export interface MediaBoardProps extends BoardNodeProps {
 	context: BoardExternalReference;
 	backgroundColor: Colors;
@@ -146,7 +235,10 @@ export interface MediaLineProps extends BoardNodeProps {
 type MediaBoardNodeProps = MediaBoardProps | MediaExternalToolElementProps | MediaLineProps;
 
 export type AnyBoardNodeProps =
+	| AiQuestionAnswerProps
+	| AiQuestionElementProps
 	| AssignmentElementProps
+	| AssignmentFeedbackProps
 	| AssignmentSubmissionProps
 	| CardProps
 	| PinnedCardProps
@@ -162,4 +254,7 @@ export type AnyBoardNodeProps =
 	| VideoConferenceElementProps
 	| DeletedElementProps
 	| H5pElementProps
+	| PollElementProps
+	| PollVoteProps
+	| CheckboxElementProps
 	| MediaBoardNodeProps;

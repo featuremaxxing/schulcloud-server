@@ -12,10 +12,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { EntityId } from '@shared/domain/types';
 import {
 	type AnyBoardNode,
+	AiQuestionAnswer,
+	AiQuestionElement,
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentSubmission,
 	BoardNodeType,
 	Card,
+	CheckboxElement,
 	CollaborativeTextEditorElement,
 	Column,
 	ColumnBoard,
@@ -35,6 +39,9 @@ import {
 	type MediaExternalToolElement,
 	type MediaLine,
 	type PinnedCard,
+	PollElement,
+	PollStatus,
+	PollVote,
 	RichTextElement,
 	VideoConferenceElement,
 } from '../../domain';
@@ -109,11 +116,29 @@ export class BoardNodeCopyService {
 			case BoardNodeType.H5P_ELEMENT:
 				result = await this.copyH5pElement(boardNode as H5pElement, context);
 				break;
+			case BoardNodeType.POLL_ELEMENT:
+				result = await this.copyPollElement(boardNode as PollElement, context);
+				break;
+			case BoardNodeType.CHECKBOX_ELEMENT:
+				result = this.copyCheckboxElement(boardNode as CheckboxElement, context);
+				break;
+			case BoardNodeType.POLL_VOTE:
+				result = this.copyPollVote(boardNode as PollVote);
+				break;
 			case BoardNodeType.ASSIGNMENT_ELEMENT:
 				result = await this.copyAssignmentElement(boardNode as AssignmentElement, context);
 				break;
 			case BoardNodeType.ASSIGNMENT_SUBMISSION:
 				result = this.copyAssignmentSubmission(boardNode as AssignmentSubmission);
+				break;
+			case BoardNodeType.ASSIGNMENT_FEEDBACK:
+				result = this.copyAssignmentFeedback(boardNode as AssignmentFeedback);
+				break;
+			case BoardNodeType.AI_QUESTION_ELEMENT:
+				result = await this.copyAiQuestionElement(boardNode as AiQuestionElement, context);
+				break;
+			case BoardNodeType.AI_QUESTION_ANSWER:
+				result = this.copyAiQuestionAnswer(boardNode as AiQuestionAnswer);
 				break;
 			case BoardNodeType.PINNED_CARD:
 				result = this.copyPinnedCard(boardNode as PinnedCard);
@@ -544,6 +569,52 @@ export class BoardNodeCopyService {
 		return result;
 	}
 
+	// Deliberately does NOT call copyChildrenOf: an AI question is copied without its
+	// answers. Carrying student answers (and the AI's judgements of them) into a copied
+	// room/board would leak personal data of students who never joined the copy's target
+	// context - same reasoning as copyAssignmentElement above.
+	public copyAiQuestionElement(original: AiQuestionElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new AiQuestionElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+			creatorId: context.userId,
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.AI_QUESTION_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	// An answer never gets copied - see copyAiQuestionElement. This case only exists so
+	// the type switch in copy() stays exhaustive; it must never be reached in practice
+	// because copyAiQuestionElement skips its children.
+	public copyAiQuestionAnswer(original: AiQuestionAnswer): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.AI_QUESTION_ANSWER,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
+	// Same reasoning as copyAssignmentSubmission above - never reached, exists only to keep
+	// the type switch in copy() exhaustive.
+	public copyAssignmentFeedback(original: AssignmentFeedback): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.ASSIGNMENT_FEEDBACK,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
+	}
+
 	private async copyChildrenOf(boardNode: AnyBoardNode, context: CopyContext): Promise<CopyStatus[]> {
 		const allSettled = await Promise.allSettled(
 			boardNode.children.map(async (child) => {
@@ -579,6 +650,59 @@ export class BoardNodeCopyService {
 		});
 
 		return results;
+	}
+
+	// Deliberately does NOT call copyChildrenOf: a copied poll is copied without its votes
+	// and without its frozen resultSnapshot - a copy starts as an empty, unopened poll.
+	// Carrying votes into a copied room/board would leak identifiable participation of
+	// users who never joined the copy's target context. pollStatus/closesAt are reset for
+	// the same reason the comment promises ("an empty, unopened poll") - without this a copy
+	// of a currently-open poll would immediately start accepting votes, and a copy of a
+	// closed poll would be closed with no snapshot (aggregateResults would then fall back to
+	// counting the copy's own, empty vote list instead), and a copied deadline could already
+	// be in the past.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	public copyPollElement(original: PollElement, context: CopyContext): Promise<CopyStatus> {
+		const copy = new PollElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+			resultSnapshot: undefined,
+			pollStatus: PollStatus.DRAFT,
+			opensAt: undefined,
+			closesAt: undefined,
+		});
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.POLL_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			elements: [],
+		};
+
+		return Promise.resolve(result);
+	}
+
+	public copyCheckboxElement(original: CheckboxElement, context?: CopyContext): CopyStatus {
+		const copy = new CheckboxElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+			creatorId: context?.userId ?? original.creatorId,
+			entries: [],
+		});
+		return { copyEntity: copy, type: CopyElementType.CHECKBOX_ELEMENT, status: CopyStatusEnum.SUCCESS, elements: [] };
+	}
+
+	// A vote never gets copied - see copyPollElement. This case only exists so the type
+	// switch in copy() stays exhaustive; it must never be reached in practice because
+	// copyPollElement skips its children.
+	public copyPollVote(original: PollVote): CopyStatus {
+		const result: CopyStatus = {
+			id: original.id,
+			type: CopyElementType.POLL_VOTE,
+			status: CopyStatusEnum.NOT_DOING,
+		};
+
+		return result;
 	}
 
 	private buildSpecificProps(childrenResults: CopyStatus[]): {

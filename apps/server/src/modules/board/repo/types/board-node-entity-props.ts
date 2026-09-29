@@ -1,6 +1,9 @@
 import type {
 	AnyBoardNodeProps,
+	AiQuestionAnswerProps,
+	AiQuestionElementProps,
 	AssignmentElementProps,
+	AssignmentFeedbackProps,
 	AssignmentSubmissionProps,
 	BoardNodeProps,
 	BoardNodeType,
@@ -17,6 +20,9 @@ import type {
 	MediaBoardProps,
 	MediaExternalToolElementProps,
 	MediaLineProps,
+	PollElementProps,
+	PollVoteProps,
+	CheckboxElementProps,
 	RichTextElementProps,
 } from '../../domain';
 
@@ -45,7 +51,10 @@ export interface BoardNodeEntityProps
 	extends
 		BoardNodeProps,
 		TypeProps,
+		ComponentProps<AiQuestionElementProps>,
+		ComponentProps<AiQuestionAnswerProps>,
 		ComponentProps<AssignmentElementProps>,
+		ComponentProps<AssignmentFeedbackProps>,
 		ComponentProps<AssignmentSubmissionProps>,
 		ComponentProps<ColumnBoardProps>,
 		ComponentProps<ColumnProps>,
@@ -60,4 +69,7 @@ export interface BoardNodeEntityProps
 		ComponentProps<MediaBoardProps>,
 		ComponentProps<MediaExternalToolElementProps>,
 		ComponentProps<MediaLineProps>,
-		ComponentProps<DeletedElementProps> {}
+		ComponentProps<DeletedElementProps>,
+		ComponentProps<PollElementProps>,
+		ComponentProps<PollVoteProps>,
+		ComponentProps<CheckboxElementProps> {}

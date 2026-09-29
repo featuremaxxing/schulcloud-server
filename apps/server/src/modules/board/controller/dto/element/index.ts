@@ -1,4 +1,6 @@
+export * from './ai-question-element.response';
 export * from './any-content-element.response';
+export * from './checkbox-element.response';
 export * from './assignment-element.response';
 export * from './collaborative-text-editor-element.response';
 export * from './create-content-element.body.params';
@@ -9,6 +11,7 @@ export * from './external-tool-element.response';
 export * from './file-element.response';
 export * from './file-folder-element.response';
 export * from './link-element.response';
+export * from './poll-element.response';
 export * from './rich-text-element.response';
 export * from './update-element-content.body.params';
 export * from './video-conference-element.response';

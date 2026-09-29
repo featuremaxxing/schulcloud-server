@@ -9,6 +9,7 @@ import { ContextExternalToolService } from '@modules/tool/context-external-tool/
 import { Injectable } from '@nestjs/common';
 import {
 	AnyBoardNode,
+	AssignmentFeedback,
 	AssignmentSubmission,
 	CollaborativeTextEditorElement,
 	DrawingElement,
@@ -16,6 +17,7 @@ import {
 	FileElement,
 	FileFolderElement,
 	H5pElement,
+	isAssignmentFeedback,
 	isAssignmentSubmission,
 	isCollaborativeTextEditorElement,
 	isDrawingElement,
@@ -25,6 +27,7 @@ import {
 	isH5pElement,
 	isLinkElement,
 	isMediaExternalToolElement,
+	isPollVote,
 	LinkElement,
 	MediaExternalToolElement,
 } from '../../domain';
@@ -62,8 +65,14 @@ export class BoardNodeDeleteHooksService {
 			await this.afterDeleteMediaExternalToolElement(boardNode);
 		} else if (isH5pElement(boardNode)) {
 			await this.afterDeleteH5pElement(boardNode);
+		} else if (isPollVote(boardNode)) {
+			// no-op: a poll vote has no attached files or external resources to clean up.
+			// This branch is kept explicit (instead of falling through) so the case is
+			// visible and intentional rather than accidental.
 		} else if (isAssignmentSubmission(boardNode)) {
 			this.afterDeleteAssignmentSubmission(boardNode);
+		} else if (isAssignmentFeedback(boardNode)) {
+			this.afterDeleteAssignmentFeedback(boardNode);
 		} else {
 			// noop
 		}
@@ -131,6 +140,16 @@ export class BoardNodeDeleteHooksService {
 	// the building blocks). Flagged 2026-09-15, see the deletion-concept work.
 	public afterDeleteAssignmentSubmission(submission: AssignmentSubmission): void {
 		this.filesStorageClientAdapterService.deleteFilesOfParent(submission.id).catch((err: Error) => {
+			this.errorHandler.exec(err);
+		});
+	}
+
+	// Removes the teacher's feedback artifacts (audio, annotated corrections) attached to
+	// this node. Reached both when a submission (and its feedback child) is deleted, and if
+	// the feedback node is ever deleted on its own - it recurses via singleAfterDelete's
+	// children loop either way.
+	public afterDeleteAssignmentFeedback(feedback: AssignmentFeedback): void {
+		this.filesStorageClientAdapterService.deleteFilesOfParent(feedback.id).catch((err: Error) => {
 			this.errorHandler.exec(err);
 		});
 	}

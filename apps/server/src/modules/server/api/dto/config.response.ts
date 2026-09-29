@@ -128,6 +128,14 @@ export class ConfigResponse {
 	FEATURE_COLUMN_BOARD_H5P_ENABLED: boolean;
 
 	@ApiProperty()
+	FEATURE_COLUMN_BOARD_POLL_ENABLED: boolean;
+	@ApiProperty()
+	FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED: boolean;
+
+	@ApiProperty()
+	FEATURE_BOARD_PROGRESS_ENABLED: boolean;
+
+	@ApiProperty()
 	FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED: boolean;
 
 	@ApiProperty()
@@ -240,6 +248,9 @@ export class ConfigResponse {
 
 	@ApiProperty()
 	FEATURE_AI_TUTOR_ENABLED: boolean;
+
+	@ApiProperty()
+	FEATURE_AI_ENABLED: boolean;
 
 	@ApiProperty()
 	FEATURE_BOARD_READERS_CAN_EDIT_TOGGLE: boolean;
@@ -368,6 +379,7 @@ export class ConfigResponse {
 		this.BOARD_COLLABORATION_URI = config.boardCollaborationUri;
 		this.FEATURE_SCHULCONNEX_MEDIA_LICENSE_ENABLED = config.featureSchulconnexMediaLicenseEnabled;
 		this.FEATURE_AI_TUTOR_ENABLED = config.featureAiTutorEnabled;
+		this.FEATURE_AI_ENABLED = config.featureAiEnabled;
 		this.FEATURE_ADMINISTRATE_ROOMS_ENABLED = config.featureAdministrateRoomsEnabled;
 		this.FEATURE_BOARD_READERS_CAN_EDIT_TOGGLE = config.featureBoardReadersCanEditToggle;
 		this.FEATURE_EXTERNAL_PERSON_REGISTRATION_ENABLED = config.featureExternalPersonRegistrationEnabled;
@@ -382,6 +394,9 @@ export class ConfigResponse {
 		this.ROOM_MEMBER_INFO_URL = config.roomMemberInfoUrl;
 		this.ROOM_MEMBER_ADD_EXTERNAL_PERSON_REQUIREMENTS_URL = config.roomMemberAddExternalPersonRequirementsUrl;
 		this.FEATURE_COLUMN_BOARD_H5P_ENABLED = config.featureColumnBoardH5pEnabled;
+		this.FEATURE_COLUMN_BOARD_POLL_ENABLED = config.featureColumnBoardPollEnabled;
+		this.FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED = config.featureColumnBoardCheckboxEnabled;
+		this.FEATURE_BOARD_PROGRESS_ENABLED = config.featureBoardProgressEnabled;
 		this.FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED = config.featureColumnBoardAssignmentEnabled;
 		this.FEATURE_PERSONAL_LEARNING_ROOM_ENABLED = config.featurePersonalLearningRoomEnabled;
 		this.FEATURE_COLUMN_BOARD_COLLABORA_ENABLED = config.featureColumnBoardCollaboraEnabled;

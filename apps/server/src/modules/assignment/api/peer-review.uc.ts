@@ -2,6 +2,7 @@ import { FileDto, FilesStorageClientAdapterService } from '@infra/files-storage-
 import { Logger } from '@infra/logger';
 import {
 	AssignmentElement,
+	AssignmentFeedback,
 	AssignmentReviewAssignmentMode,
 	AssignmentReviewEntity,
 	AssignmentReviewRepo,
@@ -9,9 +10,11 @@ import {
 	BOARD_PUBLIC_API_CONFIG_TOKEN,
 	BoardNodeAuthorizable,
 	BoardNodeAuthorizableService,
+	BoardNodeFactory,
 	BoardNodeRule,
 	BoardNodeService,
 	BoardPublicApiConfig,
+	isAssignmentFeedback,
 } from '@modules/board';
 import { AuthorizationService } from '@modules/authorization';
 import {
@@ -45,6 +48,17 @@ export interface PeerReviewSubmitBody {
 export interface PeerReviewTaskResult {
 	review: AssignmentReviewEntity;
 	file?: FileDto;
+	feedbackContainerId?: EntityId;
+	correctionFiles?: FileDto[];
+}
+
+export interface PeerReviewAssignmentListEntry {
+	submissionId: EntityId;
+	reviewerUserId: EntityId;
+	reviewerFirstName?: string;
+	reviewerLastName?: string;
+	assignmentMode: AssignmentReviewAssignmentMode;
+	submittedAt?: Date;
 }
 
 // Effectively "everyone reviews everyone" for a very large class - not a real assignment
@@ -59,6 +73,7 @@ export class PeerReviewUc {
 		private readonly boardNodeAuthorizableService: BoardNodeAuthorizableService,
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeRule: BoardNodeRule,
+		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly assignmentReviewRepo: AssignmentReviewRepo,
 		private readonly filesStorageClientAdapterService: FilesStorageClientAdapterService,
 		private readonly logger: Logger,
@@ -74,6 +89,8 @@ export class PeerReviewUc {
 
 		const { element } = await this.loadElementForTeacher(userId, elementId);
 
+		const isDisabling = element.peerReviewEnabled && !body.enabled;
+
 		element.peerReviewEnabled = body.enabled;
 		if (body.mode !== undefined) {
 			element.peerReviewMode = body.mode;
@@ -85,6 +102,15 @@ export class PeerReviewUc {
 			element.peerReviewCount = Math.max(1, Math.min(body.count, MAX_PEER_REVIEW_COUNT));
 		}
 		await this.boardNodeService.save(element);
+
+		// Turning peer review off must actually revoke access, not just hide the UI for it -
+		// otherwise a reviewer keeps read access to the submission's file (via
+		// BoardNodeAuthorizableProps.peerReviewerIds) and can keep submitting review feedback
+		// indefinitely. listMyTasks/submitReview also re-check peerReviewEnabled defensively,
+		// but deleting the rows here is what actually closes the access.
+		if (isDisabling) {
+			await this.assignmentReviewRepo.deleteByElementId(elementId);
+		}
 
 		return element;
 	}
@@ -98,6 +124,11 @@ export class PeerReviewUc {
 		this.checkFeatureEnabled();
 
 		const { element } = await this.loadElementForTeacher(userId, elementId);
+
+		if (!element.peerReviewEnabled) {
+			throw new ConflictException('Peer review is not enabled for this assignment.');
+		}
+
 		const submissions = element.getChildrenOfType(AssignmentSubmission).filter((s) => s.id);
 
 		if (submissions.length < 2) {
@@ -146,6 +177,11 @@ export class PeerReviewUc {
 		this.checkFeatureEnabled();
 
 		const { element, boardNodeAuthorizable } = await this.loadElementForTeacher(userId, elementId);
+
+		if (!element.peerReviewEnabled) {
+			throw new ConflictException('Peer review is not enabled for this assignment.');
+		}
+
 		const submissions = element.getChildrenOfType(AssignmentSubmission);
 		const memberIds = new Set(boardNodeAuthorizable.users.map((user) => user.userId));
 		const now = new Date();
@@ -187,25 +223,132 @@ export class PeerReviewUc {
 		return { assignedCount: reviews.length };
 	}
 
+	// Teacher-facing view of every current pairing for an assignment, with reviewer identities -
+	// deliberately the opposite of listMyTasks (anonymizes the submission owner from the
+	// reviewer) and of the submission owner's peerReviews summary (anonymizes the reviewer). Only
+	// ever reachable via loadElementForTeacher, i.e. a real board editor.
+	public async listAssignments(userId: EntityId, elementId: EntityId): Promise<PeerReviewAssignmentListEntry[]> {
+		this.checkFeatureEnabled();
+
+		const { boardNodeAuthorizable } = await this.loadElementForTeacher(userId, elementId);
+		const reviews = await this.assignmentReviewRepo.findByElementId(elementId);
+
+		return reviews.map((review) => {
+			const reviewer = boardNodeAuthorizable.users.find((user) => user.userId === review.reviewerUserId);
+
+			return {
+				submissionId: review.submissionId,
+				reviewerUserId: review.reviewerUserId,
+				reviewerFirstName: reviewer?.firstName,
+				reviewerLastName: reviewer?.lastName,
+				assignmentMode: review.assignmentMode,
+				submittedAt: review.submittedAt,
+			};
+		});
+	}
+
+	// Removes exactly one pairing - reuses the same deleteByPairs the batch assignment methods
+	// already rely on for idempotency. A review that was already submitted is refused rather than
+	// silently dropped, so a teacher cannot accidentally make a student's finished work disappear.
+	public async unassign(
+		userId: EntityId,
+		elementId: EntityId,
+		submissionId: EntityId,
+		reviewerUserId: EntityId
+	): Promise<void> {
+		this.checkFeatureEnabled();
+
+		await this.loadElementForTeacher(userId, elementId);
+
+		const reviews = await this.assignmentReviewRepo.findByElementId(elementId);
+		const review = reviews.find(
+			(candidate) => candidate.submissionId === submissionId && candidate.reviewerUserId === reviewerUserId
+		);
+		if (!review) {
+			throw new NotFoundException('This peer review assignment does not exist.');
+		}
+		if (review.submittedAt) {
+			throw new ConflictException('This peer review has already been submitted and cannot be removed.');
+		}
+
+		await this.assignmentReviewRepo.deleteByPairs(elementId, [{ submissionId, reviewerUserId }]);
+	}
+
 	// Anonymized by construction: only the file to review is fetched, never the submission's
 	// owner (no name/userId lookup happens here at all).
 	public async listMyTasks(userId: EntityId): Promise<PeerReviewTaskResult[]> {
 		this.checkFeatureEnabled();
 
 		const reviews = await this.assignmentReviewRepo.findByReviewerUserId(userId);
+		const eligibleReviews = await this.filterCurrentlyEligible(reviews, userId);
 
 		return Promise.all(
-			reviews.map(async (review): Promise<PeerReviewTaskResult> => {
+			eligibleReviews.map(async (review): Promise<PeerReviewTaskResult> => {
 				try {
+					// Only the submission's own files list under submissionId - teacher feedback
+					// now lives on a separate AssignmentFeedback child node the reviewer has no
+					// access to at all (see board-node.rule.ts's hasPermissionForAssignmentFeedbackFile),
+					// so no filtering by name is needed here any more.
 					const files = await this.filesStorageClientAdapterService.listFilesOfParent(review.submissionId);
-					const file = pickLatestNonFeedbackFile(files);
-					return { review, file };
+					const file = pickLatestFile(files);
+
+					// the reviewer's own correction container, if they've already started one -
+					// never created here, only looked up (see ensureReviewFeedbackContainer)
+					const submission = await this.boardNodeService.findByClassAndId(AssignmentSubmission, review.submissionId);
+					const feedback = submission.children.find(
+						(child): child is AssignmentFeedback => isAssignmentFeedback(child) && child.authorId === userId
+					);
+					const correctionFiles = feedback
+						? await this.filesStorageClientAdapterService.listFilesOfParent(feedback.id)
+						: undefined;
+
+					return { review, file, feedbackContainerId: feedback?.id, correctionFiles };
 				} catch (error) {
 					this.logger.warning(new AssignmentFilesStorageErrorLoggable(review.submissionId, error as Error));
 					return { review };
 				}
 			})
 		);
+	}
+
+	// Assignments (AssignmentReviewEntity rows) are not revoked automatically when peer review
+	// is turned off (updateSettings deletes them, but only from that point forward - and are
+	// not revoked when a reviewer leaves the room). Re-check both on every read/write instead of
+	// trusting the row alone, so access actually tracks the assignment's/room's current state
+	// rather than the state at assignment time. Grouped by elementId so a reviewer with many
+	// tasks for the same assignment only pays for one board lookup.
+	private async filterCurrentlyEligible(
+		reviews: AssignmentReviewEntity[],
+		userId: EntityId
+	): Promise<AssignmentReviewEntity[]> {
+		const elementIds = Array.from(new Set(reviews.map((review) => review.elementId)));
+		const eligibleElementIds = new Set<EntityId>();
+
+		await Promise.all(
+			elementIds.map(async (elementId) => {
+				if (await this.isReviewerStillEligibleForElement(elementId, userId)) {
+					eligibleElementIds.add(elementId);
+				}
+			})
+		);
+
+		return reviews.filter((review) => eligibleElementIds.has(review.elementId));
+	}
+
+	private async isReviewerStillEligibleForElement(elementId: EntityId, userId: EntityId): Promise<boolean> {
+		try {
+			const element = await this.boardNodeService.findByClassAndId(AssignmentElement, elementId, 0);
+			if (!element.peerReviewEnabled) {
+				return false;
+			}
+
+			const boardNodeAuthorizable = await this.boardNodeAuthorizableService.getBoardAuthorizable(element);
+			return boardNodeAuthorizable.users.some((user) => user.userId === userId);
+		} catch {
+			// the element (or its room) no longer exists / is no longer reachable - treat as
+			// not eligible rather than letting an unrelated error surface as a 500 here
+			return false;
+		}
 	}
 
 	public async submitReview(
@@ -215,6 +358,46 @@ export class PeerReviewUc {
 	): Promise<AssignmentReviewEntity> {
 		this.checkFeatureEnabled();
 
+		const review = await this.loadOwnEligibleReview(userId, reviewId);
+
+		review.points = body.points;
+		review.feedbackComment = body.feedbackComment;
+		review.submittedAt = new Date();
+		await this.assignmentReviewRepo.save(review);
+
+		return review;
+	}
+
+	// Gets (or, on first call for this review, creates) the container the reviewer uploads their
+	// own correction files (annotated PDFs/images - no audio, see the review notes) to. Mirrors
+	// AssignmentUc.ensureFeedbackContainer, but keyed by reviewer instead of always-the-teacher:
+	// buildAssignmentFeedback(userId) is what makes this the reviewer's own container rather than
+	// the teacher's (see AssignmentFeedback's doc comment and BoardNodeRule.
+	// hasPermissionForAssignmentFeedbackFile, which is what actually enforces that only this
+	// reviewer - not the teacher, not another reviewer - may write here).
+	public async ensureReviewFeedbackContainer(userId: EntityId, reviewId: EntityId): Promise<AssignmentFeedback> {
+		this.checkFeatureEnabled();
+
+		const review = await this.loadOwnEligibleReview(userId, reviewId);
+		const submission = await this.boardNodeService.findByClassAndId(AssignmentSubmission, review.submissionId);
+
+		const existing = submission.children.find(
+			(child): child is AssignmentFeedback => isAssignmentFeedback(child) && child.authorId === userId
+		);
+		if (existing) {
+			return existing;
+		}
+
+		const feedback = this.boardNodeFactory.buildAssignmentFeedback(userId);
+		await this.boardNodeService.addToParent(submission, feedback);
+
+		return feedback;
+	}
+
+	// Shared by submitReview and ensureReviewFeedbackContainer: both need the caller's own,
+	// still-eligible review - see filterCurrentlyEligible/updateSettings for why eligibility is
+	// re-checked here rather than trusted from assignment time.
+	private async loadOwnEligibleReview(userId: EntityId, reviewId: EntityId): Promise<AssignmentReviewEntity> {
 		const review = await this.assignmentReviewRepo.findById(reviewId);
 		if (!review) {
 			throw new NotFoundException('Peer review task not found.');
@@ -222,11 +405,9 @@ export class PeerReviewUc {
 		if (review.reviewerUserId !== userId) {
 			throw new ForbiddenException('This peer review task is not assigned to you.');
 		}
-
-		review.points = body.points;
-		review.feedbackComment = body.feedbackComment;
-		review.submittedAt = new Date();
-		await this.assignmentReviewRepo.save(review);
+		if (!(await this.isReviewerStillEligibleForElement(review.elementId, userId))) {
+			throw new ForbiddenException('This peer review task is no longer available.');
+		}
 
 		return review;
 	}
@@ -251,13 +432,10 @@ export class PeerReviewUc {
 	}
 }
 
-const FEEDBACK_PREFIX = 'feedback-';
-
-const pickLatestNonFeedbackFile = (files: FileDto[]): FileDto | undefined => {
-	const candidates = files.filter((file) => !file.name.startsWith(FEEDBACK_PREFIX));
-	if (candidates.length === 0) {
+const pickLatestFile = (files: FileDto[]): FileDto | undefined => {
+	if (files.length === 0) {
 		return undefined;
 	}
 
-	return [...candidates].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
+	return [...files].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
 };

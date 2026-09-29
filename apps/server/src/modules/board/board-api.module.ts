@@ -11,6 +11,8 @@ import { BoardContextApiHelperModule } from '../board-context';
 import { RoomModule } from '../room';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardModule } from './board.module';
+import { CheckboxController } from './controller/checkbox.controller';
+import { CheckboxUc } from './uc/checkbox.uc';
 import {
 	BoardController,
 	BoardErrorReportController,
@@ -18,10 +20,20 @@ import {
 	ColumnController,
 	ElementController,
 	LearningRoomController,
+	PollController,
 } from './controller';
 import { CopyRoomBoardsStep } from './saga';
 import { BOARD_TIMEOUT_CONFIG_TOKEN, BoardTimeoutConfig } from './timeout.config';
-import { BoardErrorReportUc, BoardUc, CardUc, ColumnUc, ElementUc, LearningRoomUc } from './uc';
+import {
+	BoardErrorReportUc,
+	BoardProgressUc,
+	BoardUc,
+	CardUc,
+	ColumnUc,
+	ElementUc,
+	LearningRoomUc,
+	PollUc,
+} from './uc';
 
 @Module({
 	imports: [
@@ -44,8 +56,21 @@ import { BoardErrorReportUc, BoardUc, CardUc, ColumnUc, ElementUc, LearningRoomU
 		ElementController,
 		BoardErrorReportController,
 		LearningRoomController,
+		PollController,
+		CheckboxController,
 	],
-	providers: [BoardUc, BoardErrorReportUc, ColumnUc, CardUc, ElementUc, LearningRoomUc, CopyRoomBoardsStep],
+	providers: [
+		BoardUc,
+		BoardErrorReportUc,
+		BoardProgressUc,
+		ColumnUc,
+		CardUc,
+		ElementUc,
+		LearningRoomUc,
+		PollUc,
+		CheckboxUc,
+		CopyRoomBoardsStep,
+	],
 })
 @RegisterTimeoutConfig(BOARD_TIMEOUT_CONFIG_TOKEN)
 export class BoardApiModule {}

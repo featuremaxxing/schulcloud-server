@@ -2,6 +2,7 @@ import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import { EntityId } from '@shared/domain/types';
 import { BoardExternalReferenceType, ElementReferenceType, ParentNodeType } from '../../../domain';
 import { AnyContentElementResponse } from './any-content-element.response';
+import { AiQuestionElementResponse } from './ai-question-element.response';
 import { AssignmentElementResponse } from './assignment-element.response';
 import { CollaborativeTextEditorElementResponse } from './collaborative-text-editor-element.response';
 import { DeletedElementResponse } from './deleted-element.response';
@@ -11,6 +12,7 @@ import { FileElementResponse } from './file-element.response';
 import { FileFolderElementResponse } from './file-folder-element.response';
 import { H5pElementResponse } from './h5p-element.response';
 import { LinkElementResponse } from './link-element.response';
+import { PollElementResponse } from './poll-element.response';
 import { RichTextElementResponse } from './rich-text-element.response';
 import { VideoConferenceElementResponse } from './video-conference-element.response';
 
@@ -47,7 +49,9 @@ export class ParentNodeInfoResponse {
 	FileFolderElementResponse,
 	ParentNodeInfoResponse,
 	H5pElementResponse,
-	AssignmentElementResponse
+	PollElementResponse,
+	AssignmentElementResponse,
+	AiQuestionElementResponse
 )
 export class ElementWithParentHierarchyResponse {
 	constructor(props: ElementWithParentHierarchyResponse) {
@@ -68,7 +72,9 @@ export class ElementWithParentHierarchyResponse {
 			{ $ref: getSchemaPath(VideoConferenceElementResponse) },
 			{ $ref: getSchemaPath(FileFolderElementResponse) },
 			{ $ref: getSchemaPath(H5pElementResponse) },
+			{ $ref: getSchemaPath(PollElementResponse) },
 			{ $ref: getSchemaPath(AssignmentElementResponse) },
+			{ $ref: getSchemaPath(AiQuestionElementResponse) },
 		],
 	})
 	element: AnyContentElementResponse;

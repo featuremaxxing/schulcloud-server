@@ -27,8 +27,8 @@ export class UserBoardContext implements PreparedBoardContext {
 		];
 	}
 
-	public getUsersWithBoardRoles(): UserWithBoardRoles[] {
-		return this.usersWithBoardRoles;
+	public getUsersWithBoardRoles(): Promise<UserWithBoardRoles[]> {
+		return Promise.resolve(this.usersWithBoardRoles);
 	}
 
 	public getBoardConfiguration(_rootNode: MediaBoard | ColumnBoard): BoardConfiguration {

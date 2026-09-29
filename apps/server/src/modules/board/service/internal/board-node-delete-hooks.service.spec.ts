@@ -9,6 +9,7 @@ import { ContextExternalToolService } from '@modules/tool/context-external-tool'
 import { contextExternalToolFactory } from '@modules/tool/context-external-tool/testing';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
+	assignmentFeedbackFactory,
 	assignmentSubmissionFactory,
 	collaborativeTextEditorFactory,
 	drawingElementFactory,
@@ -17,6 +18,7 @@ import {
 	fileFolderElementFactory,
 	h5pElementFactory,
 	linkElementFactory,
+	pollVoteFactory,
 } from '../../testing';
 import { BoardNodeDeleteHooksService } from './board-node-delete-hooks.service';
 
@@ -251,6 +253,26 @@ describe(BoardNodeDeleteHooksService.name, () => {
 			});
 		});
 
+		// Regression guard for the poll element: a deleted vote has nothing to clean up
+		// (no attached files, no external resources), and must not accidentally trigger any
+		// other hook (e.g. by falling through to a wrong isXyz check).
+		describe('when called with poll vote', () => {
+			const setup = () => {
+				const boardNode = pollVoteFactory.build();
+
+				return { boardNode };
+			};
+
+			it('should not call any cleanup adapter for this node', async () => {
+				const { boardNode } = setup();
+
+				await service.afterDelete(boardNode);
+
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).not.toHaveBeenCalledWith(boardNode.id);
+				expect(h5pEditorProducer.deleteContent).not.toHaveBeenCalledWith({ contentId: boardNode.id });
+			});
+		});
+
 		// Regression guard for the assignment tool: a deleted submission must always take
 		// its attached files with it (student's document and teacher's feedback audio).
 		describe('when called with assignment submission', () => {
@@ -266,6 +288,24 @@ describe(BoardNodeDeleteHooksService.name, () => {
 				await service.afterDelete(boardNode);
 
 				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
+			});
+		});
+
+		describe('when called with an assignment submission that has an AssignmentFeedback child', () => {
+			const setup = () => {
+				const feedback = assignmentFeedbackFactory.build();
+				const boardNode = assignmentSubmissionFactory.build({ children: [feedback] });
+
+				return { boardNode, feedback };
+			};
+
+			it('should delete the files of both the submission and its feedback child', async () => {
+				const { boardNode, feedback } = setup();
+
+				await service.afterDelete(boardNode);
+
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
+				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(feedback.id);
 			});
 		});
 	});

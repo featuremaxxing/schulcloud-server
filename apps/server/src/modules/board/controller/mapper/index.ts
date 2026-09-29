@@ -1,5 +1,7 @@
+export * from './ai-question-element-response.mapper';
 export * from './assignment-element-response.mapper';
 export * from './board-response.mapper';
+export * from './checkbox-element-response.mapper';
 export * from './card-response.mapper';
 export * from './collaborative-text-editor-element-response.mapper';
 export * from './column-response.mapper';
@@ -10,6 +12,8 @@ export * from './external-tool-element-response.mapper';
 export * from './file-element-response.mapper';
 export * from './link-element-response.mapper';
 export * from './parent-node-info-response.mapper';
+export * from './poll-element-response.mapper';
+export * from './progress-response.mapper';
 export * from './rich-text-element-response.mapper';
 export * from './video-conference-element-response.mapper';
 export * from './h5p-element-response.mapper';

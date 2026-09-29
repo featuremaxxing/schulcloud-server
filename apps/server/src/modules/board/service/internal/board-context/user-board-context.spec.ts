@@ -15,11 +15,11 @@ describe(UserBoardContext.name, () => {
 	});
 
 	describe('getUsersWithBoardRoles', () => {
-		it('should return the user with EDITOR and ADMIN roles', () => {
+		it('should return the user with EDITOR and ADMIN roles', async () => {
 			const userId = new ObjectId().toHexString();
 
 			const context = new UserBoardContext(userId);
-			const result = context.getUsersWithBoardRoles();
+			const result = await context.getUsersWithBoardRoles();
 
 			expect(result).toEqual([
 				{

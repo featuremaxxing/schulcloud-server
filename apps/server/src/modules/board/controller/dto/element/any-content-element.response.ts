@@ -1,3 +1,5 @@
+import type { AiQuestionElementResponse } from './ai-question-element.response';
+import type { CheckboxElementResponse } from './checkbox-element.response';
 import type { AssignmentElementResponse } from './assignment-element.response';
 import type { CollaborativeTextEditorElementResponse } from './collaborative-text-editor-element.response';
 import type { DeletedElementResponse } from './deleted-element.response';
@@ -7,10 +9,13 @@ import type { FileElementResponse } from './file-element.response';
 import type { FileFolderElementResponse } from './file-folder-element.response';
 import type { H5pElementResponse } from './h5p-element.response';
 import type { LinkElementResponse } from './link-element.response';
+import type { PollElementResponse } from './poll-element.response';
 import type { RichTextElementResponse } from './rich-text-element.response';
 import type { VideoConferenceElementResponse } from './video-conference-element.response';
 
 export type AnyContentElementResponse =
+	| AiQuestionElementResponse
+	| CheckboxElementResponse
 	| AssignmentElementResponse
 	| FileElementResponse
 	| LinkElementResponse
@@ -21,4 +26,5 @@ export type AnyContentElementResponse =
 	| DeletedElementResponse
 	| VideoConferenceElementResponse
 	| FileFolderElementResponse
-	| H5pElementResponse;
+	| H5pElementResponse
+	| PollElementResponse;

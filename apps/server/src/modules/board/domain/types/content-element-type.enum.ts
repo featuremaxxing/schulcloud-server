@@ -9,5 +9,8 @@ export enum ContentElementType {
 	FILE_FOLDER = 'fileFolder',
 	DELETED = 'deleted',
 	H5P = 'h5p',
+	POLL = 'poll',
+	CHECKBOX = 'checkbox',
 	ASSIGNMENT = 'assignment',
+	AI_QUESTION = 'aiQuestion',
 }
