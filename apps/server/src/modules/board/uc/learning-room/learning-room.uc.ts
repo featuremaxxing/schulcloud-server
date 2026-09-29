@@ -14,7 +14,7 @@ import {
 	Column,
 	ColumnBoard,
 	PinnedCard,
-	PinnedCardOrigin,
+	PinnedCardInfo,
 } from '../../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, LearningRoomService } from '../../service';
 import { BoardUc } from '../board.uc';
@@ -36,7 +36,7 @@ export class LearningRoomUc {
 		board: ColumnBoard;
 		features: BoardFeature[];
 		allowedOperations: Record<BoardOperation, boolean>;
-		pinnedCardOrigins: Map<EntityId, PinnedCardOrigin>;
+		pinnedCardOrigins: Map<EntityId, PinnedCardInfo>;
 	}> {
 		this.checkFeatureEnabled();
 
@@ -119,6 +119,25 @@ export class LearningRoomUc {
 		}
 
 		await this.boardNodeService.move(pinnedCard, targetColumn, toPosition);
+	}
+
+	/**
+	 * A pinned card is read-only in the learning room - the note is the owner's own
+	 * layer on top of it. Stored on the pointer, so the original card and everyone
+	 * else in its room never see it.
+	 */
+	public async updatePinnedCardNote(userId: EntityId, pinnedCardId: EntityId, note: string): Promise<void> {
+		this.checkFeatureEnabled();
+
+		const board = await this.learningRoomService.getOrCreatePersonalLearningRoomOfUser(userId);
+		const pinnedCard = this.learningRoomService.findPinnedCards(board).find((node) => node.id === pinnedCardId);
+		if (!pinnedCard) {
+			throw new BadRequestException('Pinned card does not belong to this learning room');
+		}
+
+		const trimmed = note.trim();
+		pinnedCard.note = trimmed === '' ? undefined : trimmed;
+		await this.boardNodeService.save(pinnedCard);
 	}
 
 	/**

@@ -173,6 +173,9 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: ObjectIdType, nullable: true })
 	referencedCardId: EntityId | undefined;
 
+	@Property({ type: 'string', nullable: true })
+	note: string | undefined;
+
 	// AssignmentElement
 	// --------------------------------------------------------------------------
 	@Property({ type: 'Date', nullable: true })

@@ -21,7 +21,13 @@ import {
 	CheckboxElement,
 	ROOT_PATH,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, LearningRoomService } from '../service';
+import {
+	BoardNodeAuthorizableService,
+	BoardNodeService,
+	BoardProgressService,
+	ColumnBoardService,
+	LearningRoomService,
+} from '../service';
 import {
 	boardNodeAuthorizableFactory,
 	cardFactory,
@@ -40,6 +46,7 @@ describe(BoardUc.name, () => {
 	let boardNodeAuthorizableService: DeepMocked<BoardNodeAuthorizableService>;
 	let authorizationService: DeepMocked<AuthorizationService>;
 	let learningRoomService: DeepMocked<LearningRoomService>;
+	let boardProgressService: DeepMocked<BoardProgressService>;
 	let boardContextApiHelperService: DeepMocked<BoardContextApiHelperService>;
 
 	beforeAll(async () => {
@@ -102,6 +109,10 @@ describe(BoardUc.name, () => {
 					provide: LearningRoomService,
 					useValue: createMock<LearningRoomService>(),
 				},
+				{
+					provide: BoardProgressService,
+					useValue: createMock<BoardProgressService>(),
+				},
 			],
 		}).compile();
 
@@ -111,6 +122,7 @@ describe(BoardUc.name, () => {
 		boardNodeRule = module.get(BoardNodeRule);
 		authorizationService = module.get(AuthorizationService);
 		learningRoomService = module.get(LearningRoomService);
+		boardProgressService = module.get(BoardProgressService);
 		boardContextApiHelperService = module.get(BoardContextApiHelperService);
 		boardNodeAuthorizableService = module.get(BoardNodeAuthorizableService);
 		await setupEntities([User, CourseEntity, CourseGroupEntity]);
@@ -199,6 +211,7 @@ describe(BoardUc.name, () => {
 				shareBoard: true,
 				updateBoardTitle: true,
 				createCard: true,
+				isBoardEditor: true,
 			} as unknown as Record<string, boolean> as never);
 			boardNodeRule.can.mockImplementation((operation, _user, authorizable) => {
 				if (operation === 'findBoard') return true;
@@ -218,6 +231,14 @@ describe(BoardUc.name, () => {
 			expect(allowedOperations.shareBoard).toBe(false);
 			expect(allowedOperations.updateBoardTitle).toBe(false);
 			expect(allowedOperations.createCard).toBe(true);
+		});
+
+		it('should not make the owner a board editor, so pinned assignments show the student view', async () => {
+			const { board } = setupPersonalBoard();
+
+			const { allowedOperations } = await uc.findBoard('userId', board.id);
+
+			expect(allowedOperations.isBoardEditor).toBe(false);
 		});
 
 		it('should delete pointers whose card no longer exists', async () => {
@@ -248,6 +269,56 @@ describe(BoardUc.name, () => {
 			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
 
 			expect(pinnedCardOrigins.get(readablePin.id)).toEqual({ boardId: readableCard.rootId, title: 'Mathe 9b' });
+		});
+
+		it("should add the owner's own progress and next due date to a pinned card", async () => {
+			const { board, readablePin, readableCard } = setupPersonalBoard();
+			const config = module.get<BoardConfig>(BOARD_CONFIG_TOKEN);
+			config.featureColumnBoardCheckboxEnabled = true;
+			config.featureColumnBoardAssignmentEnabled = true;
+			const sourceBoard = columnBoardFactory.build();
+			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
+				{ boardNode: readableCard, rootNode: sourceBoard, users: [] } as unknown as BoardNodeAuthorizable,
+			]);
+			const soon = new Date('2026-10-02T10:00:00Z');
+			const later = new Date('2026-10-09T10:00:00Z');
+			const item = { cardId: readableCard.id, eligible: true, done: false };
+			boardProgressService.computeBoardsProgress.mockResolvedValue([
+				{
+					items: [
+						{ ...item, done: true },
+						{ ...item, dueDate: later },
+						{ ...item, dueDate: soon },
+						// not meant for this user - must not count
+						{ ...item, eligible: false },
+					],
+				},
+			] as never);
+
+			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(pinnedCardOrigins.get(readablePin.id)?.status).toEqual({ done: 1, total: 3, nextDueDate: soon });
+			expect(boardProgressService.computeBoardsProgress).toHaveBeenCalledWith(
+				expect.anything(),
+				[expect.objectContaining({ board: sourceBoard, isTeacherView: false })],
+				expect.anything()
+			);
+		});
+
+		it('should still load the learning room when the progress cannot be computed', async () => {
+			const { board, readablePin, readableCard } = setupPersonalBoard();
+			boardNodeAuthorizableService.getBoardAuthorizables.mockResolvedValue([
+				{
+					boardNode: readableCard,
+					rootNode: columnBoardFactory.build(),
+					users: [],
+				} as unknown as BoardNodeAuthorizable,
+			]);
+			boardProgressService.computeBoardsProgress.mockRejectedValue(new Error('db down'));
+
+			const { pinnedCardOrigins } = await uc.findBoard('userId', board.id);
+
+			expect(pinnedCardOrigins.get(readablePin.id)?.status).toBeUndefined();
 		});
 
 		it('should leave a course board untouched', async () => {

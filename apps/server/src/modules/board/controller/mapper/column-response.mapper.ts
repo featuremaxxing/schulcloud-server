@@ -1,5 +1,5 @@
 import { InternalServerErrorException } from '@nestjs/common';
-import { Card, type Column, PinnedCard, type PinnedCardOrigin } from '../../domain';
+import { Card, type Column, PinnedCard, type PinnedCardInfo } from '../../domain';
 import type { EntityId } from '@shared/domain/types';
 import { CardSkeletonResponse, ColumnFullResponse, ColumnResponse, TimestampsResponse } from '../dto';
 import { CardResponseMapper } from './card-response.mapper';
@@ -8,7 +8,7 @@ import { CardResponseMapper } from './card-response.mapper';
 const PINNED_CARD_PRERENDER_HEIGHT = 150;
 
 export class ColumnResponseMapper {
-	public static mapToResponse(column: Column, pinnedCardOrigins?: Map<EntityId, PinnedCardOrigin>): ColumnResponse {
+	public static mapToResponse(column: Column, pinnedCardOrigins?: Map<EntityId, PinnedCardInfo>): ColumnResponse {
 		const result = new ColumnResponse({
 			id: column.id,
 			title: column.title ?? '',
@@ -28,6 +28,10 @@ export class ColumnResponseMapper {
 							pinnedCardId: card.id,
 							originBoardId: origin?.boardId,
 							originTitle: origin?.title,
+							progressDone: origin?.status?.done,
+							progressTotal: origin?.status?.total,
+							nextDueDate: origin?.status?.nextDueDate,
+							note: card.note,
 						});
 					}
 					/* istanbul ignore next */

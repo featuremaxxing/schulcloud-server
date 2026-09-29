@@ -220,4 +220,40 @@ describe(LearningRoomUc.name, () => {
 			expect(boardNodeService.move).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('updatePinnedCardNote', () => {
+		const setup = () => {
+			const board = columnBoardFactory.build();
+			const pinnedCard = pinnedCardFactory.build();
+			learningRoomService.getOrCreatePersonalLearningRoomOfUser.mockResolvedValue(board);
+			learningRoomService.findPinnedCards.mockReturnValue([pinnedCard]);
+
+			return { pinnedCard };
+		};
+
+		it('should store the trimmed note on the pointer', async () => {
+			const { pinnedCard } = setup();
+
+			await uc.updatePinnedCardNote('userId', pinnedCard.id, '  Frage an Frau M.  ');
+
+			expect(pinnedCard.note).toBe('Frage an Frau M.');
+			expect(boardNodeService.save).toHaveBeenCalledWith(pinnedCard);
+		});
+
+		it('should remove the note when it is emptied', async () => {
+			const { pinnedCard } = setup();
+			pinnedCard.note = 'alt';
+
+			await uc.updatePinnedCardNote('userId', pinnedCard.id, '   ');
+
+			expect(pinnedCard.note).toBeUndefined();
+		});
+
+		it("should refuse a pointer from someone else's learning room", async () => {
+			setup();
+
+			await expect(uc.updatePinnedCardNote('userId', 'foreignPinnedCardId', 'x')).rejects.toThrow(BadRequestException);
+			expect(boardNodeService.save).not.toHaveBeenCalled();
+		});
+	});
 });

@@ -20,15 +20,24 @@ import {
 	BoardExternalReferenceType,
 	BoardFeature,
 	BoardLayout,
+	BoardNodeAuthorizable,
 	BoardNodeFactory,
+	BoardNodeType,
 	canManageCheckboxDescendants,
 	Card,
 	Column,
 	ColumnBoard,
 	isColumn,
-	PinnedCardOrigin,
+	PinnedCardInfo,
+	PinnedCardStatus,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService, LearningRoomService } from '../service';
+import {
+	BoardNodeAuthorizableService,
+	BoardNodeService,
+	BoardProgressService,
+	ColumnBoardService,
+	LearningRoomService,
+} from '../service';
 import { StorageLocationReference } from '../service/internal';
 
 @Injectable()
@@ -47,7 +56,8 @@ export class BoardUc {
 		private readonly boardNodeAuthorizableService: BoardNodeAuthorizableService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig,
 		private readonly boardNodeRule: BoardNodeRule,
-		private readonly learningRoomService: LearningRoomService
+		private readonly learningRoomService: LearningRoomService,
+		private readonly boardProgressService: BoardProgressService
 	) {
 		this.logger.setContext(BoardUc.name);
 	}
@@ -73,7 +83,7 @@ export class BoardUc {
 		board: ColumnBoard;
 		features: BoardFeature[];
 		allowedOperations: Record<BoardOperation, boolean>;
-		pinnedCardOrigins: Map<EntityId, PinnedCardOrigin>;
+		pinnedCardOrigins: Map<EntityId, PinnedCardInfo>;
 	}> {
 		// TODO set depth=2 to reduce data?
 		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId);
@@ -84,13 +94,13 @@ export class BoardUc {
 
 		const features = await this.boardContextApiHelperService.getFeaturesForBoardNode(boardId);
 		let allowedOperations = this.boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable);
-		let pinnedCardOrigins = new Map<EntityId, PinnedCardOrigin>();
+		let pinnedCardOrigins = new Map<EntityId, PinnedCardInfo>();
 
 		// Every way of loading a board ends up here - the rest endpoint as well as the
 		// collaboration socket, which is what the client actually uses. Personal board
 		// handling therefore belongs here, not in the learning room endpoint.
 		if (board.context.type === BoardExternalReferenceType.User) {
-			pinnedCardOrigins = await this.resolvePinnedCards(board, user);
+			pinnedCardOrigins = await this.resolvePinnedCards(board, user, userId);
 			allowedOperations = this.hidePersonalBoardOperations(allowedOperations);
 		}
 
@@ -114,6 +124,11 @@ export class BoardUc {
 			updateBoardTitle: false,
 			updateReadersCanEditSetting: false,
 			updateBoardVisibility: false,
+			// Assignment and poll elements pick the teacher view by isBoardEditor of the
+			// board they are shown in. Here that is the owner's own room, so a student
+			// would get the submission overview instead of the submit form of a pinned
+			// assignment. Nobody teaches anyone in their own learning room.
+			isBoardEditor: false,
 		};
 	}
 
@@ -125,7 +140,11 @@ export class BoardUc {
 	 * cannot read right now are kept: a teacher hiding or locking a board must not
 	 * wipe the pins of the whole class, and they come back once it is visible.
 	 */
-	private async resolvePinnedCards(board: ColumnBoard, user: User): Promise<Map<EntityId, PinnedCardOrigin>> {
+	private async resolvePinnedCards(
+		board: ColumnBoard,
+		user: User,
+		userId: EntityId
+	): Promise<Map<EntityId, PinnedCardInfo>> {
 		const pinnedCards = this.learningRoomService.findPinnedCards(board);
 		if (pinnedCards.length === 0) {
 			return new Map();
@@ -143,10 +162,13 @@ export class BoardUc {
 		}
 
 		const authorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(cards);
-		const readableCards = authorizables
-			.filter((authorizable) => this.boardNodeRule.can('findCards', user, authorizable))
-			.map((authorizable) => authorizable.boardNode);
-		const rootIdByCardId = new Map(readableCards.map((card) => [card.id, card.rootId]));
+		const readableAuthorizables = authorizables.filter((authorizable) =>
+			this.boardNodeRule.can('findCards', user, authorizable)
+		);
+		const rootIdByCardId = new Map(
+			readableAuthorizables.map((authorizable) => [authorizable.boardNode.id, authorizable.boardNode.rootId])
+		);
+		const statusByCardId = await this.resolvePinnedCardStatus(readableAuthorizables, userId);
 
 		// resolved once per source board, not per card - a learning room usually
 		// holds several cards from the same room
@@ -163,15 +185,84 @@ export class BoardUc {
 			}
 		}
 
-		const originByPinnedCardId = new Map<EntityId, PinnedCardOrigin>();
+		const originByPinnedCardId = new Map<EntityId, PinnedCardInfo>();
 		pinnedCards.forEach((node) => {
 			const rootId = rootIdByCardId.get(node.referencedCardId);
 			if (rootId) {
-				originByPinnedCardId.set(node.id, { boardId: rootId, title: titleByRootId.get(rootId) });
+				originByPinnedCardId.set(node.id, {
+					boardId: rootId,
+					title: titleByRootId.get(rootId),
+					status: statusByCardId.get(node.referencedCardId),
+				});
 			}
 		});
 
 		return originByPinnedCardId;
+	}
+
+	/**
+	 * The owner's own progress per pinned card, computed with the same rules as the
+	 * progress bars of boards and rooms - one pass per source board. Cards without
+	 * anything to do (no checkbox, assignment or poll for this user) get no status.
+	 */
+	private async resolvePinnedCardStatus(
+		readableAuthorizables: BoardNodeAuthorizable[],
+		userId: EntityId
+	): Promise<Map<EntityId, PinnedCardStatus>> {
+		const statusByCardId = new Map<EntityId, PinnedCardStatus>();
+
+		const sourceBoards = new Map<EntityId, BoardNodeAuthorizable>();
+		readableAuthorizables.forEach((authorizable) => {
+			if (authorizable.rootNode instanceof ColumnBoard) {
+				sourceBoards.set(authorizable.rootNode.id, authorizable);
+			}
+		});
+		const enabledTypes = this.progressElementTypes();
+		if (sourceBoards.size === 0 || enabledTypes.length === 0) {
+			return statusByCardId;
+		}
+
+		try {
+			const results = await this.boardProgressService.computeBoardsProgress(
+				userId,
+				Array.from(sourceBoards.values()).map((auth) => {
+					return {
+						board: auth.rootNode as ColumnBoard,
+						auth,
+						// own progress only - also keeps assignments that have not started hidden
+						isTeacherView: false,
+					};
+				}),
+				enabledTypes
+			);
+
+			results
+				.flatMap((result) => result.items)
+				.filter((item) => item.eligible)
+				.forEach((item) => {
+					const status = statusByCardId.get(item.cardId) ?? { done: 0, total: 0 };
+					status.total += 1;
+					if (item.done) {
+						status.done += 1;
+					} else if (item.dueDate && (!status.nextDueDate || item.dueDate < status.nextDueDate)) {
+						status.nextDueDate = item.dueDate;
+					}
+					statusByCardId.set(item.cardId, status);
+				});
+		} catch (error) {
+			// the status is a hint - the learning room must load without it
+			this.logger.warn(`Could not compute pinned card status: ${String(error)}`);
+		}
+
+		return statusByCardId;
+	}
+
+	private progressElementTypes(): BoardNodeType[] {
+		const types: BoardNodeType[] = [];
+		if (this.config.featureColumnBoardCheckboxEnabled) types.push(BoardNodeType.CHECKBOX_ELEMENT);
+		if (this.config.featureColumnBoardAssignmentEnabled) types.push(BoardNodeType.ASSIGNMENT_ELEMENT);
+		if (this.config.featureColumnBoardPollEnabled) types.push(BoardNodeType.POLL_ELEMENT);
+		return types;
 	}
 
 	public async findBoardContext(userId: EntityId, boardId: EntityId): Promise<BoardExternalReference> {
