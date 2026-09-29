@@ -19,6 +19,7 @@ import {
 	CardController,
 	ColumnController,
 	ElementController,
+	FileAreaController,
 	LearningRoomController,
 	PollController,
 } from './controller';
@@ -31,6 +32,7 @@ import {
 	CardUc,
 	ColumnUc,
 	ElementUc,
+	FileAreaUc,
 	LearningRoomUc,
 	PollUc,
 } from './uc';
@@ -58,6 +60,7 @@ import {
 		LearningRoomController,
 		PollController,
 		CheckboxController,
+		FileAreaController,
 	],
 	providers: [
 		BoardUc,
@@ -69,6 +72,7 @@ import {
 		LearningRoomUc,
 		PollUc,
 		CheckboxUc,
+		FileAreaUc,
 		CopyRoomBoardsStep,
 	],
 })

@@ -5,6 +5,7 @@ export enum BoardNodeType {
 	PINNED_CARD = 'pinned-card',
 	FILE_ELEMENT = 'file-element',
 	FILE_FOLDER_ELEMENT = 'file-folder-element',
+	FILE_AREA_FOLDER = 'file-area-folder',
 	LINK_ELEMENT = 'link-element',
 	RICH_TEXT_ELEMENT = 'rich-text-element',
 	DRAWING_ELEMENT = 'drawing-element',

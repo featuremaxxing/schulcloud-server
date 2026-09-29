@@ -12,7 +12,7 @@ import { BoardContextApiHelperModule } from '../board-context';
 import { RoomModule } from '../room';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardModule } from './board.module';
-import { BoardUc, CardUc, ColumnUc, ElementUc } from './uc';
+import { BoardUc, CardUc, ColumnUc, ElementUc, FileAreaUc } from './uc';
 import {
 	WEBDAV_CONFIG_TOKEN,
 	WEBDAV_TIMEOUT_CONFIG_TOKEN,
@@ -52,6 +52,7 @@ import { WebDavHandler } from './webdav/webdav.handler';
 		CardUc,
 		ColumnUc,
 		ElementUc,
+		FileAreaUc,
 		WebDavAuthService,
 		WebDavFilesStorageClient,
 		WebDavHandler,

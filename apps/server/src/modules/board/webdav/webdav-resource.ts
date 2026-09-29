@@ -4,6 +4,7 @@ import {
 	type Card,
 	type Column,
 	type ColumnBoard,
+	type FileAreaFolder,
 	type FileElement,
 	type FileFolderElement,
 } from '../domain';
@@ -77,6 +78,23 @@ export interface FileResource extends ResourceBase {
 	fileRecord: WebDavFileRecord;
 }
 
+// a folder inside a file area (a board with layout FILES); its subfolders and files sit directly below it
+export interface AreaFolderResource extends ResourceBase {
+	kind: 'areaFolder';
+	context: WebDavContext;
+	board: ColumnBoard;
+	folder: FileAreaFolder;
+}
+
+// a file directly in a file area or in one of its folders; parentId is the board or folder the file belongs to
+export interface AreaFileResource extends ResourceBase {
+	kind: 'areaFile';
+	context: WebDavContext;
+	board: ColumnBoard;
+	parentId: EntityId;
+	fileRecord: WebDavFileRecord;
+}
+
 export type WebDavResource =
 	| RootResource
 	| ContextListResource
@@ -85,11 +103,16 @@ export type WebDavResource =
 	| ColumnResource
 	| CardResource
 	| FolderResource
-	| FileResource;
+	| AreaFolderResource
+	| FileResource
+	| AreaFileResource;
 
-export type WebDavCollection = Exclude<WebDavResource, FileResource>;
+export type AnyFileResource = FileResource | AreaFileResource;
 
-export const isCollection = (resource: WebDavResource): resource is WebDavCollection => resource.kind !== 'file';
+export type WebDavCollection = Exclude<WebDavResource, AnyFileResource>;
+
+export const isCollection = (resource: WebDavResource): resource is WebDavCollection =>
+	resource.kind !== 'file' && resource.kind !== 'areaFile';
 
 // display names of the two top level folders
 export const CONTEXT_LIST_NAMES: Record<WebDavContext['type'], string> = {

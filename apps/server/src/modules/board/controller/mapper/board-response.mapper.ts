@@ -15,13 +15,16 @@ export class BoardResponseMapper {
 		const result = new BoardResponse({
 			id: board.id,
 			title: board.title,
-			columns: board.children.map((column) => {
-				/* istanbul ignore next */
-				if (!(column instanceof Column)) {
-					throw new InternalServerErrorException(`unsupported child type: ${column.constructor.name}`);
-				}
-				return ColumnResponseMapper.mapToResponse(column, pinnedCardOrigins);
-			}),
+			// a file area has folders instead of columns, they are served by the file area endpoints
+			columns: board.isFileArea()
+				? []
+				: board.children.map((column) => {
+						/* istanbul ignore next */
+						if (!(column instanceof Column)) {
+							throw new InternalServerErrorException(`unsupported child type: ${column.constructor.name}`);
+						}
+						return ColumnResponseMapper.mapToResponse(column, pinnedCardOrigins);
+					}),
 			timestamps: new TimestampsResponse({ lastUpdatedAt: board.updatedAt, createdAt: board.createdAt }),
 			isVisible: board.isVisible,
 			readersCanEdit: board.readersCanEdit,

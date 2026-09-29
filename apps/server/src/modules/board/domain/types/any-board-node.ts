@@ -5,6 +5,7 @@ import type { Card } from '../card.do';
 import type { CollaborativeTextEditorElement } from '../collaborative-text-editor.do';
 import type { ColumnBoard } from '../colum-board.do';
 import type { Column } from '../column.do';
+import type { FileAreaFolder } from '../file-area-folder.do';
 import type { AnyMediaBoardNode } from '../media-board';
 import type { PinnedCard } from '../pinned-card.do';
 import type { PollVote } from '../poll-vote.do';
@@ -20,5 +21,6 @@ export type AnyBoardNode =
 	| CollaborativeTextEditorElement
 	| Column
 	| ColumnBoard
+	| FileAreaFolder
 	| PinnedCard
 	| PollVote;

@@ -29,6 +29,7 @@ import {
 	ExternalToolElement,
 	FileElement,
 	FileElementFactory,
+	FileAreaFolder,
 	FileFolderElement,
 	FileFolderElementFactory,
 	getBoardNodeType,
@@ -113,6 +114,9 @@ export class BoardNodeCopyService {
 			case BoardNodeType.FILE_FOLDER_ELEMENT:
 				result = await this.copyFileFolderElement(boardNode as FileFolderElement, context);
 				break;
+			case BoardNodeType.FILE_AREA_FOLDER:
+				result = await this.copyFileAreaFolder(boardNode as FileAreaFolder, context);
+				break;
 			case BoardNodeType.H5P_ELEMENT:
 				result = await this.copyH5pElement(boardNode as H5pElement, context);
 				break;
@@ -153,18 +157,44 @@ export class BoardNodeCopyService {
 
 	public async copyColumnBoard(original: ColumnBoard, context: CopyContext): Promise<CopyStatus> {
 		const childrenResults = await this.copyChildrenOf(original, context);
-		const childrenCopyStatus = this.copyHelperService.deriveStatusFromElements(childrenResults);
 
 		const copy = new ColumnBoard({
 			...original.getProps(),
 			...this.buildSpecificProps(childrenResults),
 		});
 
+		// a file area also keeps files directly on the board
+		const elements = original.isFileArea()
+			? [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))]
+			: childrenResults;
+		const status = this.copyHelperService.deriveStatusFromElements(elements);
+
 		const result: CopyStatus = {
 			copyEntity: copy,
 			type: CopyElementType.COLUMNBOARD,
-			status: childrenCopyStatus,
-			elements: childrenResults,
+			status,
+			elements,
+			originalEntity: original,
+		};
+
+		return result;
+	}
+
+	public async copyFileAreaFolder(original: FileAreaFolder, context: CopyContext): Promise<CopyStatus> {
+		const childrenResults = await this.copyChildrenOf(original, context);
+
+		const copy = new FileAreaFolder({
+			...original.getProps(),
+			...this.buildSpecificProps(childrenResults),
+		});
+
+		const elements = [...childrenResults, ...(await this.copyFilesOfParent(original, context, copy))];
+
+		const result: CopyStatus = {
+			copyEntity: copy,
+			type: CopyElementType.FILE_AREA_FOLDER,
+			status: this.copyHelperService.deriveStatusFromElements(elements),
+			elements,
 			originalEntity: original,
 		};
 
@@ -248,9 +278,9 @@ export class BoardNodeCopyService {
 	}
 
 	private async copyFilesOfParent(
-		original: FileElement | LinkElement | FileFolderElement,
+		original: FileElement | LinkElement | FileFolderElement | FileAreaFolder | ColumnBoard,
 		context: CopyContext,
-		copy: FileFolderElement | FileElement
+		copy: FileFolderElement | FileElement | FileAreaFolder | ColumnBoard
 	): Promise<CopyStatus[]> {
 		const fileCopies = await context.copyFilesOfParent(original.id, copy.id);
 		const copyStatus = CopyMapper.mapFileDtosToCopyStatus(fileCopies);

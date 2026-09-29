@@ -17,6 +17,7 @@ export * from './deleted-element.do';
 export * from './drawing-element.do';
 export * from './external-tool-element.do';
 export * from './factory';
+export * from './file-area-folder.do';
 export * from './file-element.do';
 export * from './file-folder-element.do';
 export * from './h5p-element.do';

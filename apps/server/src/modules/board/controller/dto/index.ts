@@ -5,3 +5,4 @@ export * from './color.body.params';
 export * from './element';
 export * from './poll';
 export * from './timestamps.response';
+export * from './file-area';

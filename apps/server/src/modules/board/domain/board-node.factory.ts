@@ -13,6 +13,7 @@ import { ColumnBoard } from './colum-board.do';
 import { Column } from './column.do';
 import { DrawingElement } from './drawing-element.do';
 import { ExternalToolElement } from './external-tool-element.do';
+import { FileAreaFolder } from './file-area-folder.do';
 import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
@@ -40,6 +41,12 @@ export class BoardNodeFactory {
 		const columnBoard = new ColumnBoard({ ...this.getBaseProps(), isVisible: false, readersCanEdit: false, ...props });
 
 		return columnBoard;
+	}
+
+	public buildFileAreaFolder(title: string): FileAreaFolder {
+		const folder = new FileAreaFolder({ ...this.getBaseProps(), title });
+
+		return folder;
 	}
 
 	public buildColumn(): Column {

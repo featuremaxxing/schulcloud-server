@@ -12,6 +12,7 @@ import { Column } from './column.do';
 import { DeletedElement } from './deleted-element.do';
 import { DrawingElement } from './drawing-element.do';
 import { ExternalToolElement } from './external-tool-element.do';
+import { FileAreaFolder } from './file-area-folder.do';
 import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
@@ -40,6 +41,7 @@ const BoardNodeTypeToConstructor = {
 	[BoardNodeType.EXTERNAL_TOOL]: ExternalToolElement,
 	[BoardNodeType.FILE_ELEMENT]: FileElement,
 	[BoardNodeType.FILE_FOLDER_ELEMENT]: FileFolderElement,
+	[BoardNodeType.FILE_AREA_FOLDER]: FileAreaFolder,
 	[BoardNodeType.LINK_ELEMENT]: LinkElement,
 	[BoardNodeType.MEDIA_BOARD]: MediaBoard,
 	[BoardNodeType.MEDIA_EXTERNAL_TOOL_ELEMENT]: MediaExternalToolElement,

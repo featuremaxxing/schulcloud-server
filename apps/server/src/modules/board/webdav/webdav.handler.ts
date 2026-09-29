@@ -5,16 +5,18 @@ import { pipeline } from 'node:stream/promises';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from '../board.config';
 import { FileFolderContentBody } from '../controller/dto';
 import { AnyBoardNode, ContentElementType, isFileElement } from '../domain';
-import { BoardUc, CardUc, ColumnUc, ElementUc } from '../uc';
+import { FileAreaNotifier } from '../service';
+import { BoardUc, CardUc, ColumnUc, ElementUc, FileAreaUc } from '../uc';
 import { WebDavFilesStorageClient } from './webdav-files-storage.client';
 import { WebDavLockStore } from './webdav-lock.store';
 import { MAX_VIRTUAL_FILE_BYTES, WebDavVirtualFile, WebDavVirtualFileStore } from './webdav-virtual-file.store';
 import { isSystemFileName, sanitizeName } from './webdav-names';
 import {
+	AnyFileResource,
+	AreaFolderResource,
 	BoardResource,
 	CardResource,
 	ColumnResource,
-	FileResource,
 	FolderResource,
 	isCollection,
 	WebDavCollection,
@@ -46,7 +48,8 @@ export interface WebDavRequestContext {
 	res: Response;
 }
 
-type FileTarget = CardResource | FolderResource;
+// where a file can be stored: a card, a folder element, or (in a file area) the board or one of its folders
+type FileTarget = CardResource | FolderResource | AreaFolderResource | BoardResource;
 
 /**
  * Implements the WebDAV methods on top of the board use cases. All board changes go through
@@ -64,6 +67,8 @@ export class WebDavHandler {
 		private readonly columnUc: ColumnUc,
 		private readonly cardUc: CardUc,
 		private readonly elementUc: ElementUc,
+		private readonly fileAreaUc: FileAreaUc,
+		private readonly fileAreaNotifier: FileAreaNotifier,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly boardConfig: BoardConfig
 	) {}
 
@@ -249,7 +254,7 @@ export class WebDavHandler {
 		if (existing && isCollection(existing)) {
 			throw WebDavError.methodNotAllowed();
 		}
-		if (parent.kind !== 'card' && parent.kind !== 'folder') {
+		if (!WebDavHandler.isFileTarget(parent)) {
 			throw WebDavError.forbidden('Files can only be stored in cards and folders');
 		}
 
@@ -284,6 +289,11 @@ export class WebDavHandler {
 		const { userId } = ctx.session;
 		switch (parent.kind) {
 			case 'board': {
+				if (parent.board.isFileArea()) {
+					await this.fileAreaUc.createFolder(userId, parent.board.id, name);
+					ctx.session.forgetBoard(parent.board.id);
+					break;
+				}
 				const column = await this.boardUc.createColumn(userId, parent.board.id);
 				await this.columnUc.updateColumnTitle(userId, column.id, name);
 				break;
@@ -301,6 +311,10 @@ export class WebDavHandler {
 				await this.elementUc.updateElement(userId, element.id, WebDavHandler.folderContent(name));
 				break;
 			}
+			case 'areaFolder':
+				await this.fileAreaUc.createFolder(userId, parent.folder.id, name);
+				ctx.session.forgetBoard(parent.board.id);
+				break;
 			default:
 				// courses, rooms and boards themselves are managed in the web app
 				throw WebDavError.forbidden('Cannot create a collection here');
@@ -369,7 +383,7 @@ export class WebDavHandler {
 		}
 
 		if (mode === 'copy') {
-			if (source.kind !== 'file' || !WebDavHandler.isFileTarget(destinationParent)) {
+			if (!WebDavHandler.isAnyFile(source) || !WebDavHandler.isFileTarget(destinationParent)) {
 				throw WebDavError.forbidden('Only files can be copied');
 			}
 			await this.copyFile(ctx.session, source, destinationParent, destinationName);
@@ -439,16 +453,11 @@ export class WebDavHandler {
 	): Promise<void> {
 		const jwt = await session.principal.getFilesStorageJwt();
 
-		if (parent.kind === 'folder') {
-			await this.filesStorageClient.upload(
-				jwt,
-				parent.context.schoolId,
-				parent.element.id,
-				name,
-				content,
-				contentLength
-			);
-			session.forgetFiles(parent.element.id);
+		if (parent.kind !== 'card') {
+			const storageParentId = WebDavHandler.storageParentIdOf(parent);
+			await this.filesStorageClient.upload(jwt, parent.context.schoolId, storageParentId, name, content, contentLength);
+			session.forgetFiles(storageParentId);
+			this.notifyFilesChanged(parent.kind === 'folder' ? undefined : parent.board.id, [storageParentId]);
 			return;
 		}
 
@@ -465,20 +474,21 @@ export class WebDavHandler {
 
 	private async replaceFile(
 		session: WebDavSession,
-		existing: FileResource,
+		existing: AnyFileResource,
 		content: Readable,
 		contentLength?: number
 	): Promise<void> {
 		const jwt = await session.principal.getFilesStorageJwt();
 		const { schoolId } = existing.context;
 		const oldFile = existing.fileRecord;
+		const storageParentId = WebDavHandler.storageParentIdOf(existing);
 
 		// Upload first so a failed upload keeps the old version. The file storage renames the
 		// new file ("name (1).pdf") while the old one exists, so the name is restored after.
 		const newFile = await this.filesStorageClient.upload(
 			jwt,
 			schoolId,
-			existing.element.id,
+			storageParentId,
 			oldFile.name,
 			content,
 			contentLength
@@ -487,12 +497,13 @@ export class WebDavHandler {
 		if (newFile.name !== oldFile.name) {
 			await this.filesStorageClient.rename(jwt, newFile.id, oldFile.name);
 		}
-		session.forgetFiles(existing.element.id);
+		session.forgetFiles(storageParentId);
+		this.notifyFilesChanged(existing.kind === 'areaFile' ? existing.board.id : undefined, [storageParentId]);
 	}
 
 	private async copyFile(
 		session: WebDavSession,
-		source: FileResource,
+		source: AnyFileResource,
 		target: FileTarget,
 		name: string
 	): Promise<void> {
@@ -516,6 +527,17 @@ export class WebDavHandler {
 					await this.filesStorageClient.delete(jwt, resource.fileRecord.id);
 					session.forgetFiles(resource.element.id);
 				}
+				return;
+			case 'areaFile': {
+				const jwt = await session.principal.getFilesStorageJwt();
+				await this.filesStorageClient.delete(jwt, resource.fileRecord.id);
+				session.forgetFiles(resource.parentId);
+				this.notifyFilesChanged(resource.board.id, [resource.parentId]);
+				return;
+			}
+			case 'areaFolder':
+				await this.fileAreaUc.deleteFolder(userId, resource.folder.id);
+				session.forgetBoard(resource.board.id);
 				return;
 			case 'folder':
 				await this.elementUc.deleteElement(userId, resource.element.id);
@@ -545,6 +567,17 @@ export class WebDavHandler {
 				session.forgetFiles(resource.element.id);
 				return;
 			}
+			case 'areaFile': {
+				const jwt = await session.principal.getFilesStorageJwt();
+				await this.filesStorageClient.rename(jwt, resource.fileRecord.id, name);
+				session.forgetFiles(resource.parentId);
+				this.notifyFilesChanged(resource.board.id, [resource.parentId]);
+				return;
+			}
+			case 'areaFolder':
+				await this.fileAreaUc.renameFolder(userId, resource.folder.id, name);
+				session.forgetBoard(resource.board.id);
+				return;
 			case 'folder':
 				await this.elementUc.updateElement(userId, resource.element.id, WebDavHandler.folderContent(name));
 				return;
@@ -578,7 +611,19 @@ export class WebDavHandler {
 		const { userId } = session;
 		const currentName = WebDavHandler.lastSegment(source.segments);
 
-		if (source.kind === 'card' && destinationParent.kind === 'column') {
+		if (source.kind === 'areaFolder') {
+			if (
+				destinationParent.kind !== 'areaFolder' &&
+				!(destinationParent.kind === 'board' && destinationParent.board.isFileArea())
+			) {
+				throw WebDavError.forbidden(`Cannot move a folder into a ${destinationParent.kind}`);
+			}
+			const toParentId =
+				destinationParent.kind === 'areaFolder' ? destinationParent.folder.id : destinationParent.board.id;
+			await this.fileAreaUc.moveFolder(userId, source.folder.id, toParentId);
+			session.forgetBoard(source.board.id);
+			session.forgetBoard(destinationParent.board.id);
+		} else if (source.kind === 'card' && destinationParent.kind === 'column') {
 			await this.columnUc.moveCard(userId, source.card.id, destinationParent.column.id);
 		} else if (source.kind === 'column' && destinationParent.kind === 'board') {
 			const board = await this.resolver.getBoardTree(session, destinationParent.board.id);
@@ -598,7 +643,7 @@ export class WebDavHandler {
 				destinationParent.card.id,
 				destinationParent.card.children.length
 			);
-		} else if (source.kind === 'file' && WebDavHandler.isFileTarget(destinationParent)) {
+		} else if (WebDavHandler.isAnyFile(source) && WebDavHandler.isFileTarget(destinationParent)) {
 			// between a folder and a card (or two folders): the file changes its parent in the
 			// file storage, which only works as copy + delete
 			await this.copyFile(session, source, destinationParent, name);
@@ -610,6 +655,13 @@ export class WebDavHandler {
 
 		if (name !== currentName) {
 			await this.rename(session, source, name);
+		}
+	}
+
+	// only file areas have a live view; other boards show no files of their own
+	private notifyFilesChanged(boardId: string | undefined, parentIds: string[]): void {
+		if (boardId) {
+			this.fileAreaNotifier.filesChanged(boardId, parentIds);
 		}
 	}
 
@@ -654,12 +706,14 @@ export class WebDavHandler {
 			case 'board':
 			case 'column':
 			case 'card':
+			case 'areaFolder':
 			case 'folder': {
 				const props = WebDavHandler.boardNodeOf(resource).getProps();
 				entry.createdAt = props.createdAt;
 				entry.updatedAt = props.updatedAt;
 				break;
 			}
+			case 'areaFile':
 			case 'file':
 				entry.contentLength = resource.fileRecord.size;
 				entry.contentType = resource.fileRecord.mimeType;
@@ -687,7 +741,9 @@ export class WebDavHandler {
 		};
 	}
 
-	private static boardNodeOf(resource: BoardResource | ColumnResource | CardResource | FolderResource): AnyBoardNode {
+	private static boardNodeOf(
+		resource: BoardResource | ColumnResource | CardResource | FolderResource | AreaFolderResource
+	): AnyBoardNode {
 		switch (resource.kind) {
 			case 'board':
 				return resource.board;
@@ -695,6 +751,8 @@ export class WebDavHandler {
 				return resource.column;
 			case 'card':
 				return resource.card;
+			case 'areaFolder':
+				return resource.folder;
 			default:
 				return resource.element;
 		}
@@ -707,12 +765,36 @@ export class WebDavHandler {
 		return content;
 	}
 
-	private static etag(resource: FileResource): string {
+	private static etag(resource: AnyFileResource): string {
 		return `"${resource.fileRecord.id}-${resource.fileRecord.updatedAt.getTime()}"`;
 	}
 
 	private static isFileTarget(resource: WebDavCollection): resource is FileTarget {
-		return resource.kind === 'card' || resource.kind === 'folder';
+		return (
+			resource.kind === 'card' ||
+			resource.kind === 'folder' ||
+			resource.kind === 'areaFolder' ||
+			(resource.kind === 'board' && resource.board.isFileArea())
+		);
+	}
+
+	private static isAnyFile(resource: WebDavResource): resource is AnyFileResource {
+		return resource.kind === 'file' || resource.kind === 'areaFile';
+	}
+
+	// the id files of this target or file are attached to in the file storage
+	private static storageParentIdOf(resource: Exclude<FileTarget, CardResource> | AnyFileResource): string {
+		switch (resource.kind) {
+			case 'folder':
+			case 'file':
+				return resource.element.id;
+			case 'areaFolder':
+				return resource.folder.id;
+			case 'areaFile':
+				return resource.parentId;
+			default:
+				return resource.board.id;
+		}
 	}
 
 	private static isSameResource(a: WebDavResource, b: WebDavResource): boolean {
