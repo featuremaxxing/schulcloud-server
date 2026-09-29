@@ -34,6 +34,7 @@ import { DATABASE_CONFIG_TOKEN, DatabaseConfig, DatabaseModule } from '@infra/da
 import { AuthenticationApiModule } from '@modules/authentication/authentication-api.module';
 import { MediaBoardApiModule } from '@modules/board/media-board-api.module';
 import { RoomApiModule } from '@modules/room/room-api.module';
+import { AppPasswordApiModule } from '@modules/app-password/app-password-api.module';
 import { findOneOrFailHandler } from '@shared/common/database-error.handler';
 import { ADMIN_API_SERVER_CONFIG_TOKEN, AdminApiServerConfig } from './admin-api-server.config';
 import { ENTITIES, TEST_ENTITIES } from './admin-api-server.entity.imports';
@@ -67,6 +68,7 @@ const serverModules = [
 	TeamApiModule,
 	UserApiModule,
 	RoomApiModule,
+	AppPasswordApiModule,
 ];
 
 @Module({

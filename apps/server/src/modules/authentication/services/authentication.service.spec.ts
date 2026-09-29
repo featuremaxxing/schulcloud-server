@@ -186,6 +186,56 @@ describe(AuthenticationService.name, () => {
 		});
 	});
 
+	describe('generateJwtForUser', () => {
+		describe('when the account is active', () => {
+			const setup = () => {
+				const user = userFactory.asTeacher().buildWithId();
+				const account = accountDoFactory.build({ userId: user.id });
+				const currentUser = CurrentUserMapper.userToICurrentUser(account.id, user, false, account.systemId);
+				const expectedPayload = new JwtPayloadBuilder(currentUser).build();
+
+				accountService.findByUserIdOrFail.mockResolvedValueOnce(account);
+				jwtService.sign.mockReturnValueOnce('jwt');
+
+				return { user, account, expectedPayload };
+			};
+
+			it('should sign a regular (non support) jwt for the user and whitelist it', async () => {
+				const { user, account, expectedPayload } = setup();
+
+				const result = await authenticationService.generateJwtForUser(user, 900);
+
+				expect(result).toEqual('jwt');
+				expect(expectedPayload.support).toBe(false);
+				expect(jwtService.sign).toHaveBeenCalledWith(
+					expectedPayload,
+					expect.objectContaining({ subject: account.id, jwtid: expect.any(String), expiresIn: 900 })
+				);
+				expect(jwtWhitelistAdapter.addToWhitelist).toHaveBeenCalledWith(account.id, expect.any(String));
+			});
+		});
+
+		describe('when the account is deactivated', () => {
+			const setup = () => {
+				const user = userFactory.asTeacher().buildWithId();
+				const account = accountDoFactory.build({ userId: user.id, deactivatedAt: new Date(Date.now() - 1000) });
+
+				accountService.findByUserIdOrFail.mockResolvedValueOnce(account);
+
+				return { user };
+			};
+
+			it('should throw and not sign a jwt', async () => {
+				const { user } = setup();
+
+				await expect(authenticationService.generateJwtForUser(user, 900)).rejects.toThrow(
+					UserAccountDeactivatedLoggableException
+				);
+				expect(jwtService.sign).not.toHaveBeenCalled();
+			});
+		});
+	});
+
 	describe('removeJwtFromWhitelist is called', () => {
 		describe('when a valid jwt is provided', () => {
 			it('should call the jwtValidationAdapter to remove the jwt', async () => {

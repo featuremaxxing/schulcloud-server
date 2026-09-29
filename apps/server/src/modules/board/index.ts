@@ -65,6 +65,9 @@ export {
 	ProgressStudentResult,
 } from './service';
 
+// apps/server.app.ts - the WebDAV drive needs middleware in front of NestJS's own
+export { createWebDavPreMiddleware, WEBDAV_ROUTE } from './webdav';
+
 // modules/room/api/room.controller.ts, room-content.uc.ts - the room-progress endpoint
 // reuses the board module's progress DTOs/mapper instead of duplicating them.
 export { ProgressQueryParams, RoomProgressResponse } from './controller/dto/progress';

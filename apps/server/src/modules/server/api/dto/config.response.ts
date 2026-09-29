@@ -253,6 +253,9 @@ export class ConfigResponse {
 	FEATURE_AI_ENABLED: boolean;
 
 	@ApiProperty()
+	FEATURE_WEBDAV_ENABLED: boolean;
+
+	@ApiProperty()
 	FEATURE_BOARD_READERS_CAN_EDIT_TOGGLE: boolean;
 
 	@ApiProperty()
@@ -380,6 +383,7 @@ export class ConfigResponse {
 		this.FEATURE_SCHULCONNEX_MEDIA_LICENSE_ENABLED = config.featureSchulconnexMediaLicenseEnabled;
 		this.FEATURE_AI_TUTOR_ENABLED = config.featureAiTutorEnabled;
 		this.FEATURE_AI_ENABLED = config.featureAiEnabled;
+		this.FEATURE_WEBDAV_ENABLED = config.featureWebDavEnabled;
 		this.FEATURE_ADMINISTRATE_ROOMS_ENABLED = config.featureAdministrateRoomsEnabled;
 		this.FEATURE_BOARD_READERS_CAN_EDIT_TOGGLE = config.featureBoardReadersCanEditToggle;
 		this.FEATURE_EXTERNAL_PERSON_REGISTRATION_ENABLED = config.featureExternalPersonRegistrationEnabled;

@@ -25,6 +25,7 @@ export const UserDeletionSagaExecutionOrder: ModuleName[] = [
 	ModuleName.USER_REGISTRATIONPIN,
 	ModuleName.NEWS,
 	ModuleName.ROOM,
+	ModuleName.APP_PASSWORD,
 ];
 
 @Injectable()

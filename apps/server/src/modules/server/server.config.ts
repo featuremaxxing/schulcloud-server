@@ -131,6 +131,13 @@ export class ServerPublicApiConfig {
 	@IsBoolean()
 	public featureAiEnabled = false;
 
+	// featuremaxxing: boards as a network drive - the same flag the WebDAV and app password
+	// modules read (see modules/board/webdav/webdav.config.ts)
+	@ConfigProperty('FEATURE_WEBDAV_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureWebDavEnabled = false;
+
 	@ConfigProperty('LICENSE_SUMMARY_URL')
 	@IsUrl({ require_tld: false })
 	public licenseSummaryUrl?: string;

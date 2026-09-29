@@ -19,4 +19,5 @@ export enum DomainName {
 	NEWS = 'news',
 	CALENDAR = 'calendar',
 	ROOM = 'room',
+	APP_PASSWORD = 'appPassword',
 }

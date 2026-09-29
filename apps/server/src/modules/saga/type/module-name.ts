@@ -19,6 +19,7 @@ export const ModuleName = {
 	USER_REGISTRATIONPIN: 'registrationPin',
 	NEWS: 'news',
 	ROOM: 'room',
+	APP_PASSWORD: 'appPassword',
 } as const;
 
 export type ModuleName = (typeof ModuleName)[keyof typeof ModuleName];
