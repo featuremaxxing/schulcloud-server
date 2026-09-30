@@ -59,6 +59,18 @@ export class FakeFilesStorage {
 		return Promise.resolve(file.record);
 	}
 
+	public move(_jwt: string, fileRecordId: string, _schoolId: string, parentId: string): Promise<WebDavFileRecord> {
+		const file = this.files.get(fileRecordId);
+		if (!file) throw new Error('not found');
+		const taken = [...this.files.values()].some(
+			(f) => f.record.parentId === parentId && f.record.name === file.record.name
+		);
+		const name = taken ? file.record.name.replace(/(\.[^.]*)?$/, ' (1)$1') : file.record.name;
+		file.record = { ...file.record, parentId, name };
+
+		return Promise.resolve(file.record);
+	}
+
 	public delete(_jwt: string, fileRecordId: string): Promise<void> {
 		this.files.delete(fileRecordId);
 

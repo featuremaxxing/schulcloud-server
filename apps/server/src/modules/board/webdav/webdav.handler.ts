@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -458,6 +458,31 @@ export class WebDavHandler {
 		await this.createFile(session, target, name, download.stream, source.fileRecord.size);
 	}
 
+	// A real move: the file keeps its id, so links to it on boards stay valid.
+	private async moveFile(
+		session: WebDavSession,
+		source: FileResource,
+		target: WebDavContainer,
+		name: string
+	): Promise<void> {
+		const jwt = await session.principal.getFilesStorageJwt();
+		const targetParentId = storageParentIdOf(target);
+
+		const moved = await this.filesStorageClient.move(
+			jwt,
+			source.fileRecord.id,
+			target.context.schoolId,
+			targetParentId
+		);
+		if (moved.name !== name) {
+			await this.filesStorageClient.rename(jwt, moved.id, name);
+		}
+
+		session.forgetFiles(source.parentId);
+		session.forgetFiles(targetParentId);
+		this.fileAreaNotifier.filesChanged(target.board.id, [source.parentId, targetParentId]);
+	}
+
 	private async deleteResource(session: WebDavSession, resource: WebDavResource): Promise<void> {
 		switch (resource.kind) {
 			case 'file': {
@@ -512,9 +537,7 @@ export class WebDavHandler {
 		}
 
 		if (source.kind === 'file') {
-			// the file storage cannot change the parent of a file, so this is copy + delete
-			await this.copyFile(session, source, destinationParent, name);
-			await this.deleteResource(session, source);
+			await this.moveFile(session, source, destinationParent, name);
 			return;
 		}
 		if (source.kind !== 'folder') {

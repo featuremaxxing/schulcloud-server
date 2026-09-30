@@ -116,7 +116,7 @@ describe('file area link element (api)', () => {
 		return { client, room, card, courseCard, fileArea, folder, otherFileArea };
 	};
 
-	const createElement = async (client: Awaited<ReturnType<typeof setup>>['client'], cardId: string) =>
+	const createElement = (client: Awaited<ReturnType<typeof setup>>['client'], cardId: string) =>
 		client.post(`cards/${cardId}/elements`, { type: ContentElementType.FILE_AREA_LINK });
 
 	it('should list the file areas of a room', async () => {

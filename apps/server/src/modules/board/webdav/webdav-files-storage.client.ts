@@ -142,6 +142,27 @@ export class WebDavFilesStorageClient {
 		return WebDavFilesStorageClient.mapFileRecord(response.data);
 	}
 
+	// the file keeps its id, so links to it stay valid
+	public async move(
+		jwt: string,
+		fileRecordId: EntityId,
+		schoolId: EntityId,
+		parentId: EntityId
+	): Promise<WebDavFileRecord> {
+		const url = this.url(`/file/move/${fileRecordId}`);
+		const target = {
+			storageLocation: STORAGE_LOCATION,
+			storageLocationId: schoolId,
+			parentType: PARENT_TYPE,
+			parentId,
+		};
+		const response = await this.request<FileRecordResponse>(() =>
+			this.httpService.patch<FileRecordResponse>(url, { target }, { headers: this.authHeaders(jwt) })
+		);
+
+		return WebDavFilesStorageClient.mapFileRecord(response.data);
+	}
+
 	public async delete(jwt: string, fileRecordId: EntityId): Promise<void> {
 		const url = this.url(`/file/delete/${fileRecordId}`);
 		await this.request(() => this.httpService.delete(url, { headers: this.authHeaders(jwt) }));
