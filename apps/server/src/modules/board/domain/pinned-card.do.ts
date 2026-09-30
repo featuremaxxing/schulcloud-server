@@ -13,9 +13,38 @@ export class PinnedCard extends BoardNode<PinnedCardProps> {
 		return this.props.referencedCardId;
 	}
 
+	get note(): string | undefined {
+		return this.props.note;
+	}
+
+	set note(value: string | undefined) {
+		this.props.note = value;
+	}
+
 	public canHaveChild(_childNode: AnyBoardNode): boolean {
 		return false;
 	}
 }
 
 export const isPinnedCard = (reference: unknown): reference is PinnedCard => reference instanceof PinnedCard;
+
+/**
+ * What the learning room shows around a pinned card: where it lives (the origin
+ * chip links back to it) and how far the owner is with it.
+ */
+export type PinnedCardInfo = {
+	boardId: EntityId;
+	title?: string;
+	status?: PinnedCardStatus;
+};
+
+/**
+ * The owner's own progress on the checkboxes, assignments and polls of a card -
+ * the same completion rules as the progress bars of boards and rooms.
+ */
+export type PinnedCardStatus = {
+	done: number;
+	total: number;
+	/** earliest due date of an assignment the owner has not handed in yet */
+	nextDueDate?: Date;
+};

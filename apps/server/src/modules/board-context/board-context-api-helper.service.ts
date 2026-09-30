@@ -95,6 +95,13 @@ export class BoardContextApiHelperService {
 
 			return room.schoolId;
 		}
+		// a personal board belongs to its owner, so does its school
+		if (context.type === BoardExternalReferenceType.User) {
+			const user = await this.userService.getUserEntityWithRoles(context.id);
+
+			return user.school.id;
+		}
+
 		/* istanbul ignore next */
 		throw new Error(`Unsupported board reference type ${context.type as string}`);
 	}
@@ -123,6 +130,12 @@ export class BoardContextApiHelperService {
 				features.push(BoardFeature.VIDEOCONFERENCE);
 			}
 
+			return features;
+		}
+
+		// a personal board (learning room, media shelf) has no course or room behind
+		// it, so there are no context driven features - and no reason to fail
+		if (context.type === BoardExternalReferenceType.User) {
 			return features;
 		}
 

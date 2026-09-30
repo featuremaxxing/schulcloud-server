@@ -10,6 +10,7 @@ import {
 	PinnedCardByCardUrlParams,
 	PinnedCardIdsResponse,
 	PinnedCardUrlParams,
+	UpdatePinnedCardNoteBodyParams,
 } from '../dto/learning-room';
 import { BoardResponseMapper } from '../mapper';
 
@@ -83,5 +84,19 @@ export class LearningRoomController {
 			bodyParams.toColumnId,
 			bodyParams.toPosition
 		);
+	}
+
+	@ApiOperation({ summary: 'Set or remove the private note on a pinned card.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@HttpCode(204)
+	@Put('pinned-cards/:pinnedCardId/note')
+	public async updatePinnedCardNote(
+		@Param() urlParams: PinnedCardUrlParams,
+		@Body() bodyParams: UpdatePinnedCardNoteBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.learningRoomUc.updatePinnedCardNote(currentUser.userId, urlParams.pinnedCardId, bodyParams.note);
 	}
 }

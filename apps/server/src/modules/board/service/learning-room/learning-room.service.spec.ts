@@ -3,7 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { BoardExternalReferenceType, BoardNodeFactory, ColumnBoard } from '../../domain';
 import { BoardNodeRepo } from '../../repo';
 import { columnBoardFactory, columnFactory, mediaBoardFactory, pinnedCardFactory } from '../../testing';
-import { DEFAULT_COLUMN_TITLES, LearningRoomService } from './learning-room.service';
+import { DEFAULT_BOARD_TITLE, DEFAULT_COLUMN_TITLES, LearningRoomService } from './learning-room.service';
 
 describe(LearningRoomService.name, () => {
 	let module: TestingModule;
@@ -85,6 +85,17 @@ describe(LearningRoomService.name, () => {
 						context: { type: BoardExternalReferenceType.User, id: 'userId' },
 					})
 				);
+			});
+
+			it('should give the board a title', async () => {
+				const { created } = setup();
+
+				await service.getOrCreatePersonalLearningRoomOfUser('userId');
+
+				expect(boardNodeFactory.buildColumnBoard).toHaveBeenCalledWith(
+					expect.objectContaining({ title: DEFAULT_BOARD_TITLE })
+				);
+				expect(created.isVisible).toBe(true);
 			});
 
 			it('should create the default columns, so a card can be pinned before it is ever opened', async () => {

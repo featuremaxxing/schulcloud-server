@@ -113,9 +113,45 @@ describe('BoardContextApiHelperService', () => {
 
 			expect(result).toBe(room.schoolId);
 		});
+
+		// personal boards (learning room, media shelf) have neither course nor room
+		it('should return the owners schoolId for user context', async () => {
+			const user = userFactory.build();
+			const columnBoard = columnBoardFactory.build({
+				context: { type: BoardExternalReferenceType.User, id: user.id },
+			}) as AnyBoardNode;
+
+			boardNodeService.findRoot.mockResolvedValueOnce(columnBoard);
+			boardNodeService.findByClassAndId.mockResolvedValueOnce(columnBoard);
+			userService.getUserEntityWithRoles.mockResolvedValueOnce(user);
+
+			const result = await service.getSchoolIdForBoardNode('nodeId');
+
+			expect(result).toBe(user.school.id);
+		});
 	});
 
 	describe('getFeaturesForBoardNode', () => {
+		// a personal board must not fail here - findBoard calls this on every load,
+		// and an exception surfaces in the client as a bare 404 page
+		describe('when context is user', () => {
+			it('should return no features instead of throwing', async () => {
+				const user = userFactory.build();
+				const column = columnFactory.build();
+				const columnBoard = columnBoardFactory.build({
+					context: { type: BoardExternalReferenceType.User, id: user.id },
+					children: [column],
+				});
+
+				boardNodeService.findById.mockResolvedValueOnce(column);
+				boardNodeService.findByClassAndId.mockResolvedValueOnce(columnBoard);
+
+				const result = await service.getFeaturesForBoardNode(column.id);
+
+				expect(result).toEqual([]);
+			});
+		});
+
 		describe('when context is course', () => {
 			const setup = () => {
 				const course = courseEntityFactory.build();

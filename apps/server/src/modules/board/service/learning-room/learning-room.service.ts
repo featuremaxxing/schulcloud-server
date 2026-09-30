@@ -12,6 +12,7 @@ import {
 import { BoardNodeRepo } from '../../repo';
 
 export const DEFAULT_COLUMN_TITLES = ['To-do', 'Dran', 'Erledigt'];
+export const DEFAULT_BOARD_TITLE = 'Mein Lernraum';
 
 @Injectable()
 export class LearningRoomService {
@@ -41,12 +42,20 @@ export class LearningRoomService {
 		const existingLearningRooms = existingBoards.filter(isColumnBoard);
 
 		if (existingLearningRooms.length) {
-			return existingLearningRooms[0];
+			const board = existingLearningRooms[0];
+
+			// boards created before the title existed would render headerless
+			if (board.title === '') {
+				board.title = DEFAULT_BOARD_TITLE;
+				await this.boardNodeRepo.save(board);
+			}
+
+			return board;
 		}
 
 		const board = this.boardNodeFactory.buildColumnBoard({
 			context,
-			title: '',
+			title: DEFAULT_BOARD_TITLE,
 			layout: BoardLayout.COLUMNS,
 		});
 		// personal board: nobody else can ever see it, so it is visible from the start

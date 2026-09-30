@@ -37,6 +37,8 @@ export interface CardProps extends BoardNodeProps {
 
 export interface PinnedCardProps extends BoardNodeProps {
 	referencedCardId: EntityId;
+	// private note of the owner - the referenced card itself stays untouched
+	note?: string;
 }
 
 export type CollaborativeTextEditorElementProps = BoardNodeProps;
