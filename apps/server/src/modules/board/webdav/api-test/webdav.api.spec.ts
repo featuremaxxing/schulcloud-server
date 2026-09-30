@@ -256,6 +256,7 @@ describe('webdav drive (api)', () => {
 		it('should rename, move and delete files', async () => {
 			const { teacherToken, folderC } = await setup();
 			await dav('PUT', `${areaPath}/A/a.txt`, teacherToken).send('x');
+			const [originalId] = [...filesStorage.files.keys()];
 
 			const rename = await dav('MOVE', `${areaPath}/A/a.txt`, teacherToken).set('Destination', `${areaPath}/A/b.txt`);
 			const move = await dav('MOVE', `${areaPath}/A/b.txt`, teacherToken).set('Destination', `${areaPath}/C/b.txt`);
@@ -264,6 +265,8 @@ describe('webdav drive (api)', () => {
 			expect([...filesStorage.files.values()].map((file) => [file.record.name, file.record.parentId])).toEqual([
 				['b.txt', folderC.id],
 			]);
+			// moved, not copied: the file keeps its id, so links to it stay valid
+			expect([...filesStorage.files.keys()]).toEqual([originalId]);
 
 			const deleted = await dav('DELETE', `${areaPath}/C/b.txt`, teacherToken);
 			expect(deleted.status).toEqual(HttpStatus.NO_CONTENT);
