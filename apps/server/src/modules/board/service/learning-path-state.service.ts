@@ -24,6 +24,21 @@ export interface LearningPathStepState {
 	status: LearningPathStepStatus;
 }
 
+export interface LearningPathSummaryStep {
+	step: LearningPathStep;
+	// empty when a student may not see the board yet (draft) or the board is gone
+	title: string;
+	isVisible: boolean;
+	status: LearningPathStepStatus;
+}
+
+export interface LearningPathSummary {
+	steps: LearningPathSummaryStep[];
+	// only for editors
+	studentCount?: number;
+	completedStudentCount?: number;
+}
+
 // Which boards of a learning path a person has completed, and which are still locked for them.
 // A board is completed when the person marked it as done (boards without progress items) or
 // finished all its progress items. A step whose board is gone or still a draft never blocks
@@ -111,10 +126,7 @@ export class LearningPathStateService {
 	// a step with lockUntilPrerequisitesDone on a published learning path can be locked at
 	// all; board editors never are. A board linked on several paths is open as soon as one
 	// of them lets the person through.
-	public async lockedUserIds(
-		boards: ColumnBoard[],
-		users: UserWithBoardRoles[]
-	): Promise<Map<EntityId, EntityId[]>> {
+	public async lockedUserIds(boards: ColumnBoard[], users: UserWithBoardRoles[]): Promise<Map<EntityId, EntityId[]>> {
 		const result = new Map<EntityId, EntityId[]>();
 		if (!this.config.featureBoardLearningPathEnabled) {
 			return result;
@@ -126,7 +138,9 @@ export class LearningPathStateService {
 			return result;
 		}
 
-		const pathBoards = (await this.boardNodeService.findByIds(Array.from(new Set(linkingSteps.map((s) => s.rootId))), 1))
+		const pathBoards = (
+			await this.boardNodeService.findByIds(Array.from(new Set(linkingSteps.map((s) => s.rootId))), 1)
+		)
 			.filter(isColumnBoard)
 			.filter((pathBoard) => pathBoard.isLearningPath() && pathBoard.isVisible);
 		if (pathBoards.length === 0) {
@@ -158,6 +172,88 @@ export class LearningPathStateService {
 		return result;
 	}
 
+	// A short overview of each given learning path for the room page. Students see their own
+	// states; editors see every board as configured and how many students completed the whole
+	// path (all published boards).
+	public async summarize(
+		paths: { board: ColumnBoard; users: UserWithBoardRoles[]; isEditor: boolean }[],
+		userId: EntityId
+	): Promise<Map<EntityId, LearningPathSummary>> {
+		const result = new Map<EntityId, LearningPathSummary>();
+		if (!this.config.featureBoardLearningPathEnabled || paths.length === 0) {
+			return result;
+		}
+
+		// the room loads its boards without children
+		const loaded = new Map(
+			(
+				await this.boardNodeService.findByIds(
+					paths.map((path) => path.board.id),
+					1
+				)
+			)
+				.filter(isColumnBoard)
+				.map((board) => [board.id, board])
+		);
+		const stepsByPath = new Map(
+			paths.map((path) => {
+				const board = loaded.get(path.board.id);
+				return [path.board.id, board ? this.getSteps(board) : []];
+			})
+		);
+		const linkedBoards = await this.loadLinkedBoards(Array.from(stepsByPath.values()).flat());
+
+		const users = new Map<EntityId, UserWithBoardRoles>();
+		for (const path of paths) {
+			const relevant = path.isEditor
+				? path.users.filter((member) => !this.isEditor(member))
+				: path.users.filter((member) => member.userId === userId);
+			relevant.forEach((member) => users.set(member.userId, member));
+		}
+		const completed = await this.completedUserIds(Array.from(linkedBoards.values()), Array.from(users.values()));
+
+		for (const path of paths) {
+			const steps = stepsByPath.get(path.board.id) ?? [];
+			if (path.isEditor) {
+				const students = path.users.filter((member) => !this.isEditor(member));
+				const published = steps.filter((step) => linkedBoards.get(step.linkedBoardId)?.isVisible);
+				const completedStudentCount = students.filter(
+					(student) =>
+						published.length > 0 && published.every((step) => completed.get(step.linkedBoardId)?.has(student.userId))
+				).length;
+
+				result.set(path.board.id, {
+					steps: steps.map((step) => {
+						const linkedBoard = linkedBoards.get(step.linkedBoardId);
+						return {
+							step,
+							title: linkedBoard?.title ?? '',
+							isVisible: linkedBoard?.isVisible ?? false,
+							status: linkedBoard ? 'open' : 'unavailable',
+						};
+					}),
+					studentCount: students.length,
+					completedStudentCount,
+				});
+			} else {
+				const states = this.computeStates(steps, linkedBoards, completed, userId);
+				result.set(path.board.id, {
+					steps: states.map((state) => {
+						const visible = state.status !== 'unavailable';
+						return {
+							step: state.step,
+							title: visible ? (state.linkedBoard?.title ?? '') : '',
+							isVisible: visible,
+							status: state.status,
+						};
+					}),
+				});
+			}
+		}
+
+		return result;
+	}
+
 	// The published learning paths the board is part of.
 	public async findPublishedPaths(boardId: EntityId): Promise<ColumnBoard[]> {
 		const steps = await this.boardNodeRepo.findLearningPathStepsLinking([boardId]);
@@ -165,9 +261,7 @@ export class LearningPathStateService {
 
 		const pathBoards = await this.boardNodeService.findByIds(Array.from(new Set(steps.map((step) => step.rootId))), 0);
 
-		return pathBoards
-			.filter(isColumnBoard)
-			.filter((pathBoard) => pathBoard.isLearningPath() && pathBoard.isVisible);
+		return pathBoards.filter(isColumnBoard).filter((pathBoard) => pathBoard.isLearningPath() && pathBoard.isVisible);
 	}
 
 	// For each given board, a published learning path that locks it (to name it in the room).

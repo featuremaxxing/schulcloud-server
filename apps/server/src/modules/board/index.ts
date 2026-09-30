@@ -61,6 +61,7 @@ export {
 	BoardWithAuth,
 	ColumnBoardService,
 	LearningPathStateService,
+	type LearningPathSummary,
 	ProgressItemResult,
 	ProgressItemType,
 	ProgressStudentResult,

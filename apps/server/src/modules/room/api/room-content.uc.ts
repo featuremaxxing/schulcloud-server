@@ -11,6 +11,7 @@ import {
 	ColumnBoardService,
 	isTeacherMember,
 	LearningPathStateService,
+	type LearningPathSummary,
 } from '@modules/board';
 import { BoardNodeRule, BoardOperation } from '@modules/board/authorisation/board-node.rule';
 import { RoomMembershipService } from '@modules/room-membership';
@@ -27,6 +28,8 @@ interface AuthorizedBoard {
 	auth: BoardNodeAuthorizable;
 	// set when a learning path keeps the board closed for the user until other boards are completed
 	lockedByLearningPath?: { id: EntityId; title: string };
+	// for learning paths: their boards with the user's state, for the overview in the room
+	learningPath?: LearningPathSummary;
 }
 
 @Injectable()
@@ -46,6 +49,13 @@ export class RoomContentUc {
 	) {}
 
 	public async getRoomBoards(userId: EntityId, roomId: EntityId): Promise<AuthorizedBoard[]> {
+		const authorizedBoards = await this.loadRoomBoards(userId, roomId);
+		await this.addLearningPathSummaries(userId, authorizedBoards);
+
+		return authorizedBoards;
+	}
+
+	private async loadRoomBoards(userId: EntityId, roomId: EntityId): Promise<AuthorizedBoard[]> {
 		await this.roomPermissionService.checkRoomIsLocked(roomId);
 
 		const user = await this.authorizationService.getUserWithPermissions(userId);
@@ -66,9 +76,7 @@ export class RoomContentUc {
 	public async getRoomProgress(userId: EntityId, roomId: EntityId, details = false): Promise<BoardProgressResult[]> {
 		this.checkFeatureEnabled();
 
-		const authorizedBoards = (await this.getRoomBoards(userId, roomId)).filter(
-			(entry) => !entry.lockedByLearningPath
-		);
+		const authorizedBoards = (await this.loadRoomBoards(userId, roomId)).filter((entry) => !entry.lockedByLearningPath);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const boards = authorizedBoards.map(({ board, auth }) => {
 			return {
@@ -83,6 +91,26 @@ export class RoomContentUc {
 		});
 
 		return results;
+	}
+
+	private async addLearningPathSummaries(userId: EntityId, authorizedBoards: AuthorizedBoard[]): Promise<void> {
+		const paths = authorizedBoards.filter((entry) => entry.board.isLearningPath() && !entry.lockedByLearningPath);
+		if (paths.length === 0) return;
+
+		const user = await this.authorizationService.getUserWithPermissions(userId);
+		const summaries = await this.learningPathStateService.summarize(
+			paths.map((entry) => {
+				return {
+					board: entry.board,
+					users: entry.auth.users,
+					isEditor: this.boardNodeRule.can('isBoardEditor', user, entry.auth),
+				};
+			}),
+			userId
+		);
+		for (const entry of paths) {
+			entry.learningPath = summaries.get(entry.board.id);
+		}
 	}
 
 	// The board-wide equivalent of CheckboxUc.state()'s canManage, minus the "is the

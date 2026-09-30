@@ -33,7 +33,15 @@ type StepJson = {
 	studentCount?: number;
 };
 type PathJson = { isEditor: boolean; steps: StepJson[]; availableBoards: { id: string }[] };
-type RoomBoardJson = { id: string; lockedByLearningPath?: { id: string; title: string } };
+type RoomBoardJson = {
+	id: string;
+	lockedByLearningPath?: { id: string; title: string };
+	learningPath?: {
+		steps: { boardId: string; title: string; status: string }[];
+		studentCount?: number;
+		completedStudentCount?: number;
+	};
+};
 
 describe('learning path (api)', () => {
 	let app: INestApplication;
@@ -233,6 +241,37 @@ describe('learning path (api)', () => {
 			const boards = (response.body as { data: RoomBoardJson[] }).data;
 			const locked = boards.find((board) => board.id === boardC.id);
 			expect(locked?.lockedByLearningPath).toEqual({ id: pathBoard.id, title: 'Lernweg' });
+		});
+
+		it('should give the student an overview of the learning path in the room', async () => {
+			const { studentClient, room, pathBoard, boardA, boardC, checkTheBox } = await setup();
+			await checkTheBox();
+
+			const response = await studentClient.get(`rooms/${room.id}/boards`);
+
+			const boards = (response.body as { data: RoomBoardJson[] }).data;
+			const path = boards.find((board) => board.id === pathBoard.id)?.learningPath;
+			expect(path?.steps.find((step) => step.boardId === boardA.id)).toMatchObject({ title: 'A', status: 'done' });
+			expect(path?.steps.find((step) => step.boardId === boardC.id)?.status).toBe('open');
+			expect(path?.studentCount).toBeUndefined();
+			expect(boards.find((board) => board.id === boardA.id)?.learningPath).toBeUndefined();
+		});
+
+		it('should show the teacher how many students completed the learning path', async () => {
+			const { teacherClient, studentClient, room, pathBoard, boardB, boardC, checkTheBox } = await setup();
+			await checkTheBox();
+			await studentClient.put(`boards/${boardB.id}/completion`, { completed: true });
+
+			const before = (await teacherClient.get(`rooms/${room.id}/boards`)).body as { data: RoomBoardJson[] };
+			expect(before.data.find((board) => board.id === pathBoard.id)?.learningPath).toMatchObject({
+				studentCount: 1,
+				completedStudentCount: 0,
+			});
+
+			await studentClient.put(`boards/${boardC.id}/completion`, { completed: true });
+
+			const after = (await teacherClient.get(`rooms/${room.id}/boards`)).body as { data: RoomBoardJson[] };
+			expect(after.data.find((board) => board.id === pathBoard.id)?.learningPath?.completedStudentCount).toBe(1);
 		});
 
 		it('should not lock anything while the learning path is a draft', async () => {
