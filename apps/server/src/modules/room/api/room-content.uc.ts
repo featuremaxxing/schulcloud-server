@@ -10,6 +10,7 @@ import {
 	type ColumnBoard,
 	ColumnBoardService,
 	isTeacherMember,
+	LearningPathStateService,
 } from '@modules/board';
 import { BoardNodeRule, BoardOperation } from '@modules/board/authorisation/board-node.rule';
 import { RoomMembershipService } from '@modules/room-membership';
@@ -24,6 +25,8 @@ interface AuthorizedBoard {
 	board: ColumnBoard;
 	allowedOperations: Record<BoardOperation, boolean>;
 	auth: BoardNodeAuthorizable;
+	// set when a learning path keeps the board closed for the user until other boards are completed
+	lockedByLearningPath?: { id: EntityId; title: string };
 }
 
 @Injectable()
@@ -38,6 +41,7 @@ export class RoomContentUc {
 		private readonly authorizationService: AuthorizationService,
 		private readonly columnBoardService: ColumnBoardService,
 		private readonly boardProgressService: BoardProgressService,
+		private readonly learningPathStateService: LearningPathStateService,
 		@Inject(BOARD_PUBLIC_API_CONFIG_TOKEN) private readonly boardConfig: BoardPublicApiConfig
 	) {}
 
@@ -62,7 +66,9 @@ export class RoomContentUc {
 	public async getRoomProgress(userId: EntityId, roomId: EntityId, details = false): Promise<BoardProgressResult[]> {
 		this.checkFeatureEnabled();
 
-		const authorizedBoards = await this.getRoomBoards(userId, roomId);
+		const authorizedBoards = (await this.getRoomBoards(userId, roomId)).filter(
+			(entry) => !entry.lockedByLearningPath
+		);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 		const boards = authorizedBoards.map(({ board, auth }) => {
 			return {
@@ -123,6 +129,7 @@ export class RoomContentUc {
 		const boardAuthorizables = await this.boardNodeAuthorizableService.getBoardAuthorizables(boards);
 
 		const result: AuthorizedBoard[] = [];
+		const locked: AuthorizedBoard[] = [];
 
 		for (const board of boards) {
 			const boardAuthorizable = boardAuthorizables.find((ba) => ba.boardNode.id === board.id);
@@ -132,6 +139,23 @@ export class RoomContentUc {
 			if (this.boardNodeRule.can('findBoard', user, boardAuthorizable)) {
 				const allowedOperations = this.boardNodeRule.listAllowedOperations(user, boardAuthorizable);
 				result.push({ board, allowedOperations, auth: boardAuthorizable });
+			} else if (board.isVisible && this.boardNodeRule.isLockedByLearningPath(user, boardAuthorizable)) {
+				// shown with a lock instead of hidden, so students see what comes next
+				const entry: AuthorizedBoard = {
+					board,
+					allowedOperations: this.boardNodeRule.listAllowedOperations(user, boardAuthorizable),
+					auth: boardAuthorizable,
+				};
+				result.push(entry);
+				locked.push(entry);
+			}
+		}
+
+		if (locked.length > 0) {
+			const paths = await this.learningPathStateService.findLockingPaths(locked.map((entry) => entry.board.id));
+			for (const entry of locked) {
+				const path = paths.get(entry.board.id);
+				entry.lockedByLearningPath = { id: path?.id ?? '', title: path?.title ?? '' };
 			}
 		}
 

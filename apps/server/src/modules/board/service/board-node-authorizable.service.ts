@@ -8,14 +8,18 @@ import { type EntityId } from '@shared/domain/types';
 import {
 	AnyBoardNode,
 	BoardConfiguration,
+	BoardExternalReferenceType,
 	BoardNodeAuthorizable,
 	ColumnBoard,
 	isAssignmentFeedback,
 	isAssignmentSubmission,
+	isColumnBoard,
 	MediaBoard,
+	type UserWithBoardRoles,
 } from '../domain';
 import { AssignmentReviewRepo, BoardNodeRepo } from '../repo';
 import { BoardNodeService } from './board-node.service';
+import { LearningPathStateService } from './learning-path-state.service';
 import { BoardContextResolverService } from './internal/board-context/board-context-resolver.service';
 import { PreparedBoardContext } from './internal/board-context/prepared-board-context.interface';
 
@@ -26,6 +30,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardContextResolverService: BoardContextResolverService,
 		private readonly assignmentReviewRepo: AssignmentReviewRepo,
+		private readonly learningPathStateService: LearningPathStateService,
 		injectionService: AuthorizationInjectionService
 	) {
 		injectionService.injectReferenceLoader(AuthorizableReferenceType.BoardNode, this);
@@ -50,6 +55,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 		const users = await preparedContext.getUsersWithBoardRoles();
 		const boardConfiguration = preparedContext.getBoardConfiguration(rootNode as MediaBoard | ColumnBoard);
 		const { peerReviewerIds, submittedPeerReviewerIds } = await this.getPeerReviewInfo(boardNode, parentNode);
+		const lockedUserIds = await this.getLearningPathLocks([rootNode], users);
 
 		const boardNodeAuthorizable = new BoardNodeAuthorizable({
 			users,
@@ -60,6 +66,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 			boardConfiguration,
 			peerReviewerIds,
 			submittedPeerReviewerIds,
+			learningPathLockedUserIds: lockedUserIds.get(rootNode.id),
 		});
 
 		return boardNodeAuthorizable;
@@ -82,6 +89,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 
 		const preparedContext = await this.resolveContext(rootNodes[0]);
 		const users = await preparedContext.getUsersWithBoardRoles();
+		const lockedUserIds = await this.getLearningPathLocks(rootNodes, users);
 
 		const boardNodeAuthorizables = boardNodes.map((boardNode) => {
 			const currentRootNode = boardNodeMap[boardNode.rootId];
@@ -96,6 +104,7 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 				rootNode: currentRootNode,
 				parentNode,
 				boardConfiguration,
+				learningPathLockedUserIds: lockedUserIds.get(currentRootNode.id),
 			});
 		});
 
@@ -126,6 +135,22 @@ export class BoardNodeAuthorizableService implements AuthorizationLoaderService 
 			peerReviewerIds: reviews.map((review) => review.reviewerUserId),
 			submittedPeerReviewerIds: reviews.filter((review) => review.submittedAt).map((review) => review.reviewerUserId),
 		};
+	}
+
+	// Only boards of rooms can be part of a learning path.
+	private async getLearningPathLocks(
+		rootNodes: AnyBoardNode[],
+		users: UserWithBoardRoles[]
+	): Promise<Map<EntityId, EntityId[]>> {
+		const roomBoards = rootNodes.filter(
+			(node): node is ColumnBoard =>
+				isColumnBoard(node) && node.context.type === BoardExternalReferenceType.Room && node.hasColumns()
+		);
+		if (roomBoards.length === 0) {
+			return new Map();
+		}
+
+		return await this.learningPathStateService.lockedUserIds(roomBoards, users);
 	}
 
 	private async resolveContext(rootNode: AnyBoardNode): Promise<PreparedBoardContext> {

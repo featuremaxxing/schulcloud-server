@@ -16,6 +16,7 @@ import {
 	PollVote,
 	type ProgressSummary,
 	summarize,
+	type UserWithBoardRoles,
 } from '../domain';
 import { BoardNodeRepo } from '../repo/board-node.repo';
 import { BoardNodeService } from './board-node.service';
@@ -175,6 +176,67 @@ export class BoardProgressService {
 				items,
 			};
 		});
+	}
+
+	// Who has completed each board: a person is done with a board when it has at least one
+	// progress item for them and they finished all of them. Assignments that have not started
+	// yet do not count, as in the student view above. Used by learning paths.
+	public async computeCompletedUserIds(
+		boards: { board: ColumnBoard; users: UserWithBoardRoles[] }[],
+		enabledTypes: BoardNodeType[]
+	): Promise<Map<EntityId, Set<EntityId>>> {
+		const result = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
+		if (boards.length === 0 || enabledTypes.length === 0) {
+			return result;
+		}
+
+		const elements = (await this.boardNodeRepo.findElementsByBoardIds(
+			boards.map((entry) => entry.board.id),
+			enabledTypes
+		)) as AnyContentElement[];
+		const now = new Date();
+		const visibleElements = elements.filter((element) => !isAssignmentElement(element) || element.isStartedAt(now));
+
+		const [submissions, votes] = await Promise.all([
+			this.boardNodeRepo.findAssignmentSubmissionsByParentIds(
+				visibleElements.filter(isAssignmentElement).map((element) => element.id)
+			),
+			this.boardNodeRepo.findPollVotesByParentIds(visibleElements.filter(isPollElement).map((element) => element.id)),
+		]);
+
+		for (const entry of boards) {
+			const progresses = visibleElements
+				.filter((element) => pathSegmentOf(element, 0) === entry.board.id)
+				.map((element) => computeItemProgress(element, this.childrenOf(element, submissions, votes), entry.users))
+				.filter((progress): progress is ItemProgress => !!progress);
+
+			const done = result.get(entry.board.id) as Set<EntityId>;
+			for (const user of entry.users) {
+				const own = progresses.filter((progress) => progress.eligibleUserIds.includes(user.userId));
+				if (own.length > 0 && own.every((progress) => progress.doneUserIds.includes(user.userId))) {
+					done.add(user.userId);
+				}
+			}
+		}
+
+		return result;
+	}
+
+	// Whether the board has at least one progress item for the given person - without one,
+	// a learning path lets them mark the board as done by hand.
+	public async hasProgressItemsFor(
+		board: ColumnBoard,
+		user: UserWithBoardRoles,
+		enabledTypes: BoardNodeType[]
+	): Promise<boolean> {
+		if (enabledTypes.length === 0) return false;
+
+		const elements = (await this.boardNodeRepo.findElementsByBoardIds([board.id], enabledTypes)) as AnyContentElement[];
+		const now = new Date();
+
+		return elements
+			.filter((element) => !isAssignmentElement(element) || element.isStartedAt(now))
+			.some((element) => computeItemProgress(element, [], [user])?.eligibleUserIds.includes(user.userId));
 	}
 
 	private childrenOf(

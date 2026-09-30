@@ -20,6 +20,7 @@ import {
 	ColumnController,
 	ElementController,
 	FileAreaController,
+	LearningPathController,
 	LearningRoomController,
 	PollController,
 } from './controller';
@@ -33,6 +34,7 @@ import {
 	ColumnUc,
 	ElementUc,
 	FileAreaUc,
+	LearningPathUc,
 	LearningRoomUc,
 	PollUc,
 } from './uc';
@@ -61,6 +63,7 @@ import {
 		PollController,
 		CheckboxController,
 		FileAreaController,
+		LearningPathController,
 	],
 	providers: [
 		BoardUc,
@@ -73,6 +76,7 @@ import {
 		PollUc,
 		CheckboxUc,
 		FileAreaUc,
+		LearningPathUc,
 		CopyRoomBoardsStep,
 	],
 })

@@ -4,7 +4,7 @@ import { type RoomOperation } from '@modules/room-membership/authorization/room.
 import { type PaginationParams } from '@shared/controller/dto';
 import { type Page } from '@shared/domain/domainobject';
 import { type Room } from '../../domain/do/room.do';
-import { RoomBoardItemResponse } from '../dto/response/room-board-item.response';
+import { RoomBoardItemResponse, RoomBoardLockResponse } from '../dto/response/room-board-item.response';
 import { RoomBoardListResponse } from '../dto/response/room-board-list.response';
 import { RoomCreatedResponse } from '../dto/response/room-created.response';
 import { RoomDetailsResponse } from '../dto/response/room-details.response';
@@ -80,7 +80,8 @@ export class RoomMapper {
 
 	public static mapToRoomBoardItemReponse(
 		board: ColumnBoard,
-		allowedOperations: Partial<Record<BoardOperation, boolean>>
+		allowedOperations: Partial<Record<BoardOperation, boolean>>,
+		lockedByLearningPath?: { id: string; title: string }
 	): RoomBoardItemResponse {
 		const response = new RoomBoardItemResponse({
 			id: board.id,
@@ -90,16 +91,21 @@ export class RoomMapper {
 			createdAt: board.createdAt,
 			updatedAt: board.updatedAt,
 			allowedOperations: Object.fromEntries(Object.entries(allowedOperations).filter(([, value]) => value)),
+			lockedByLearningPath: lockedByLearningPath ? new RoomBoardLockResponse(lockedByLearningPath) : undefined,
 		});
 
 		return response;
 	}
 
 	public static mapToRoomBoardListResponse(
-		boardsWithOperations: { board: ColumnBoard; allowedOperations: Record<BoardOperation, boolean> }[]
+		boardsWithOperations: {
+			board: ColumnBoard;
+			allowedOperations: Record<BoardOperation, boolean>;
+			lockedByLearningPath?: { id: string; title: string };
+		}[]
 	): RoomBoardListResponse {
-		const itemData = boardsWithOperations.map(({ board, allowedOperations }) =>
-			this.mapToRoomBoardItemReponse(board, allowedOperations)
+		const itemData = boardsWithOperations.map(({ board, allowedOperations, lockedByLearningPath }) =>
+			this.mapToRoomBoardItemReponse(board, allowedOperations, lockedByLearningPath)
 		);
 
 		const response = new RoomBoardListResponse(itemData, boardsWithOperations.length);

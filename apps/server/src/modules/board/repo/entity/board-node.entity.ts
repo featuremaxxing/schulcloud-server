@@ -12,6 +12,7 @@ import {
 	type CheckboxEntry,
 	ContentElementType,
 	Colors,
+	type LearningPathUnlockMode,
 	type PollAnswer,
 	PollAudience,
 	type PollQuestion,
@@ -177,6 +178,27 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 
 	@Property({ type: ObjectIdType, nullable: true })
 	targetId: EntityId | undefined;
+
+	// LearningPathStep
+	// --------------------------------------------------------------------------
+	@Index()
+	@Property({ type: ObjectIdType, nullable: true })
+	linkedBoardId: EntityId | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	positionX: number | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	positionY: number | undefined;
+
+	@Property({ nullable: true })
+	prerequisiteStepIds: EntityId[] | undefined;
+
+	@Property({ type: 'string', nullable: true })
+	unlockMode: LearningPathUnlockMode | undefined;
+
+	@Property({ type: 'boolean', nullable: true })
+	lockUntilPrerequisitesDone: boolean | undefined;
 
 	// PinnedCard
 	// --------------------------------------------------------------------------

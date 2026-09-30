@@ -89,6 +89,19 @@ export interface FileAreaFolderProps extends BoardNodeProps {
 	title: string;
 }
 
+export type LearningPathUnlockMode = 'all' | 'any';
+
+// a tile on a learning path board, linking another board of the same room
+export interface LearningPathStepProps extends BoardNodeProps {
+	linkedBoardId: EntityId;
+	positionX: number;
+	positionY: number;
+	// incoming arrows: the steps that lead to this one
+	prerequisiteStepIds: EntityId[];
+	unlockMode: LearningPathUnlockMode;
+	lockUntilPrerequisitesDone: boolean;
+}
+
 export interface DeletedElementProps extends BoardNodeProps {
 	title: string;
 	deletedElementType: ContentElementType;
@@ -265,6 +278,7 @@ export type AnyBoardNodeProps =
 	| FileElementProps
 	| FileFolderElementProps
 	| FileAreaLinkElementProps
+	| LearningPathStepProps
 	| LinkElementProps
 	| RichTextElementProps
 	| VideoConferenceElementProps

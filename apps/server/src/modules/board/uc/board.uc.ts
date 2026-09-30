@@ -57,6 +57,14 @@ export class BoardUc {
 				throw new BadRequestException('File areas can only be created in rooms');
 			}
 		}
+		if (params.layout === BoardLayout.LEARNING_PATH) {
+			if (!this.config.featureBoardLearningPathEnabled) {
+				throw new BadRequestException('Learning paths are not enabled');
+			}
+			if (params.parentType !== BoardExternalReferenceType.Room) {
+				throw new BadRequestException('Learning paths can only be created in rooms');
+			}
+		}
 
 		await this.checkBoardCreatePermission(userId, { type: params.parentType, id: params.parentId });
 
@@ -253,6 +261,9 @@ export class BoardUc {
 
 		if (layout === BoardLayout.FILES || board.layout === BoardLayout.FILES) {
 			throw new BadRequestException('The layout of a file area cannot be changed');
+		}
+		if (layout === BoardLayout.LEARNING_PATH || board.layout === BoardLayout.LEARNING_PATH) {
+			throw new BadRequestException('The layout of a learning path cannot be changed');
 		}
 
 		await this.boardNodeService.updateLayout(board, layout);

@@ -1,0 +1,91 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+	ArrayMaxSize,
+	IsArray,
+	IsBoolean,
+	IsIn,
+	IsInt,
+	IsMongoId,
+	IsOptional,
+	Max,
+	Min,
+} from 'class-validator';
+import { LEARNING_PATH_MAX_STEPS, type LearningPathUnlockMode } from '../../../domain';
+
+const MAX_COORDINATE = 100000;
+
+export class LearningPathBoardUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the board.', required: true, nullable: false })
+	boardId!: string;
+}
+
+export class LearningPathStepUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the learning path step.', required: true, nullable: false })
+	stepId!: string;
+}
+
+export class CreateLearningPathStepBodyParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the learning path board.', required: true })
+	boardId!: string;
+
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the board of the same room the step leads to.', required: true })
+	linkedBoardId!: string;
+
+	@IsInt()
+	@Min(-MAX_COORDINATE)
+	@Max(MAX_COORDINATE)
+	@ApiProperty({ description: 'Horizontal position on the canvas.', required: true })
+	positionX!: number;
+
+	@IsInt()
+	@Min(-MAX_COORDINATE)
+	@Max(MAX_COORDINATE)
+	@ApiProperty({ description: 'Vertical position on the canvas.', required: true })
+	positionY!: number;
+}
+
+export class UpdateLearningPathStepBodyParams {
+	@IsOptional()
+	@IsInt()
+	@Min(-MAX_COORDINATE)
+	@Max(MAX_COORDINATE)
+	@ApiPropertyOptional({ description: 'Horizontal position on the canvas.' })
+	positionX?: number;
+
+	@IsOptional()
+	@IsInt()
+	@Min(-MAX_COORDINATE)
+	@Max(MAX_COORDINATE)
+	@ApiPropertyOptional({ description: 'Vertical position on the canvas.' })
+	positionY?: number;
+
+	@IsOptional()
+	@IsArray()
+	@ArrayMaxSize(LEARNING_PATH_MAX_STEPS)
+	@IsMongoId({ each: true })
+	@ApiPropertyOptional({ description: 'The steps that lead to this one (incoming arrows).', type: [String] })
+	prerequisiteStepIds?: string[];
+
+	@IsOptional()
+	@IsIn(['all', 'any'])
+	@ApiPropertyOptional({
+		description: 'Whether all prerequisites must be completed, or one of them is enough.',
+		enum: ['all', 'any'],
+	})
+	unlockMode?: LearningPathUnlockMode;
+
+	@IsOptional()
+	@IsBoolean()
+	@ApiPropertyOptional({ description: 'Students can open the board only after completing the prerequisites.' })
+	lockUntilPrerequisitesDone?: boolean;
+}
+
+export class BoardCompletionBodyParams {
+	@IsBoolean()
+	@ApiProperty({ description: 'Whether the board is completed.', required: true })
+	completed!: boolean;
+}

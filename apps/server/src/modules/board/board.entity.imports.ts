@@ -1,5 +1,5 @@
 import { AccountEntity } from '@modules/account/repo';
-import { BoardNodeEntity } from '@modules/board/repo/entity';
+import { BoardCompletionEntity, BoardNodeEntity } from '@modules/board/repo/entity';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { DeletionLogEntity } from '@modules/deletion/repo/entity/deletion-log.entity';
@@ -51,6 +51,7 @@ import { VideoConferenceEntity } from '@modules/video-conference/repo';
 export const ENTITIES = [
 	AccountEntity,
 	BoardNodeEntity,
+	BoardCompletionEntity,
 	ClassEntity,
 	ColumnBoardBoardElement,
 	LegacyBoard,

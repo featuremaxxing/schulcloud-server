@@ -7,3 +7,5 @@ export * from './event';
 export * from './learning-room';
 export * from './media-board';
 export * from './file-area-notifier.service';
+export * from './learning-path-state.service';
+export * from './learning-path-notifier.service';

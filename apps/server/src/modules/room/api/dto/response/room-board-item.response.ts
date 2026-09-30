@@ -1,4 +1,17 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export class RoomBoardLockResponse {
+	@ApiProperty({ description: 'The learning path that locks the board.' })
+	id: string;
+
+	@ApiProperty()
+	title: string;
+
+	constructor(props: RoomBoardLockResponse) {
+		this.id = props.id;
+		this.title = props.title;
+	}
+}
 import { BoardLayout } from '@modules/board';
 import { BoardOperation, BoardOperationValues } from '@modules/board/authorisation/board-node.rule';
 
@@ -31,6 +44,12 @@ export class RoomBoardItemResponse {
 	})
 	allowedOperations: Partial<Record<BoardOperation, boolean>>;
 
+	@ApiPropertyOptional({
+		type: RoomBoardLockResponse,
+		description: 'Set when a learning path keeps the board closed until other boards are completed.',
+	})
+	lockedByLearningPath?: RoomBoardLockResponse;
+
 	constructor(item: RoomBoardItemResponse) {
 		this.id = item.id;
 		this.title = item.title;
@@ -39,5 +58,6 @@ export class RoomBoardItemResponse {
 		this.createdAt = item.createdAt;
 		this.updatedAt = item.updatedAt;
 		this.allowedOperations = item.allowedOperations;
+		this.lockedByLearningPath = item.lockedByLearningPath;
 	}
 }

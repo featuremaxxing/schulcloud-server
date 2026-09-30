@@ -18,6 +18,7 @@ import { FileAreaLinkElement } from './file-area-link-element.do';
 import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
+import { LearningPathStep } from './learning-path-step.do';
 import { LinkElement } from './link-element.do';
 import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
@@ -48,6 +49,20 @@ export class BoardNodeFactory {
 		const folder = new FileAreaFolder({ ...this.getBaseProps(), title });
 
 		return folder;
+	}
+
+	public buildLearningPathStep(linkedBoardId: EntityId, positionX: number, positionY: number): LearningPathStep {
+		const step = new LearningPathStep({
+			...this.getBaseProps(),
+			linkedBoardId,
+			positionX,
+			positionY,
+			prerequisiteStepIds: [],
+			unlockMode: 'all',
+			lockUntilPrerequisitesDone: false,
+		});
+
+		return step;
 	}
 
 	public buildColumn(): Column {

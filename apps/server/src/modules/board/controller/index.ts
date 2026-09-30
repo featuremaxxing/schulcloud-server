@@ -7,3 +7,4 @@ export * from './learning-room';
 export * from './media-board';
 export * from './poll.controller';
 export * from './file-area.controller';
+export * from './learning-path.controller';

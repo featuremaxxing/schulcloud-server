@@ -127,7 +127,7 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 	}
 
 	public hasPermission(user: User, authorizable: BoardNodeAuthorizable, context: AuthorizationContext): boolean {
-		if (authorizable.boardConfiguration.isLocked) {
+		if (authorizable.boardConfiguration.isLocked || this.isLockedByLearningPath(user, authorizable)) {
 			return false;
 		}
 
@@ -317,20 +317,34 @@ export class BoardNodeRule implements Rule<BoardNodeAuthorizable> {
 		const map = this.getOperationMap();
 		const operations = Object.keys(map) as BoardOperation[];
 
+		const locked = this.isLockedByLearningPath(user, authorizable);
 		for (const operation of operations) {
 			const fn = map[operation];
-			list[operation] = fn(user, authorizable);
+			list[operation] = !locked && fn(user, authorizable);
 		}
 
 		return list;
 	}
 
 	public can(operation: BoardOperation, user: User, authorizable: BoardNodeAuthorizable): boolean {
+		if (this.isLockedByLearningPath(user, authorizable)) {
+			return false;
+		}
+
 		const canFunction = this.getOperationMap()[operation];
 
 		const can = canFunction(user, authorizable);
 
 		return can;
+	}
+
+	// A learning path requires the person to complete other boards first. Editors are never
+	// locked (see LearningPathStateService.lockedUserIds), this is a second safeguard.
+	public isLockedByLearningPath(user: User, authorizable: BoardNodeAuthorizable): boolean {
+		return (
+			authorizable.isLockedByLearningPath(user.id) &&
+			!authorizable.getUserPermissions(user.id).includes(Permission.BOARD_EDIT)
+		);
 	}
 
 	private isBoardAdmin(userWithBoardRoles: UserWithBoardRoles): boolean {

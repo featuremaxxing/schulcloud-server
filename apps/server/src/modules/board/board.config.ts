@@ -62,6 +62,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureBoardFileAreaEnabled = false;
 
+	@ConfigProperty('FEATURE_BOARD_LEARNING_PATH_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureBoardLearningPathEnabled = false;
+
 	@ConfigProperty('FEATURE_BOARD_PROGRESS_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

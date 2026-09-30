@@ -6,6 +6,7 @@ import type { CollaborativeTextEditorElement } from '../collaborative-text-edito
 import type { ColumnBoard } from '../colum-board.do';
 import type { Column } from '../column.do';
 import type { FileAreaFolder } from '../file-area-folder.do';
+import type { LearningPathStep } from '../learning-path-step.do';
 import type { AnyMediaBoardNode } from '../media-board';
 import type { PinnedCard } from '../pinned-card.do';
 import type { PollVote } from '../poll-vote.do';
@@ -22,5 +23,6 @@ export type AnyBoardNode =
 	| Column
 	| ColumnBoard
 	| FileAreaFolder
+	| LearningPathStep
 	| PinnedCard
 	| PollVote;

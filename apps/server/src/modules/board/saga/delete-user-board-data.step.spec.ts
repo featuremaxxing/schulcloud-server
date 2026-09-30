@@ -10,7 +10,7 @@ import {
 } from '@modules/saga';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { setupEntities } from '@testing/database';
-import { BoardNodeEntity } from '../repo';
+import { BoardCompletionRepo, BoardNodeEntity } from '../repo';
 import { BoardNodeService, MediaBoardService } from '../service';
 import { mediaBoardFactory } from '../testing';
 import { DeleteUserBoardDataStep } from './delete-user-board-data.step';
@@ -21,6 +21,7 @@ describe(DeleteUserBoardDataStep.name, () => {
 
 	let boardNodeService: DeepMocked<BoardNodeService>;
 	let mediaBoardService: DeepMocked<MediaBoardService>;
+	let boardCompletionRepo: DeepMocked<BoardCompletionRepo>;
 
 	beforeAll(async () => {
 		await setupEntities([BoardNodeEntity]);
@@ -41,6 +42,10 @@ describe(DeleteUserBoardDataStep.name, () => {
 					useValue: createMock<MediaBoardService>(),
 				},
 				{
+					provide: BoardCompletionRepo,
+					useValue: createMock<BoardCompletionRepo>(),
+				},
+				{
 					provide: Logger,
 					useValue: createMock<Logger>(),
 				},
@@ -50,6 +55,7 @@ describe(DeleteUserBoardDataStep.name, () => {
 		service = module.get(DeleteUserBoardDataStep);
 		boardNodeService = module.get(BoardNodeService);
 		mediaBoardService = module.get(MediaBoardService);
+		boardCompletionRepo = module.get(BoardCompletionRepo);
 	});
 
 	afterAll(async () => {
@@ -67,6 +73,7 @@ describe(DeleteUserBoardDataStep.name, () => {
 				const userId = new ObjectId().toHexString();
 
 				mediaBoardService.findByExternalReference.mockResolvedValueOnce([board]);
+				boardCompletionRepo.deleteByUserId.mockResolvedValueOnce(2);
 
 				return {
 					board,
@@ -82,6 +89,14 @@ describe(DeleteUserBoardDataStep.name, () => {
 				expect(boardNodeService.delete).toHaveBeenCalledWith(board);
 			});
 
+			it('should delete the learning path completions of the user', async () => {
+				const { userId } = setup();
+
+				await service.execute({ userId });
+
+				expect(boardCompletionRepo.deleteByUserId).toHaveBeenCalledWith(userId);
+			});
+
 			it('should return a report report', async () => {
 				const { board, userId } = setup();
 
@@ -90,6 +105,7 @@ describe(DeleteUserBoardDataStep.name, () => {
 				expect(result).toEqual(
 					StepReportBuilder.build(ModuleName.MEDIA_BOARD, [
 						StepOperationReportBuilder.build(StepOperationType.DELETE, 1, [board.id]),
+						StepOperationReportBuilder.build(StepOperationType.DELETE, 2, []),
 					])
 				);
 			});
