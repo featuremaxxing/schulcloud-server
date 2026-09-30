@@ -115,6 +115,7 @@ export class RoomMapper {
 						isVisible,
 						status,
 						prerequisiteStepIds: step.prerequisiteStepIds,
+						unlockMode: step.unlockMode,
 						positionX: step.positionX,
 						positionY: step.positionY,
 					})

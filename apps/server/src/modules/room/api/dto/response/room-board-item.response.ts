@@ -33,6 +33,9 @@ export class RoomLearningPathStepResponse {
 	@ApiProperty({ type: [String] })
 	prerequisiteStepIds: string[];
 
+	@ApiProperty({ enum: ['all', 'any'], description: 'Whether every prerequisite or one of them opens the step.' })
+	unlockMode: 'all' | 'any';
+
 	@ApiProperty()
 	positionX: number;
 
@@ -46,6 +49,7 @@ export class RoomLearningPathStepResponse {
 		this.isVisible = props.isVisible;
 		this.status = props.status;
 		this.prerequisiteStepIds = props.prerequisiteStepIds;
+		this.unlockMode = props.unlockMode;
 		this.positionX = props.positionX;
 		this.positionY = props.positionY;
 	}
