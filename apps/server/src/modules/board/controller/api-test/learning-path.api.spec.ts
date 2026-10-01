@@ -444,6 +444,21 @@ describe('learning path (api)', () => {
 			expect(teacherPath.steps[0]).toMatchObject({ doneCount: 0, studentCount: 1 });
 		});
 
+		it('should remember the completion when the teacher adds an item before the student opened the learning path', async () => {
+			const { studentClient, teacherClient, pathBoard, boardA, boardC, cardA, checkTheBox } = await setup();
+			// the student ticks the checkbox but never opens the learning path or the room
+			await checkTheBox();
+
+			const response = await teacherClient.post(`cards/${cardA.id}/elements`, { type: 'checkbox' });
+
+			expect(response.status).toEqual(201);
+			expect(await em.count(BoardCompletionEntity, { boardId: boardA.id })).toBe(1);
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(statusOf(path, boardA.id)).toBe('open');
+			expect(path.steps.find((step) => step.linkedBoardId === boardA.id)?.reopened).toBe(true);
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+		});
+
 		it('should be done again once the new checkbox is ticked', async () => {
 			const result = await setup();
 			const { studentClient, pathBoard, boardA, checkTheBox } = result;

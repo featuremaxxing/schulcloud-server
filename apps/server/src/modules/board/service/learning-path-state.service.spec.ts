@@ -432,6 +432,42 @@ describe(LearningPathStateService.name, () => {
 			});
 		});
 
+		describe('rememberCompletions', () => {
+			it('should store the completion of every student who is done now', async () => {
+				const { boardA, teacher, student } = setup();
+				boardProgressService.computeCompletedUserIds.mockResolvedValue({
+					done: new Map([[boardA.id, new Set([student.userId])]]),
+					withItems: new Map([[boardA.id, new Set([student.userId])]]),
+				});
+				boardNodeRepo.findLearningPathStepsLinking.mockResolvedValue([
+					learningPathStepFactory.build({ linkedBoardId: boardA.id }),
+				]);
+
+				await service.rememberCompletions(boardA, [teacher, student]);
+
+				expect(boardCompletionRepo.markCompleted).toHaveBeenCalledTimes(1);
+				expect(boardCompletionRepo.markCompleted).toHaveBeenCalledWith(student.userId, boardA.id, 'progress');
+			});
+
+			it('should do nothing for a board that is not part of a learning path', async () => {
+				const { boardA, student } = setup();
+				boardNodeRepo.findLearningPathStepsLinking.mockResolvedValue([]);
+
+				await service.rememberCompletions(boardA, [student]);
+
+				expect(boardCompletionRepo.markCompleted).not.toHaveBeenCalled();
+				expect(boardProgressService.computeCompletedUserIds).not.toHaveBeenCalled();
+			});
+
+			it('should do nothing for a board outside of a room', async () => {
+				const board = columnBoardFactory.build();
+
+				await service.rememberCompletions(board, [{ userId: 'u', roles: [BoardRoles.READER] }]);
+
+				expect(boardNodeRepo.findLearningPathStepsLinking).not.toHaveBeenCalled();
+			});
+		});
+
 		describe('overview', () => {
 			it('should list who goes which learning path with their progress', async () => {
 				const { boardA, blue, green, teacher, student, enroll, complete } = setup();

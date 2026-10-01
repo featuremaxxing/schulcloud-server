@@ -462,6 +462,29 @@ export class LearningPathStateService {
 		return result;
 	}
 
+	// Remembers who has completed the board right now. Called before a progress item is added to
+	// it: from then on the board has something new to do, but what the completion unlocked stays.
+	// Only boards that are part of a learning path are of interest.
+	public async rememberCompletions(board: ColumnBoard, users: UserWithBoardRoles[]): Promise<void> {
+		if (
+			!this.config.featureBoardLearningPathEnabled ||
+			!board.hasColumns() ||
+			board.context.type !== BoardExternalReferenceType.Room
+		) {
+			return;
+		}
+
+		const steps = await this.boardNodeRepo.findLearningPathStepsLinking([board.id]);
+		const students = users.filter((user) => !this.isEditor(user));
+		if (steps.length === 0 || students.length === 0) {
+			return;
+		}
+
+		const completion = await this.completionState([board], students);
+		const doneIds = Array.from(completion.done.get(board.id) ?? []);
+		await Promise.all(doneIds.map((id) => this.boardCompletionRepo.markCompleted(id, board.id, 'progress')));
+	}
+
 	// Takes the ticks of the given people off every checkbox of the boards.
 	public async clearCheckboxes(boardIds: EntityId[], userIds: EntityId[]): Promise<void> {
 		const targets = new Set(userIds);
