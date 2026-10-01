@@ -111,6 +111,9 @@ export class LearningPathResponse {
 	@ApiPropertyOptional({ description: 'Students only: whether they go this learning path.' })
 	isEnrolled?: boolean;
 
+	@ApiPropertyOptional({ description: 'Students only: whether the room has several learning paths to choose from.' })
+	canChoose?: boolean;
+
 	@ApiPropertyOptional({ description: 'Editors only: students going this learning path.' })
 	studentCount?: number;
 
@@ -131,6 +134,7 @@ export class LearningPathResponse {
 		this.isEditor = props.isEditor;
 		this.color = props.color;
 		this.isEnrolled = props.isEnrolled;
+		this.canChoose = props.canChoose;
 		this.studentCount = props.studentCount;
 		this.completedStudentCount = props.completedStudentCount;
 		this.steps = props.steps;

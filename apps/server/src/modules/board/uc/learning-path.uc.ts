@@ -49,8 +49,9 @@ export interface LearningPathView {
 	board: ColumnBoard;
 	color?: LearningPathColor;
 	isEditor: boolean;
-	// students: whether they go this learning path
+	// students: whether they go this learning path, and whether there is a choice at all
 	isEnrolled?: boolean;
+	canChoose?: boolean;
 	// editors: the students who go this learning path and how many of them completed all of it
 	studentCount?: number;
 	completedStudentCount?: number;
@@ -121,7 +122,15 @@ export class LearningPathUc {
 			steps.filter((entry) => entry.status === 'done').map((entry) => entry.step)
 		);
 
-		return { board, color: summary?.color, isEditor, isEnrolled: summary?.isEnrolled, steps, availableBoards: [] };
+		return {
+			board,
+			color: summary?.color,
+			isEditor,
+			isEnrolled: summary?.isEnrolled,
+			canChoose: summary?.canChoose,
+			steps,
+			availableBoards: [],
+		};
 	}
 
 	public async createStep(

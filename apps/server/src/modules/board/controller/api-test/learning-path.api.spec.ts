@@ -531,8 +531,12 @@ describe('learning path (api)', () => {
 				(await studentClient.put(`boards/${pathBoard.id}/enrollment`, { userId: new ObjectId().toHexString() })).status
 			).toEqual(403);
 
-			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as { isEnrolled?: boolean };
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as {
+				isEnrolled?: boolean;
+				canChoose?: boolean;
+			};
 			expect(path.isEnrolled).toBe(true);
+			expect(path.canChoose).toBe(true);
 
 			expect((await teacherClient.delete(`boards/${pathBoard.id}/enrollment`, { userId: student.id })).status).toEqual(
 				204

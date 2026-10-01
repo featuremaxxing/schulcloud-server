@@ -52,8 +52,10 @@ export interface LearningPathSummaryStep {
 export interface LearningPathSummary {
 	color?: LearningPathColor;
 	steps: LearningPathSummaryStep[];
-	// students: whether they go this learning path
+	// students: whether they go this learning path, and whether there is a choice at all
+	// (a room with a single published learning path has everybody go it)
 	isEnrolled?: boolean;
+	canChoose?: boolean;
 	// editors: the students who go this learning path, and how many of them completed every board
 	studentCount?: number;
 	completedStudentCount?: number;
@@ -491,6 +493,7 @@ export class LearningPathStateService {
 		return {
 			color: board.learningPathColor,
 			isEnrolled: this.isEnrolled(room, userId, board.id),
+			canChoose: room.paths.length > 1,
 			steps: states.map((state): LearningPathSummaryStep => {
 				const visible = state.status !== 'unavailable';
 				// what the server enforces: done and unavailable as they are, the rest by the locks of the learning paths the person goes

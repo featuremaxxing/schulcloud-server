@@ -81,6 +81,7 @@ export class LearningPathController {
 			isEditor: view.isEditor,
 			color: view.color,
 			isEnrolled: view.isEnrolled,
+			canChoose: view.canChoose,
 			studentCount: view.studentCount,
 			completedStudentCount: view.completedStudentCount,
 			steps: view.steps.map(toStepResponse),
