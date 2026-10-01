@@ -1,5 +1,5 @@
 import { AccountEntity } from '@modules/account/repo';
-import { AssignmentReviewEntity, BoardCompletionEntity, BoardNodeEntity } from '@modules/board/repo';
+import { AssignmentReviewEntity, BoardCompletionEntity, BoardNodeEntity, LearningPathEnrollmentEntity } from '@modules/board/repo';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity, CourseGroupEntity } from '@modules/course/repo';
 import { DeletionBatchEntity, DeletionLogEntity, DeletionRequestEntity } from '@modules/deletion/repo/entity';
@@ -51,6 +51,7 @@ export const ENTITIES = [
 	LtiDeepLinkTokenEntity,
 	AssignmentReviewEntity,
 	BoardCompletionEntity,
+	LearningPathEnrollmentEntity,
 	BoardNodeEntity,
 	RoomMembershipEntity,
 	Task,

@@ -24,6 +24,8 @@ import {
 	Column,
 	ColumnBoard,
 	isColumn,
+	LEARNING_PATH_COLORS,
+	type LearningPathColor,
 } from '../domain';
 import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
 import { StorageLocationReference } from '../service/internal';
@@ -68,10 +70,12 @@ export class BoardUc {
 
 		await this.checkBoardCreatePermission(userId, { type: params.parentType, id: params.parentId });
 
+		const context: BoardExternalReference = { type: params.parentType, id: params.parentId };
 		const board = this.boardNodeFactory.buildColumnBoard({
-			context: { type: params.parentType, id: params.parentId },
+			context,
 			title: params.title,
 			layout: params.layout,
+			learningPathColor: params.layout === BoardLayout.LEARNING_PATH ? await this.nextFreeColor(context) : undefined,
 		});
 
 		await this.boardNodeService.addRoot(board);
@@ -268,6 +272,17 @@ export class BoardUc {
 
 		await this.boardNodeService.updateLayout(board, layout);
 		return board;
+	}
+
+	// A new learning path takes the first color no other learning path of the room has.
+	private async nextFreeColor(context: BoardExternalReference): Promise<LearningPathColor> {
+		const boards = await this.columnBoardService.findByExternalReference(context, 0);
+		const used = new Set(boards.filter((board) => board.isLearningPath()).map((board) => board.learningPathColor));
+
+		return (
+			LEARNING_PATH_COLORS.find((color) => !used.has(color)) ??
+			LEARNING_PATH_COLORS[used.size % LEARNING_PATH_COLORS.length]
+		);
 	}
 
 	private async checkBoardCreatePermission(userId: EntityId, context: BoardExternalReference): Promise<void> {

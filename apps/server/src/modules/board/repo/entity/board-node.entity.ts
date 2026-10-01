@@ -12,6 +12,7 @@ import {
 	type CheckboxEntry,
 	ContentElementType,
 	Colors,
+	type LearningPathColor,
 	type LearningPathUnlockMode,
 	type PollAnswer,
 	PollAudience,
@@ -71,6 +72,10 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 
 	@Property({ type: 'boolean', nullable: true })
 	readersCanEdit: boolean | undefined;
+
+	// ColumnBoard with layout LEARNING_PATH
+	@Property({ type: 'string', nullable: true })
+	learningPathColor: LearningPathColor | undefined;
 
 	// Card
 	// --------------------------------------------------------------------------

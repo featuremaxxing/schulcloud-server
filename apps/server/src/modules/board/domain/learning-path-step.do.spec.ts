@@ -1,5 +1,5 @@
 import { learningPathStepFactory } from '../testing';
-import { wouldCreateCycle } from './learning-path-step.do';
+import { wouldCreateBoardCycle, wouldCreateCycle } from './learning-path-step.do';
 
 describe('LearningPathStep', () => {
 	it('should not have children', () => {
@@ -46,6 +46,36 @@ describe('LearningPathStep', () => {
 			const { a, b, c, steps } = setup();
 
 			expect(wouldCreateCycle(steps, c.id, [b.id, a.id])).toBe(false);
+		});
+	});
+
+	describe('wouldCreateBoardCycle', () => {
+		// blue: A -> C. green holds the same two boards.
+		const setup = () => {
+			const blueA = learningPathStepFactory.build({ linkedBoardId: 'board-a' });
+			const blueC = learningPathStepFactory.build({ linkedBoardId: 'board-c', prerequisiteStepIds: [blueA.id] });
+			const greenA = learningPathStepFactory.build({ linkedBoardId: 'board-a' });
+			const greenC = learningPathStepFactory.build({ linkedBoardId: 'board-c' });
+
+			return { blueA, blueC, greenA, greenC, steps: [blueA, blueC, greenA, greenC] };
+		};
+
+		it('should detect a circle that only exists across two learning paths', () => {
+			const { greenA, greenC, steps } = setup();
+
+			expect(wouldCreateBoardCycle(steps, greenA.id, [greenC.id])).toBe(true);
+		});
+
+		it('should allow arrows that agree with the other learning path', () => {
+			const { greenA, greenC, steps } = setup();
+
+			expect(wouldCreateBoardCycle(steps, greenC.id, [greenA.id])).toBe(false);
+		});
+
+		it('should find the circle inside one learning path as well', () => {
+			const { blueA, blueC, steps } = setup();
+
+			expect(wouldCreateBoardCycle(steps, blueA.id, [blueC.id])).toBe(true);
 		});
 	});
 });

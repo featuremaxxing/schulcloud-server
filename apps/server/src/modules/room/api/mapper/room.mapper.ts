@@ -86,7 +86,7 @@ export class RoomMapper {
 	public static mapToRoomBoardItemReponse(
 		board: ColumnBoard,
 		allowedOperations: Partial<Record<BoardOperation, boolean>>,
-		lockedByLearningPath?: { id: string; title: string },
+		lockedByLearningPath?: RoomBoardLockResponse,
 		learningPath?: LearningPathSummary
 	): RoomBoardItemResponse {
 		const response = new RoomBoardItemResponse({
@@ -106,8 +106,10 @@ export class RoomMapper {
 
 	private static mapToRoomLearningPathResponse(summary: LearningPathSummary): RoomLearningPathResponse {
 		return new RoomLearningPathResponse({
+			color: summary.color,
+			isEnrolled: summary.isEnrolled,
 			steps: summary.steps.map(
-				({ step, title, isVisible, status }) =>
+				({ step, title, isVisible, status, lock }) =>
 					new RoomLearningPathStepResponse({
 						id: step.id,
 						boardId: step.linkedBoardId,
@@ -116,6 +118,9 @@ export class RoomMapper {
 						status,
 						prerequisiteStepIds: step.prerequisiteStepIds,
 						unlockMode: step.unlockMode,
+						lock: lock
+							? new RoomBoardLockResponse({ id: lock.pathId, title: lock.pathTitle, reason: lock.reason })
+							: undefined,
 						positionX: step.positionX,
 						positionY: step.positionY,
 					})
@@ -129,7 +134,7 @@ export class RoomMapper {
 		boardsWithOperations: {
 			board: ColumnBoard;
 			allowedOperations: Record<BoardOperation, boolean>;
-			lockedByLearningPath?: { id: string; title: string };
+			lockedByLearningPath?: RoomBoardLockResponse;
 			learningPath?: LearningPathSummary;
 		}[]
 	): RoomBoardListResponse {

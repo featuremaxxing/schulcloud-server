@@ -22,9 +22,17 @@ import {
 	CreateLearningPathStepBodyParams,
 	LearningPathAvailableBoardResponse,
 	LearningPathBoardUrlParams,
+	LearningPathEnrollmentBodyParams,
+	LearningPathLockResponse,
+	LearningPathOverviewPathResponse,
+	LearningPathOverviewProgressResponse,
+	LearningPathOverviewResponse,
+	LearningPathOverviewStudentResponse,
 	LearningPathResponse,
+	LearningPathRoomUrlParams,
 	LearningPathStepResponse,
 	LearningPathStepUrlParams,
+	UpdateLearningPathBodyParams,
 	UpdateLearningPathStepBodyParams,
 } from './dto';
 
@@ -40,6 +48,7 @@ const toStepResponse = (view: LearningPathStepView): LearningPathStepResponse =>
 		unlockMode: view.step.unlockMode,
 		lockUntilPrerequisitesDone: view.step.lockUntilPrerequisitesDone,
 		status: view.status,
+		lock: view.lock ? new LearningPathLockResponse(view.lock) : undefined,
 		doneCount: view.doneCount,
 		studentCount: view.studentCount,
 	});
@@ -70,9 +79,82 @@ export class LearningPathController {
 		return new LearningPathResponse({
 			boardId: view.board.id,
 			isEditor: view.isEditor,
+			color: view.color,
+			isEnrolled: view.isEnrolled,
+			studentCount: view.studentCount,
+			completedStudentCount: view.completedStudentCount,
 			steps: view.steps.map(toStepResponse),
 			availableBoards: view.availableBoards.map(
-				(board) => new LearningPathAvailableBoardResponse({ id: board.id, title: board.title, isVisible: board.isVisible })
+				(board) =>
+					new LearningPathAvailableBoardResponse({ id: board.id, title: board.title, isVisible: board.isVisible })
+			),
+		});
+	}
+
+	@ApiOperation({ summary: 'Change the color of a learning path.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Patch('boards/:boardId/learning-path')
+	public async updateLearningPath(
+		@Param() urlParams: LearningPathBoardUrlParams,
+		@Body() bodyParams: UpdateLearningPathBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.learningPathUc.updateColor(currentUser.userId, urlParams.boardId, bodyParams.color);
+	}
+
+	@ApiOperation({ summary: 'Go a learning path. Editors can enroll members of the room as well.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Put('boards/:boardId/enrollment')
+	public async enroll(
+		@Param() urlParams: LearningPathBoardUrlParams,
+		@Body() bodyParams: LearningPathEnrollmentBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.learningPathUc.enroll(currentUser.userId, urlParams.boardId, bodyParams.userId);
+	}
+
+	@ApiOperation({ summary: 'Stop going a learning path. Editors can remove members of the room as well.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Delete('boards/:boardId/enrollment')
+	public async unenroll(
+		@Param() urlParams: LearningPathBoardUrlParams,
+		@Body() bodyParams: LearningPathEnrollmentBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.learningPathUc.unenroll(currentUser.userId, urlParams.boardId, bodyParams.userId);
+	}
+
+	@ApiOperation({ summary: 'Who goes which learning path of a room, and how far they are. Editors only.' })
+	@ApiResponse({ status: 200, type: LearningPathOverviewResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@Get('rooms/:roomId/learning-paths/overview')
+	public async getOverview(
+		@Param() urlParams: LearningPathRoomUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<LearningPathOverviewResponse> {
+		const overview = await this.learningPathUc.getOverview(currentUser.userId, urlParams.roomId);
+
+		return new LearningPathOverviewResponse({
+			paths: overview.paths.map((path) => new LearningPathOverviewPathResponse(path)),
+			students: overview.students.map(
+				(student) =>
+					new LearningPathOverviewStudentResponse({
+						...student,
+						paths: student.paths.map((progress) => new LearningPathOverviewProgressResponse(progress)),
+					})
 			),
 		});
 	}

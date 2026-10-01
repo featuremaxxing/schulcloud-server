@@ -33,13 +33,19 @@ import {
 	BoardNodeProps,
 	Colors,
 	ContentElementType,
+	type LearningPathColor,
 	PollStatus,
 } from './types';
 import { VideoConferenceElement } from './video-conference-element.do';
 
 @Injectable()
 export class BoardNodeFactory {
-	public buildColumnBoard(props: { context: BoardExternalReference; title: string; layout: BoardLayout }): ColumnBoard {
+	public buildColumnBoard(props: {
+		context: BoardExternalReference;
+		title: string;
+		layout: BoardLayout;
+		learningPathColor?: LearningPathColor;
+	}): ColumnBoard {
 		const columnBoard = new ColumnBoard({ ...this.getBaseProps(), isVisible: false, readersCanEdit: false, ...props });
 
 		return columnBoard;

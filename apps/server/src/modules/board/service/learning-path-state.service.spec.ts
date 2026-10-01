@@ -2,8 +2,21 @@ import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { ObjectId } from '@mikro-orm/mongodb';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { BOARD_CONFIG_TOKEN } from '../board.config';
-import { BoardLayout, BoardRoles, type ColumnBoard, type UserWithBoardRoles } from '../domain';
-import { BoardCompletionEntity, BoardCompletionRepo, BoardNodeRepo } from '../repo';
+import {
+	BoardExternalReferenceType,
+	BoardLayout,
+	BoardRoles,
+	type ColumnBoard,
+	type LearningPathStep,
+	type UserWithBoardRoles,
+} from '../domain';
+import {
+	BoardCompletionEntity,
+	BoardCompletionRepo,
+	BoardNodeRepo,
+	LearningPathEnrollmentEntity,
+	LearningPathEnrollmentRepo,
+} from '../repo';
 import { columnBoardFactory, learningPathStepFactory } from '../testing';
 import { BoardNodeService } from './board-node.service';
 import { BoardProgressService } from './board-progress.service';
@@ -16,6 +29,7 @@ describe(LearningPathStateService.name, () => {
 	let boardNodeService: DeepMocked<BoardNodeService>;
 	let boardProgressService: DeepMocked<BoardProgressService>;
 	let boardCompletionRepo: DeepMocked<BoardCompletionRepo>;
+	let enrollmentRepo: DeepMocked<LearningPathEnrollmentRepo>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -25,6 +39,7 @@ describe(LearningPathStateService.name, () => {
 				{ provide: BoardNodeService, useValue: createMock<BoardNodeService>() },
 				{ provide: BoardProgressService, useValue: createMock<BoardProgressService>() },
 				{ provide: BoardCompletionRepo, useValue: createMock<BoardCompletionRepo>() },
+				{ provide: LearningPathEnrollmentRepo, useValue: createMock<LearningPathEnrollmentRepo>() },
 				{
 					provide: BOARD_CONFIG_TOKEN,
 					useValue: {
@@ -42,6 +57,7 @@ describe(LearningPathStateService.name, () => {
 		boardNodeService = module.get(BoardNodeService);
 		boardProgressService = module.get(BoardProgressService);
 		boardCompletionRepo = module.get(BoardCompletionRepo);
+		enrollmentRepo = module.get(LearningPathEnrollmentRepo);
 	});
 
 	afterEach(() => {
@@ -145,55 +161,232 @@ describe(LearningPathStateService.name, () => {
 		});
 	});
 
-	describe('lockedUserIds', () => {
-		const setup = () => {
-			const { a, b, c, boardA, boardB, boardC, userId, pathId } = buildPath('all');
-			const pathBoard = columnBoardFactory.build({
-				id: pathId,
-				layout: BoardLayout.LEARNING_PATH,
-				isVisible: true,
-				children: [a, b, c],
+	// A room with a blue and a green learning path. Both lead to C and keep it closed:
+	// blue: A -> C, green: B -> C.
+	describe('learning paths of a room', () => {
+		const setup = (options: { greenPublished?: boolean } = {}) => {
+			const roomId = new ObjectId().toHexString();
+			const context = { type: BoardExternalReferenceType.Room, id: roomId };
+			const boardA = columnBoardFactory.build({ title: 'A', isVisible: true, context });
+			const boardB = columnBoardFactory.build({ title: 'B', isVisible: true, context });
+			const boardC = columnBoardFactory.build({ title: 'C', isVisible: true, context });
+
+			const buildPath = (title: string, build: (path: string) => LearningPathStep[], isVisible = true) => {
+				const id = new ObjectId().toHexString();
+				const children = build(`,${id},`);
+				return columnBoardFactory.build({ id, title, layout: BoardLayout.LEARNING_PATH, isVisible, context, children });
+			};
+			const blue = buildPath('Blue', (path) => {
+				const a = learningPathStepFactory.build({ path, level: 1, linkedBoardId: boardA.id });
+				const c = learningPathStepFactory.build({
+					path,
+					level: 1,
+					linkedBoardId: boardC.id,
+					prerequisiteStepIds: [a.id],
+					lockUntilPrerequisitesDone: true,
+				});
+				return [a, c];
 			});
-			const teacher: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.EDITOR] };
-			const student: UserWithBoardRoles = { userId, roles: [BoardRoles.READER] };
-
-			boardNodeRepo.findLearningPathStepsLinking.mockResolvedValueOnce([c]);
-			boardNodeService.findByIds.mockImplementation((ids: string[]) =>
-				Promise.resolve([pathBoard, boardA, boardB, boardC].filter((board) => ids.includes(board.id)))
+			const green = buildPath(
+				'Green',
+				(path) => {
+					const b = learningPathStepFactory.build({ path, level: 1, linkedBoardId: boardB.id });
+					const c = learningPathStepFactory.build({
+						path,
+						level: 1,
+						linkedBoardId: boardC.id,
+						prerequisiteStepIds: [b.id],
+						lockUntilPrerequisitesDone: true,
+					});
+					return [b, c];
+				},
+				options.greenPublished ?? true
 			);
-			boardCompletionRepo.findByBoardIds.mockResolvedValue([]);
 
-			return { boardC, pathBoard, teacher, student };
+			const teacher: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.EDITOR] };
+			const student: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.READER] };
+			const everything = [blue, green, boardA, boardB, boardC];
+
+			boardNodeRepo.findLearningPathStepsLinking.mockResolvedValue(
+				[blue, green].map((path) => path.children[1] as LearningPathStep)
+			);
+			boardNodeRepo.findByExternalReference.mockResolvedValue(everything);
+			boardNodeService.findByIds.mockImplementation((ids: string[]) =>
+				Promise.resolve(everything.filter((board) => ids.includes(board.id)))
+			);
+			boardProgressService.computeCompletedUserIds.mockResolvedValue(new Map());
+			boardCompletionRepo.findByBoardIds.mockResolvedValue([]);
+			enrollmentRepo.findByRoom.mockResolvedValue([]);
+
+			const enroll = (user: UserWithBoardRoles, ...paths: ColumnBoard[]) => {
+				enrollmentRepo.findByRoom.mockResolvedValue(
+					paths.map((path) => new LearningPathEnrollmentEntity({ userId: user.userId, pathBoardId: path.id, roomId }))
+				);
+			};
+			const complete = (user: UserWithBoardRoles, ...boards: ColumnBoard[]) => {
+				boardCompletionRepo.findByBoardIds.mockResolvedValue(
+					boards.map(
+						(board) =>
+							new BoardCompletionEntity({
+								userId: user.userId,
+								boardId: board.id,
+								completedAt: new Date(),
+								source: 'manual',
+							})
+					)
+				);
+			};
+
+			return { boardA, boardB, boardC, blue, green, teacher, student, enroll, complete };
 		};
 
-		it('should lock the board for students who did not complete the prerequisites', async () => {
-			const { boardC, teacher, student } = setup();
-			boardProgressService.computeCompletedUserIds.mockResolvedValueOnce(new Map());
+		describe('lockedUserIds', () => {
+			it('should lock the board for students who did not complete the prerequisites', async () => {
+				const { boardC, blue, teacher, student, enroll } = setup({ greenPublished: false });
+				enroll(student, blue);
 
-			const result = await service.lockedUserIds([boardC], [teacher, student]);
+				const result = await service.lockedUserIds([boardC], [teacher, student]);
 
-			expect(result.get(boardC.id)).toEqual([student.userId]);
+				expect(result.get(boardC.id)).toEqual([student.userId]);
+			});
+
+			it('should treat the only published learning path as the path everybody goes', async () => {
+				const { boardC, teacher, student } = setup({ greenPublished: false });
+
+				const result = await service.lockedUserIds([boardC], [teacher, student]);
+
+				expect(result.get(boardC.id)).toEqual([student.userId]);
+			});
+
+			it('should not lock anything while the learning path is a draft', async () => {
+				const { boardC, blue, teacher, student } = setup({ greenPublished: false });
+				blue.isVisible = false;
+
+				const result = await service.lockedUserIds([boardC], [teacher, student]);
+
+				expect(result.size).toBe(0);
+			});
+
+			it('should only count the learning path a student goes', async () => {
+				const { boardA, boardC, blue, teacher, student, enroll, complete } = setup();
+				enroll(student, blue);
+				complete(student, boardA);
+
+				const result = await service.lockedUserIds([boardC], [teacher, student]);
+
+				expect(result.size).toBe(0);
+			});
+
+			it('should need the boards of every learning path a student goes', async () => {
+				const { boardA, boardB, boardC, blue, green, teacher, student, enroll, complete } = setup();
+				enroll(student, blue, green);
+				complete(student, boardA);
+
+				expect((await service.lockedUserIds([boardC], [teacher, student])).get(boardC.id)).toEqual([student.userId]);
+
+				complete(student, boardA, boardB);
+
+				expect((await service.lockedUserIds([boardC], [teacher, student])).size).toBe(0);
+			});
+
+			it('should keep the board closed while no learning path is chosen', async () => {
+				const { boardA, boardC, teacher, student } = setup();
+
+				const result = await service.lockedUserIds([boardC], [teacher, student]);
+
+				expect(result.get(boardC.id)).toEqual([student.userId]);
+				// boards at the start of a path stay open
+				expect((await service.lockedUserIds([boardA], [teacher, student])).size).toBe(0);
+			});
+
+			it('should never lock editors', async () => {
+				const { boardC, teacher } = setup();
+
+				const result = await service.lockedUserIds([boardC], [teacher]);
+
+				expect(result.size).toBe(0);
+			});
+
+			it('should skip all work when no step locks the board', async () => {
+				const board = columnBoardFactory.build({
+					context: { type: BoardExternalReferenceType.Room, id: new ObjectId().toHexString() },
+				});
+				boardNodeRepo.findLearningPathStepsLinking.mockResolvedValueOnce([
+					learningPathStepFactory.build({ linkedBoardId: board.id }),
+				]);
+
+				const result = await service.lockedUserIds([board], [{ userId: 'u', roles: [BoardRoles.READER] }]);
+
+				expect(result.size).toBe(0);
+				expect(boardNodeService.findByIds).not.toHaveBeenCalled();
+			});
 		});
 
-		it('should not lock anything while the learning path is a draft', async () => {
-			const { boardC, pathBoard, teacher, student } = setup();
-			pathBoard.isVisible = false;
+		describe('findLocks', () => {
+			it('should name the learning path that keeps the board closed', async () => {
+				const { boardC, blue, student, enroll } = setup();
+				enroll(student, blue);
 
-			const result = await service.lockedUserIds([boardC], [teacher, student]);
+				const result = await service.findLocks([boardC], student);
 
-			expect(result.size).toBe(0);
+				expect(result.get(boardC.id)).toEqual({ pathId: blue.id, pathTitle: 'Blue', reason: 'prerequisites' });
+			});
+
+			it('should ask to choose a learning path when none is chosen', async () => {
+				const { boardC, student } = setup();
+
+				const result = await service.findLocks([boardC], student);
+
+				expect(result.get(boardC.id)?.reason).toBe('chooseLearningPath');
+			});
 		});
 
-		it('should skip all work when no step locks the board', async () => {
-			const board = columnBoardFactory.build();
-			boardNodeRepo.findLearningPathStepsLinking.mockResolvedValueOnce([
-				learningPathStepFactory.build({ linkedBoardId: board.id }),
-			]);
+		describe('summarize', () => {
+			it('should show a student what the learning paths they go keep closed, in every path', async () => {
+				const { boardC, blue, green, student, enroll } = setup();
+				enroll(student, blue);
 
-			const result = await service.lockedUserIds([board], []);
+				const result = await service.summarize([{ board: green, users: [student], isEditor: false }], student.userId);
 
-			expect(result.size).toBe(0);
-			expect(boardNodeService.findByIds).not.toHaveBeenCalled();
+				const steps = result.get(green.id)?.steps ?? [];
+				expect(result.get(green.id)?.isEnrolled).toBe(false);
+				expect(steps.find((entry) => entry.step.linkedBoardId === boardC.id)).toMatchObject({
+					status: 'locked',
+					lock: { pathId: blue.id },
+				});
+				// green is not gone, so its own prerequisite does not matter
+				expect(steps.find((entry) => entry.title === 'B')?.status).toBe('open');
+			});
+
+			it('should count the students who go a learning path for editors', async () => {
+				const { boardA, boardC, blue, teacher, student, enroll, complete } = setup();
+				const other: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.READER] };
+				enroll(student, blue);
+				complete(student, boardA, boardC);
+
+				const result = await service.summarize(
+					[{ board: blue, users: [teacher, student, other], isEditor: true }],
+					teacher.userId
+				);
+
+				expect(result.get(blue.id)).toMatchObject({ studentCount: 1, completedStudentCount: 1 });
+				expect(result.get(blue.id)?.steps[0]).toMatchObject({ doneCount: 1, studentCount: 1 });
+			});
+		});
+
+		describe('overview', () => {
+			it('should list who goes which learning path with their progress', async () => {
+				const { boardA, blue, green, teacher, student, enroll, complete } = setup();
+				enroll(student, blue);
+				complete(student, boardA);
+
+				const result = await service.overview(blue.context.id, [teacher, student]);
+
+				expect(result.paths.map((path) => path.title)).toEqual(['Blue', 'Green']);
+				expect(result.students).toHaveLength(1);
+				expect(result.students[0].paths).toEqual([{ pathId: blue.id, done: 1, total: 2, nextBoardTitle: 'C' }]);
+				expect(green.id).toBeDefined();
+			});
 		});
 	});
 });

@@ -1,7 +1,7 @@
 import { RuntimeConfigEntity } from '@infra/runtime-config/repo/entity/runtime-config.entity';
 import { AccountEntity } from '@modules/account/repo';
 import { AppPasswordEntity } from '@modules/app-password/repo';
-import { AssignmentReviewEntity, BoardCompletionEntity, BoardNodeEntity } from '@modules/board/repo/entity';
+import { AssignmentReviewEntity, BoardCompletionEntity, BoardNodeEntity, LearningPathEnrollmentEntity } from '@modules/board/repo/entity';
 import { ClassEntity } from '@modules/class/entity';
 import { CourseEntity } from '@modules/course/repo/course.entity';
 import { CourseGroupEntity } from '@modules/course/repo/coursegroup.entity';
@@ -58,6 +58,7 @@ export const ENTITIES = [
 	AppPasswordEntity,
 	AssignmentReviewEntity,
 	BoardCompletionEntity,
+	LearningPathEnrollmentEntity,
 	BoardNodeEntity,
 	ClassEntity,
 	ColumnBoardBoardElement,

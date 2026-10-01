@@ -4,6 +4,7 @@ import type { AnyBoardNode } from './any-board-node';
 import type { BoardExternalReference } from './board-external-reference';
 import type { BoardLayout } from './board-layout.enum';
 import type { ContentElementType } from './content-element-type.enum';
+import type { LearningPathColor } from './learning-path-color.enum';
 import type { BoardRoles } from '../board-node-authorizable.do';
 import type { PollAnswer, PollAudience, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
 
@@ -23,6 +24,8 @@ export interface ColumnBoardProps extends BoardNodeProps {
 	isVisible: boolean;
 	layout: BoardLayout;
 	readersCanEdit: boolean;
+	// only for learning paths
+	learningPathColor?: LearningPathColor;
 }
 
 export interface ColumnProps extends BoardNodeProps {

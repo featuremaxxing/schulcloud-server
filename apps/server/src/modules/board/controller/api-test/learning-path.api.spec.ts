@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { EntityManager } from '@mikro-orm/mongodb';
+import { EntityManager, ObjectId } from '@mikro-orm/mongodb';
 import { accountFactory } from '@modules/account/testing';
 import { GroupEntityTypes } from '@modules/group/entity';
 import { groupEntityFactory } from '@modules/group/testing';
@@ -14,7 +14,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { TestApiClientBuilder } from '@testing/test-api-client-builder';
 import { BoardExternalReferenceType, BoardLayout } from '../../domain';
-import { BoardCompletionEntity, BoardNodeEntity } from '../../repo';
+import { BoardCompletionEntity, BoardNodeEntity, LearningPathEnrollmentEntity } from '../../repo';
 import {
 	cardEntityFactory,
 	checkboxElementEntityFactory,
@@ -35,7 +35,7 @@ type StepJson = {
 type PathJson = { isEditor: boolean; steps: StepJson[]; availableBoards: { id: string }[] };
 type RoomBoardJson = {
 	id: string;
-	lockedByLearningPath?: { id: string; title: string };
+	lockedByLearningPath?: { id: string; title: string; reason: string };
 	learningPath?: {
 		steps: { boardId: string; title: string; status: string }[];
 		studentCount?: number;
@@ -240,7 +240,7 @@ describe('learning path (api)', () => {
 			expect(response.status).toEqual(200);
 			const boards = (response.body as { data: RoomBoardJson[] }).data;
 			const locked = boards.find((board) => board.id === boardC.id);
-			expect(locked?.lockedByLearningPath).toEqual({ id: pathBoard.id, title: 'Lernweg' });
+			expect(locked?.lockedByLearningPath).toEqual({ id: pathBoard.id, title: 'Lernweg', reason: 'prerequisites' });
 		});
 
 		it('should give the student an overview of the learning path in the room', async () => {
@@ -410,6 +410,191 @@ describe('learning path (api)', () => {
 			});
 
 			expect(response.status).toEqual(201);
+		});
+	});
+
+	describe('several learning paths in a room', () => {
+		type Client = Awaited<ReturnType<TestApiClientBuilder['build']>>;
+
+		// a second, published learning path: first -> second, the second one stays closed until the first is done
+		const addPath = async (client: Client, roomId: string, title: string, first: string, second: string) => {
+			const created = await client.post('boards', {
+				title,
+				parentId: roomId,
+				parentType: BoardExternalReferenceType.Room,
+				layout: BoardLayout.LEARNING_PATH,
+			});
+			const pathId = (created.body as { id: string }).id;
+			await client.patch(`boards/${pathId}/visibility`, { isVisible: true });
+			const addStep = async (linkedBoardId: string) =>
+				(
+					(await client.post('learning-path-steps', { boardId: pathId, linkedBoardId, positionX: 0, positionY: 0 }))
+						.body as {
+						id: string;
+					}
+				).id;
+			const firstId = await addStep(first);
+			const secondId = await addStep(second);
+			await client.patch(`learning-path-steps/${secondId}`, {
+				prerequisiteStepIds: [firstId],
+				lockUntilPrerequisitesDone: true,
+			});
+
+			return { pathId, firstId, secondId };
+		};
+
+		it('should give every new learning path its own color', async () => {
+			const { teacherClient, room } = await setup();
+			const create = async (title: string) =>
+				(
+					await teacherClient.post('boards', {
+						title,
+						parentId: room.id,
+						parentType: BoardExternalReferenceType.Room,
+						layout: BoardLayout.LEARNING_PATH,
+					})
+				).body as { id: string; learningPathColor?: string };
+
+			const first = await create('Eins');
+			const second = await create('Zwei');
+
+			const firstPath = (await teacherClient.get(`boards/${first.id}/learning-path`)).body as { color?: string };
+			const secondPath = (await teacherClient.get(`boards/${second.id}/learning-path`)).body as { color?: string };
+			expect(firstPath.color).toBeDefined();
+			expect(secondPath.color).toBeDefined();
+			expect(firstPath.color).not.toEqual(secondPath.color);
+		});
+
+		it('should let a teacher change the color, but not a student', async () => {
+			const { teacherClient, studentClient, pathBoard } = await setup();
+
+			expect((await studentClient.patch(`boards/${pathBoard.id}/learning-path`, { color: 'red' })).status).toEqual(403);
+			expect((await teacherClient.patch(`boards/${pathBoard.id}/learning-path`, { color: 'red' })).status).toEqual(204);
+
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as { color?: string };
+			expect(path.color).toBe('red');
+		});
+
+		it('should keep a board closed until a learning path is chosen', async () => {
+			const { teacherClient, studentClient, room, boardB, boardC } = await setup();
+			await addPath(teacherClient, room.id, 'Grün', boardB.id, boardC.id);
+
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(403);
+			const boards = ((await studentClient.get(`rooms/${room.id}/boards`)).body as { data: RoomBoardJson[] }).data;
+			expect(boards.find((board) => board.id === boardC.id)?.lockedByLearningPath?.reason).toBe('chooseLearningPath');
+		});
+
+		it('should only count the learning path a student goes', async () => {
+			const { teacherClient, studentClient, room, pathBoard, boardB, boardC, checkTheBox } = await setup();
+			// the green path needs B, which the student never does
+			await addPath(teacherClient, room.id, 'Grün', boardB.id, boardC.id);
+
+			expect((await studentClient.put(`boards/${pathBoard.id}/enrollment`, {})).status).toEqual(204);
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(403);
+
+			await checkTheBox();
+
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+		});
+
+		it('should need every learning path a student goes', async () => {
+			const { teacherClient, studentClient, room, pathBoard, boardB, boardC, checkTheBox } = await setup();
+			const green = await addPath(teacherClient, room.id, 'Grün', boardB.id, boardC.id);
+			await studentClient.put(`boards/${pathBoard.id}/enrollment`, {});
+			await studentClient.put(`boards/${green.pathId}/enrollment`, {});
+
+			await checkTheBox();
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(403);
+
+			await studentClient.put(`boards/${boardB.id}/completion`, { completed: true });
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+		});
+
+		it('should show a board as done in every learning path', async () => {
+			const { teacherClient, studentClient, room, boardA, boardC, checkTheBox } = await setup();
+			const green = await addPath(teacherClient, room.id, 'Grün', boardA.id, boardC.id);
+			await checkTheBox();
+
+			const path = (await studentClient.get(`boards/${green.pathId}/learning-path`)).body as PathJson;
+
+			expect(statusOf(path, boardA.id)).toBe('done');
+		});
+
+		it('should let a teacher enroll a student, but not a student somebody else', async () => {
+			const { teacherClient, studentClient, student, room, pathBoard, boardB, boardC } = await setup();
+			await addPath(teacherClient, room.id, 'Grün', boardB.id, boardC.id);
+
+			expect((await teacherClient.put(`boards/${pathBoard.id}/enrollment`, { userId: student.id })).status).toEqual(
+				204
+			);
+			expect(
+				(await studentClient.put(`boards/${pathBoard.id}/enrollment`, { userId: new ObjectId().toHexString() })).status
+			).toEqual(403);
+
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as { isEnrolled?: boolean };
+			expect(path.isEnrolled).toBe(true);
+
+			expect((await teacherClient.delete(`boards/${pathBoard.id}/enrollment`, { userId: student.id })).status).toEqual(
+				204
+			);
+		});
+
+		it('should refuse arrows that form a circle together with another learning path', async () => {
+			const { teacherClient, room, boardA, boardC } = await setup();
+			// blue: A -> C. green: C -> A would put A before itself.
+			const created = await teacherClient.post('boards', {
+				title: 'Grün',
+				parentId: room.id,
+				parentType: BoardExternalReferenceType.Room,
+				layout: BoardLayout.LEARNING_PATH,
+			});
+			const greenId = (created.body as { id: string }).id;
+			const add = async (linkedBoardId: string) =>
+				(
+					(
+						await teacherClient.post('learning-path-steps', {
+							boardId: greenId,
+							linkedBoardId,
+							positionX: 0,
+							positionY: 0,
+						})
+					).body as {
+						id: string;
+					}
+				).id;
+			const greenC = await add(boardC.id);
+			const greenA = await add(boardA.id);
+
+			const response = await teacherClient.patch(`learning-path-steps/${greenA}`, { prerequisiteStepIds: [greenC] });
+
+			expect(response.status).toEqual(400);
+		});
+
+		it('should show a teacher who goes which learning path', async () => {
+			const { teacherClient, studentClient, room, student, pathBoard } = await setup();
+			await teacherClient.put(`boards/${pathBoard.id}/enrollment`, { userId: student.id });
+
+			const response = await teacherClient.get(`rooms/${room.id}/learning-paths/overview`);
+
+			expect(response.status).toEqual(200);
+			const body = response.body as {
+				paths: { id: string; total: number }[];
+				students: { userId: string; paths: { pathId: string; done: number; total: number }[] }[];
+			};
+			expect(body.paths.map((path) => path.id)).toEqual([pathBoard.id]);
+			expect(body.students).toHaveLength(1);
+			expect(body.students[0].paths[0]).toMatchObject({ pathId: pathBoard.id, done: 0, total: 3 });
+			expect((await studentClient.get(`rooms/${room.id}/learning-paths/overview`)).status).toEqual(403);
+		});
+
+		it('should drop the enrollments of a deleted learning path', async () => {
+			const { teacherClient, student, pathBoard } = await setup();
+			await teacherClient.put(`boards/${pathBoard.id}/enrollment`, { userId: student.id });
+			expect(await em.count(LearningPathEnrollmentEntity, { pathBoardId: pathBoard.id })).toBe(1);
+
+			await teacherClient.delete(`boards/${pathBoard.id}`);
+
+			expect(await em.count(LearningPathEnrollmentEntity, { pathBoardId: pathBoard.id })).toBe(0);
 		});
 	});
 });

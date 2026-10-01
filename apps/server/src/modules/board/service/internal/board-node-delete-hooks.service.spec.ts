@@ -21,7 +21,7 @@ import {
 	linkElementFactory,
 	pollVoteFactory,
 } from '../../testing';
-import { BoardCompletionRepo, BoardNodeRepo } from '../../repo';
+import { BoardCompletionRepo, BoardNodeRepo, LearningPathEnrollmentRepo } from '../../repo';
 import { BoardNodeDeleteHooksService } from './board-node-delete-hooks.service';
 
 describe(BoardNodeDeleteHooksService.name, () => {
@@ -35,6 +35,7 @@ describe(BoardNodeDeleteHooksService.name, () => {
 	let domainErrorHandler: DeepMocked<DomainErrorHandler>;
 	let boardNodeRepo: DeepMocked<BoardNodeRepo>;
 	let boardCompletionRepo: DeepMocked<BoardCompletionRepo>;
+	let learningPathEnrollmentRepo: DeepMocked<LearningPathEnrollmentRepo>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -72,6 +73,10 @@ describe(BoardNodeDeleteHooksService.name, () => {
 					provide: BoardCompletionRepo,
 					useValue: createMock<BoardCompletionRepo>(),
 				},
+				{
+					provide: LearningPathEnrollmentRepo,
+					useValue: createMock<LearningPathEnrollmentRepo>(),
+				},
 			],
 		}).compile();
 
@@ -84,6 +89,7 @@ describe(BoardNodeDeleteHooksService.name, () => {
 		domainErrorHandler = module.get(DomainErrorHandler);
 		boardNodeRepo = module.get(BoardNodeRepo);
 		boardCompletionRepo = module.get(BoardCompletionRepo);
+		learningPathEnrollmentRepo = module.get(LearningPathEnrollmentRepo);
 	});
 
 	afterEach(() => {
@@ -325,13 +331,14 @@ describe(BoardNodeDeleteHooksService.name, () => {
 	});
 
 	describe('when called with a regular board', () => {
-		it('should remove it from learning paths and drop its completions', async () => {
+		it('should remove it from learning paths and drop its completions and enrollments', async () => {
 			const board = columnBoardFactory.build();
 
 			await service.afterDelete(board);
 
 			expect(boardNodeRepo.removeLearningPathStepsLinking).toHaveBeenCalledWith(board.id);
 			expect(boardCompletionRepo.deleteByBoardId).toHaveBeenCalledWith(board.id);
+			expect(learningPathEnrollmentRepo.deleteByPathBoardId).toHaveBeenCalledWith(board.id);
 		});
 	});
 });

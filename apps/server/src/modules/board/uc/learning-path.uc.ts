@@ -12,18 +12,22 @@ import {
 	ColumnBoard,
 	isColumnBoard,
 	LEARNING_PATH_MAX_STEPS,
+	type LearningPathColor,
 	LearningPathStep,
 	type LearningPathUnlockMode,
 	type UserWithBoardRoles,
+	wouldCreateBoardCycle,
 	wouldCreateCycle,
 } from '../domain';
-import { BoardCompletionRepo } from '../repo';
+import { BoardCompletionRepo, LearningPathEnrollmentRepo } from '../repo';
 import {
 	BoardNodeAuthorizableService,
 	BoardNodeService,
 	BoardProgressService,
 	ColumnBoardService,
+	type LearningPathLock,
 	LearningPathNotifier,
+	type LearningPathOverview,
 	LearningPathStateService,
 	type LearningPathStepStatus,
 } from '../service';
@@ -34,14 +38,22 @@ export interface LearningPathStepView {
 	title: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
-	// only for editors: how many students completed the board
+	// students: what keeps the board closed
+	lock?: LearningPathLock;
+	// only for editors: how many of the students who go this learning path completed the board
 	doneCount?: number;
 	studentCount?: number;
 }
 
 export interface LearningPathView {
 	board: ColumnBoard;
+	color?: LearningPathColor;
 	isEditor: boolean;
+	// students: whether they go this learning path
+	isEnrolled?: boolean;
+	// editors: the students who go this learning path and how many of them completed all of it
+	studentCount?: number;
+	completedStudentCount?: number;
 	steps: LearningPathStepView[];
 	// only for editors: the boards of the room that can be added
 	availableBoards: ColumnBoard[];
@@ -70,6 +82,7 @@ export class LearningPathUc {
 		private readonly boardNodeService: BoardNodeService,
 		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly boardCompletionRepo: BoardCompletionRepo,
+		private readonly learningPathEnrollmentRepo: LearningPathEnrollmentRepo,
 		private readonly boardProgressService: BoardProgressService,
 		private readonly columnBoardService: ColumnBoardService,
 		private readonly learningPathStateService: LearningPathStateService,
@@ -85,49 +98,30 @@ export class LearningPathUc {
 		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, auth));
 
 		const isEditor = this.boardNodeRule.can('isBoardEditor', user, auth);
-		const steps = this.learningPathStateService.getSteps(board);
-		const linkedBoards = await this.learningPathStateService.loadLinkedBoards(steps);
+		const users = isEditor ? auth.users : [this.findMember(auth, userId)];
+
+		const summaries = await this.learningPathStateService.summarize([{ board, users, isEditor }], userId);
+		const summary = summaries.get(board.id);
+		const steps = (summary?.steps ?? []).map((entry): LearningPathStepView => entry);
 
 		if (isEditor) {
-			const students = auth.users.filter((member) => !this.learningPathStateService.isEditor(member));
-			const completed = await this.learningPathStateService.completedUserIds(
-				Array.from(linkedBoards.values()),
-				students
-			);
-			const studentIds = new Set(students.map((student) => student.userId));
-
-			const stepViews = steps.map((step): LearningPathStepView => {
-				const linkedBoard = linkedBoards.get(step.linkedBoardId);
-				const done = Array.from(completed.get(step.linkedBoardId) ?? []).filter((id) => studentIds.has(id));
-				return {
-					step,
-					title: linkedBoard?.title ?? '',
-					isVisible: linkedBoard?.isVisible ?? false,
-					status: linkedBoard ? 'open' : 'unavailable',
-					doneCount: done.length,
-					studentCount: students.length,
-				};
-			});
-
-			return { board, isEditor, steps: stepViews, availableBoards: await this.findAvailableBoards(board) };
+			return {
+				board,
+				color: summary?.color,
+				isEditor,
+				studentCount: summary?.studentCount,
+				completedStudentCount: summary?.completedStudentCount,
+				steps,
+				availableBoards: await this.findAvailableBoards(board),
+			};
 		}
 
-		const member = this.findMember(auth, userId);
-		const completed = await this.learningPathStateService.completedUserIds(Array.from(linkedBoards.values()), [member]);
-		const states = this.learningPathStateService.computeStates(steps, linkedBoards, completed, userId);
-		await this.keepCompletions(userId, states.filter((state) => state.status === 'done').map((s) => s.step));
+		await this.keepCompletions(
+			userId,
+			steps.filter((entry) => entry.status === 'done').map((entry) => entry.step)
+		);
 
-		const stepViews = states.map((state): LearningPathStepView => {
-			const visible = state.status !== 'unavailable';
-			return {
-				step: state.step,
-				title: visible ? state.linkedBoard?.title ?? '' : '',
-				isVisible: visible,
-				status: state.status,
-			};
-		});
-
-		return { board, isEditor, steps: stepViews, availableBoards: [] };
+		return { board, color: summary?.color, isEditor, isEnrolled: summary?.isEnrolled, steps, availableBoards: [] };
 	}
 
 	public async createStep(
@@ -162,7 +156,11 @@ export class LearningPathUc {
 		return step;
 	}
 
-	public async updateStep(userId: EntityId, stepId: EntityId, update: LearningPathStepUpdate): Promise<LearningPathStep> {
+	public async updateStep(
+		userId: EntityId,
+		stepId: EntityId,
+		update: LearningPathStepUpdate
+	): Promise<LearningPathStep> {
 		this.checkFeatureEnabled();
 
 		const { step, board } = await this.findStep(stepId);
@@ -177,6 +175,7 @@ export class LearningPathUc {
 			if (wouldCreateCycle(siblings, step.id, update.prerequisiteStepIds)) {
 				throw new BadRequestException('The arrows would form a circle');
 			}
+			await this.checkNoCircleInRoom(board, step, update.prerequisiteStepIds);
 			step.prerequisiteStepIds = update.prerequisiteStepIds;
 		}
 		if (update.positionX !== undefined) step.positionX = update.positionX;
@@ -190,6 +189,50 @@ export class LearningPathUc {
 		this.learningPathNotifier.changed(board.id);
 
 		return step;
+	}
+
+	public async updateColor(userId: EntityId, boardId: EntityId, color: LearningPathColor): Promise<ColumnBoard> {
+		this.checkFeatureEnabled();
+
+		const board = await this.findLearningPath(boardId);
+		await this.checkEditor(userId, board);
+
+		board.learningPathColor = color;
+		await this.boardNodeService.save(board);
+		this.learningPathNotifier.changed(board.id);
+
+		return board;
+	}
+
+	// A person goes a learning path: only the paths they go lock boards for them. Students choose
+	// for themselves, editors can also set it for the members of the room.
+	public async enroll(userId: EntityId, boardId: EntityId, targetUserId?: EntityId): Promise<void> {
+		const { board, subject } = await this.authorizeEnrollment(userId, boardId, targetUserId);
+
+		await this.learningPathEnrollmentRepo.enroll(subject, board.id, board.context.id);
+		this.learningPathNotifier.changed(board.id);
+	}
+
+	public async unenroll(userId: EntityId, boardId: EntityId, targetUserId?: EntityId): Promise<void> {
+		const { board, subject } = await this.authorizeEnrollment(userId, boardId, targetUserId);
+
+		await this.learningPathEnrollmentRepo.unenroll(subject, board.id);
+		this.learningPathNotifier.changed(board.id);
+	}
+
+	// Who goes which learning path of the room, with their progress. Editors only.
+	public async getOverview(userId: EntityId, roomId: EntityId): Promise<LearningPathOverview> {
+		this.checkFeatureEnabled();
+
+		const paths = await this.learningPathStateService.findRoomPaths(roomId);
+		if (paths.length === 0) {
+			throw new NotFoundException('The room has no learning paths');
+		}
+
+		const { user, auth } = await this.authorize(userId, paths[0]);
+		throwForbiddenIfFalse(this.boardNodeRule.can('isBoardEditor', user, auth));
+
+		return await this.learningPathStateService.overview(roomId, auth.users);
 	}
 
 	public async deleteStep(userId: EntityId, stepId: EntityId): Promise<void> {
@@ -271,12 +314,54 @@ export class LearningPathUc {
 		await Promise.all(missing.map((id) => this.boardCompletionRepo.markCompleted(userId, id, 'progress')));
 	}
 
+	private async authorizeEnrollment(
+		userId: EntityId,
+		boardId: EntityId,
+		targetUserId?: EntityId
+	): Promise<{ board: ColumnBoard; subject: EntityId }> {
+		this.checkFeatureEnabled();
+
+		const board = await this.findLearningPath(boardId);
+		if (board.context.type !== BoardExternalReferenceType.Room) {
+			throw new BadRequestException('Learning paths can only be part of rooms');
+		}
+
+		const { user, auth } = await this.authorize(userId, board);
+		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, auth));
+
+		const subject = targetUserId ?? userId;
+		if (subject !== userId) {
+			throwForbiddenIfFalse(this.boardNodeRule.can('isBoardEditor', user, auth));
+			if (!auth.users.some((member) => member.userId === subject)) {
+				throw new BadRequestException('The person is not a member of the room');
+			}
+		}
+
+		return { board, subject };
+	}
+
+	// The arrows of all learning paths of a room together must lead somewhere: a board that comes
+	// before itself would block everybody who goes both paths.
+	private async checkNoCircleInRoom(
+		board: ColumnBoard,
+		step: LearningPathStep,
+		prerequisiteStepIds: EntityId[]
+	): Promise<void> {
+		if (board.context.type !== BoardExternalReferenceType.Room) return;
+
+		const paths = await this.learningPathStateService.findRoomPaths(board.context.id);
+		const steps = paths.flatMap((path) => this.learningPathStateService.getSteps(path));
+		if (wouldCreateBoardCycle(steps, step.id, prerequisiteStepIds)) {
+			throw new BadRequestException(
+				'The arrows would form a circle together with the other learning paths of the room'
+			);
+		}
+	}
+
 	private async findAvailableBoards(pathBoard: ColumnBoard): Promise<ColumnBoard[]> {
 		const boards = await this.columnBoardService.findByExternalReference(pathBoard.context, 0);
 
-		return boards
-			.filter((board) => board.hasColumns())
-			.sort((a, b) => a.title.localeCompare(b.title));
+		return boards.filter((board) => board.hasColumns()).sort((a, b) => a.title.localeCompare(b.title));
 	}
 
 	private async findLearningPath(boardId: EntityId): Promise<ColumnBoard> {

@@ -29,6 +29,7 @@ export class BoardResponseMapper {
 			isVisible: board.isVisible,
 			readersCanEdit: board.readersCanEdit,
 			layout: board.layout,
+			learningPathColor: board.learningPathColor,
 			features,
 			allowedOperations,
 		});

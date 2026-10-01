@@ -30,7 +30,10 @@ export class LearningPathNotifier {
 			this.getEmitter().to(`board_${boardId}`).emit(LEARNING_PATH_CHANGED_EVENT, payload);
 		} catch (error) {
 			// a missed live update must never fail the change that was already saved
-			this.logger.warn(`could not notify learning path ${boardId}: ${(error as Error).message}`, LearningPathNotifier.name);
+			this.logger.warn(
+				`could not notify learning path ${boardId}: ${(error as Error).message}`,
+				LearningPathNotifier.name
+			);
 		}
 	}
 

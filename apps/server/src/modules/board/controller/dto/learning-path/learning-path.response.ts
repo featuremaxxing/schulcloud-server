@@ -1,7 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { LearningPathStepStatus } from '../../../service';
+import { LearningPathColor } from '../../../domain';
+import type { LearningPathLockReason, LearningPathStepStatus } from '../../../service';
 
 const STEP_STATUSES: LearningPathStepStatus[] = ['done', 'open', 'locked', 'unavailable'];
+
+export class LearningPathLockResponse {
+	@ApiProperty({ description: 'The learning path that keeps the board closed.' })
+	pathId: string;
+
+	@ApiProperty()
+	pathTitle: string;
+
+	@ApiProperty({ enum: ['prerequisites', 'chooseLearningPath'], enumName: 'LearningPathLockReason' })
+	reason: LearningPathLockReason;
+
+	constructor(props: LearningPathLockResponse) {
+		this.pathId = props.pathId;
+		this.pathTitle = props.pathTitle;
+		this.reason = props.reason;
+	}
+}
 
 export class LearningPathStepResponse {
 	@ApiProperty()
@@ -34,10 +52,16 @@ export class LearningPathStepResponse {
 	@ApiProperty({ enum: STEP_STATUSES, enumName: 'LearningPathStepStatus' })
 	status: LearningPathStepStatus;
 
-	@ApiPropertyOptional({ description: 'Editors only: students who completed the board.' })
+	@ApiPropertyOptional({
+		type: LearningPathLockResponse,
+		description: 'Students only: what keeps a locked step closed.',
+	})
+	lock?: LearningPathLockResponse;
+
+	@ApiPropertyOptional({ description: 'Editors only: students going this learning path who completed the board.' })
 	doneCount?: number;
 
-	@ApiPropertyOptional({ description: 'Editors only: students of the room.' })
+	@ApiPropertyOptional({ description: 'Editors only: students going this learning path.' })
 	studentCount?: number;
 
 	constructor(props: LearningPathStepResponse) {
@@ -51,6 +75,7 @@ export class LearningPathStepResponse {
 		this.unlockMode = props.unlockMode;
 		this.lockUntilPrerequisitesDone = props.lockUntilPrerequisitesDone;
 		this.status = props.status;
+		this.lock = props.lock;
 		this.doneCount = props.doneCount;
 		this.studentCount = props.studentCount;
 	}
@@ -80,6 +105,18 @@ export class LearningPathResponse {
 	@ApiProperty({ description: 'Whether the user may change the learning path.' })
 	isEditor: boolean;
 
+	@ApiPropertyOptional({ enum: LearningPathColor, enumName: 'LearningPathColor' })
+	color?: LearningPathColor;
+
+	@ApiPropertyOptional({ description: 'Students only: whether they go this learning path.' })
+	isEnrolled?: boolean;
+
+	@ApiPropertyOptional({ description: 'Editors only: students going this learning path.' })
+	studentCount?: number;
+
+	@ApiPropertyOptional({ description: 'Editors only: students who completed every published board of it.' })
+	completedStudentCount?: number;
+
 	@ApiProperty({ type: [LearningPathStepResponse] })
 	steps: LearningPathStepResponse[];
 
@@ -92,6 +129,10 @@ export class LearningPathResponse {
 	constructor(props: LearningPathResponse) {
 		this.boardId = props.boardId;
 		this.isEditor = props.isEditor;
+		this.color = props.color;
+		this.isEnrolled = props.isEnrolled;
+		this.studentCount = props.studentCount;
+		this.completedStudentCount = props.completedStudentCount;
 		this.steps = props.steps;
 		this.availableBoards = props.availableBoards;
 	}
@@ -111,5 +152,81 @@ export class BoardCompletionResponse {
 		this.inLearningPath = props.inLearningPath;
 		this.canMarkManually = props.canMarkManually;
 		this.completed = props.completed;
+	}
+}
+
+export class LearningPathOverviewPathResponse {
+	@ApiProperty()
+	id: string;
+
+	@ApiProperty()
+	title: string;
+
+	@ApiPropertyOptional({ enum: LearningPathColor, enumName: 'LearningPathColor' })
+	color?: LearningPathColor;
+
+	@ApiProperty({ description: 'The published boards of the learning path.' })
+	total: number;
+
+	constructor(props: LearningPathOverviewPathResponse) {
+		this.id = props.id;
+		this.title = props.title;
+		this.color = props.color;
+		this.total = props.total;
+	}
+}
+
+export class LearningPathOverviewProgressResponse {
+	@ApiProperty()
+	pathId: string;
+
+	@ApiProperty()
+	done: number;
+
+	@ApiProperty()
+	total: number;
+
+	@ApiPropertyOptional({ description: 'The board the student can continue with.' })
+	nextBoardTitle?: string;
+
+	constructor(props: LearningPathOverviewProgressResponse) {
+		this.pathId = props.pathId;
+		this.done = props.done;
+		this.total = props.total;
+		this.nextBoardTitle = props.nextBoardTitle;
+	}
+}
+
+export class LearningPathOverviewStudentResponse {
+	@ApiProperty()
+	userId: string;
+
+	@ApiPropertyOptional()
+	firstName?: string;
+
+	@ApiPropertyOptional()
+	lastName?: string;
+
+	@ApiProperty({ type: [LearningPathOverviewProgressResponse], description: 'The learning paths the student goes.' })
+	paths: LearningPathOverviewProgressResponse[];
+
+	constructor(props: LearningPathOverviewStudentResponse) {
+		this.userId = props.userId;
+		this.firstName = props.firstName;
+		this.lastName = props.lastName;
+		this.paths = props.paths;
+	}
+}
+
+export class LearningPathOverviewResponse {
+	@ApiProperty({ type: [LearningPathOverviewPathResponse] })
+	paths: LearningPathOverviewPathResponse[];
+
+	@ApiProperty({ type: [LearningPathOverviewStudentResponse] })
+	students: LearningPathOverviewStudentResponse[];
+
+	constructor(props: LearningPathOverviewResponse) {
+		this.paths = props.paths;
+		this.students = props.students;
 	}
 }

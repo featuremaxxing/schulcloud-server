@@ -2057,9 +2057,15 @@ describe(BoardNodeRule.name, () => {
 				expect(boardNodeRule.can(operation, colleague, authorizable)).toBe(false);
 				expect(boardNodeRule.can(operation, studentEditor, authorizable)).toBe(false);
 			}
-			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(true);
-			expect(boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
-			expect(boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
+			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(
+				true
+			);
+			expect(
+				boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })
+			).toBe(false);
+			expect(
+				boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })
+			).toBe(false);
 		});
 	});
 

@@ -23,7 +23,7 @@ import { RoomMembershipModule } from '../room-membership';
 import { BoardNodeRule } from './authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardNodeFactory, MediaBoardNodeFactory } from './domain';
-import { AssignmentReviewRepo, BoardCompletionRepo, BoardNodeRepo } from './repo';
+import { AssignmentReviewRepo, BoardCompletionRepo, BoardNodeRepo, LearningPathEnrollmentRepo } from './repo';
 import {
 	BoardCommonToolService,
 	BoardNodeAuthorizableService,
@@ -82,6 +82,7 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		// TODO: move BoardDoAuthorizableService, BoardDoRepo, BoardDoService, BoardNodeRepo in separate module and move mediaboard related services in mediaboard module
 		AssignmentReviewRepo,
 		BoardCompletionRepo,
+		LearningPathEnrollmentRepo,
 		BoardContextResolverService,
 		BoardNodeAuthorizableService,
 		BoardNodeRepo,
@@ -120,6 +121,7 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		LearningPathNotifier,
 		LearningPathStateService,
 		BoardCompletionRepo,
+		LearningPathEnrollmentRepo,
 		LearningRoomService,
 	],
 })

@@ -316,10 +316,12 @@ export class BoardNodeRepo {
 		const stepIds = steps.map((step) => step.id);
 		await this.em.nativeDelete(BoardNodeEntity, { id: { $in: stepIds } });
 		steps.forEach((step) => this.em.getUnitOfWork().unsetIdentity(step));
-		await this.em.getCollection(BoardNodeEntity).updateMany(
-			{ type: BoardNodeType.LEARNING_PATH_STEP, prerequisiteStepIds: { $in: stepIds } },
-			{ $pull: { prerequisiteStepIds: { $in: stepIds } }, $set: { updatedAt: new Date() } }
-		);
+		await this.em
+			.getCollection(BoardNodeEntity)
+			.updateMany(
+				{ type: BoardNodeType.LEARNING_PATH_STEP, prerequisiteStepIds: { $in: stepIds } },
+				{ $pull: { prerequisiteStepIds: { $in: stepIds } }, $set: { updatedAt: new Date() } }
+			);
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

@@ -14,7 +14,7 @@ import {
 import { Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
 import { BoardExternalReferenceType } from '../domain';
-import { BoardCompletionRepo } from '../repo';
+import { BoardCompletionRepo, LearningPathEnrollmentRepo } from '../repo';
 import { BoardNodeService, MediaBoardService } from '../service';
 
 @Injectable()
@@ -26,6 +26,7 @@ export class DeleteUserBoardDataStep extends SagaStep<'deleteUserData'> {
 		private readonly boardNodeService: BoardNodeService,
 		private readonly mediaBoardService: MediaBoardService,
 		private readonly boardCompletionRepo: BoardCompletionRepo,
+		private readonly learningPathEnrollmentRepo: LearningPathEnrollmentRepo,
 		private readonly logger: Logger
 	) {
 		super('deleteUserData');
@@ -40,7 +41,9 @@ export class DeleteUserBoardDataStep extends SagaStep<'deleteUserData'> {
 		const completionsDeleted = await this.deleteBoardCompletionsOfUser(userId);
 		// TODO: remove user references from boards
 
-		const result = StepReportBuilder.build(this.moduleName, [boardsDeleted, completionsDeleted]);
+		const enrollmentsDeleted = await this.deleteLearningPathEnrollmentsOfUser(userId);
+
+		const result = StepReportBuilder.build(this.moduleName, [boardsDeleted, completionsDeleted, enrollmentsDeleted]);
 
 		return result;
 	}
@@ -50,6 +53,13 @@ export class DeleteUserBoardDataStep extends SagaStep<'deleteUserData'> {
 		const numberOfDeletedCompletions = await this.boardCompletionRepo.deleteByUserId(userId);
 
 		return StepOperationReportBuilder.build(StepOperationType.DELETE, numberOfDeletedCompletions, []);
+	}
+
+	// so is the choice of the learning paths the user goes
+	public async deleteLearningPathEnrollmentsOfUser(userId: EntityId): Promise<StepOperationReport> {
+		const numberOfDeletedEnrollments = await this.learningPathEnrollmentRepo.deleteByUserId(userId);
+
+		return StepOperationReportBuilder.build(StepOperationType.DELETE, numberOfDeletedEnrollments, []);
 	}
 
 	public async deleteMediaBoardsOwnedByUser(userId: EntityId): Promise<StepOperationReport> {

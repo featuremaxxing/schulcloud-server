@@ -3,6 +3,7 @@ import {
 	ArrayMaxSize,
 	IsArray,
 	IsBoolean,
+	IsEnum,
 	IsIn,
 	IsInt,
 	IsMongoId,
@@ -10,7 +11,7 @@ import {
 	Max,
 	Min,
 } from 'class-validator';
-import { LEARNING_PATH_MAX_STEPS, type LearningPathUnlockMode } from '../../../domain';
+import { LEARNING_PATH_MAX_STEPS, LearningPathColor, type LearningPathUnlockMode } from '../../../domain';
 
 const MAX_COORDINATE = 100000;
 
@@ -18,6 +19,12 @@ export class LearningPathBoardUrlParams {
 	@IsMongoId()
 	@ApiProperty({ description: 'The id of the board.', required: true, nullable: false })
 	boardId!: string;
+}
+
+export class LearningPathRoomUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the room.', required: true, nullable: false })
+	roomId!: string;
 }
 
 export class LearningPathStepUrlParams {
@@ -88,4 +95,23 @@ export class BoardCompletionBodyParams {
 	@IsBoolean()
 	@ApiProperty({ description: 'Whether the board is completed.', required: true })
 	completed!: boolean;
+}
+
+export class UpdateLearningPathBodyParams {
+	@IsEnum(LearningPathColor)
+	@ApiProperty({
+		description: 'The color of the learning path.',
+		enum: LearningPathColor,
+		enumName: 'LearningPathColor',
+	})
+	color!: LearningPathColor;
+}
+
+export class LearningPathEnrollmentBodyParams {
+	@IsOptional()
+	@IsMongoId()
+	@ApiPropertyOptional({
+		description: 'Editors only: the member of the room to enroll or remove. Default: the caller.',
+	})
+	userId?: string;
 }

@@ -11,6 +11,8 @@ import {
 	ColumnBoardService,
 	isTeacherMember,
 	LearningPathStateService,
+	type LearningPathLock,
+	type LearningPathLockReason,
 	type LearningPathSummary,
 } from '@modules/board';
 import { BoardNodeRule, BoardOperation } from '@modules/board/authorisation/board-node.rule';
@@ -27,7 +29,7 @@ interface AuthorizedBoard {
 	allowedOperations: Record<BoardOperation, boolean>;
 	auth: BoardNodeAuthorizable;
 	// set when a learning path keeps the board closed for the user until other boards are completed
-	lockedByLearningPath?: { id: EntityId; title: string };
+	lockedByLearningPath?: { id: EntityId; title: string; reason: LearningPathLockReason };
 	// for learning paths: their boards with the user's state, for the overview in the room
 	learningPath?: LearningPathSummary;
 }
@@ -180,10 +182,20 @@ export class RoomContentUc {
 		}
 
 		if (locked.length > 0) {
-			const paths = await this.learningPathStateService.findLockingPaths(locked.map((entry) => entry.board.id));
+			const member = locked[0].auth.users.find((candidate) => candidate.userId === userId);
+			const locks: Map<EntityId, LearningPathLock> = member
+				? await this.learningPathStateService.findLocks(
+						locked.map((entry) => entry.board),
+						member
+					)
+				: new Map<EntityId, LearningPathLock>();
 			for (const entry of locked) {
-				const path = paths.get(entry.board.id);
-				entry.lockedByLearningPath = { id: path?.id ?? '', title: path?.title ?? '' };
+				const lock = locks.get(entry.board.id);
+				entry.lockedByLearningPath = {
+					id: lock?.pathId ?? '',
+					title: lock?.pathTitle ?? '',
+					reason: lock?.reason ?? 'prerequisites',
+				};
 			}
 		}
 

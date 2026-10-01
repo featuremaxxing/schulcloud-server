@@ -2,7 +2,13 @@ import { BoardNode } from './board-node.do';
 import { Column } from './column.do';
 import { FileAreaFolder } from './file-area-folder.do';
 import { LearningPathStep } from './learning-path-step.do';
-import { type AnyBoardNode, type BoardExternalReference, BoardLayout, type ColumnBoardProps } from './types';
+import {
+	type AnyBoardNode,
+	type BoardExternalReference,
+	BoardLayout,
+	type ColumnBoardProps,
+	type LearningPathColor,
+} from './types';
 
 export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 	get title(): string {
@@ -46,6 +52,14 @@ export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 
 	set readersCanEdit(readersCanEdit: boolean) {
 		this.props.readersCanEdit = readersCanEdit;
+	}
+
+	get learningPathColor(): LearningPathColor | undefined {
+		return this.props.learningPathColor;
+	}
+
+	set learningPathColor(color: LearningPathColor | undefined) {
+		this.props.learningPathColor = color;
 	}
 
 	public isFileArea(): boolean {

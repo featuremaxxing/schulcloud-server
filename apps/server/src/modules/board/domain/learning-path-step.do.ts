@@ -86,4 +86,38 @@ export const wouldCreateCycle = (
 	return false;
 };
 
+// Same, across every learning path of a room: a board must never come before itself, otherwise
+// somebody going both paths could never get past it. The arrows are followed from board to board.
+export const wouldCreateBoardCycle = (
+	steps: LearningPathStep[],
+	stepId: EntityId,
+	prerequisiteStepIds: EntityId[]
+): boolean => {
+	const stepsById = new Map(steps.map((step) => [step.id, step]));
+	const target = stepsById.get(stepId);
+	if (!target) return false;
+
+	const prerequisiteBoards = new Map<EntityId, Set<EntityId>>();
+	for (const step of steps) {
+		const boards = prerequisiteBoards.get(step.linkedBoardId) ?? new Set<EntityId>();
+		const ids = step.id === stepId ? prerequisiteStepIds : step.prerequisiteStepIds;
+		ids.forEach((id) => {
+			const boardId = stepsById.get(id)?.linkedBoardId;
+			if (boardId) boards.add(boardId);
+		});
+		prerequisiteBoards.set(step.linkedBoardId, boards);
+	}
+
+	const visited = new Set<EntityId>();
+	const stack = Array.from(prerequisiteBoards.get(target.linkedBoardId) ?? []);
+	while (stack.length > 0) {
+		const current = stack.pop() as EntityId;
+		if (current === target.linkedBoardId) return true;
+		if (visited.has(current)) continue;
+		visited.add(current);
+		stack.push(...Array.from(prerequisiteBoards.get(current) ?? []));
+	}
+	return false;
+};
+
 export const LEARNING_PATH_MAX_STEPS = 100;
