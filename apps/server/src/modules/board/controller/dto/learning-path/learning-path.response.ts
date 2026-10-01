@@ -53,6 +53,12 @@ export class LearningPathStepResponse {
 	status: LearningPathStepStatus;
 
 	@ApiPropertyOptional({
+		description:
+			'Students only: the board was completed before, but something new came up. It still unlocks what follows.',
+	})
+	reopened?: boolean;
+
+	@ApiPropertyOptional({
 		type: LearningPathLockResponse,
 		description: 'Students only: what keeps a locked step closed.',
 	})
@@ -75,6 +81,7 @@ export class LearningPathStepResponse {
 		this.unlockMode = props.unlockMode;
 		this.lockUntilPrerequisitesDone = props.lockUntilPrerequisitesDone;
 		this.status = props.status;
+		this.reopened = props.reopened;
 		this.lock = props.lock;
 		this.doneCount = props.doneCount;
 		this.studentCount = props.studentCount;
@@ -190,6 +197,9 @@ export class LearningPathOverviewProgressResponse {
 	@ApiProperty()
 	total: number;
 
+	@ApiProperty({ description: 'Boards completed before that are not done any more because something new came up.' })
+	rework: number;
+
 	@ApiPropertyOptional({ description: 'The board the student can continue with.' })
 	nextBoardTitle?: string;
 
@@ -197,6 +207,7 @@ export class LearningPathOverviewProgressResponse {
 		this.pathId = props.pathId;
 		this.done = props.done;
 		this.total = props.total;
+		this.rework = props.rework;
 		this.nextBoardTitle = props.nextBoardTitle;
 	}
 }

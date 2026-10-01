@@ -107,6 +107,18 @@ export class UpdateLearningPathBodyParams {
 	color!: LearningPathColor;
 }
 
+export class ResetLearningPathProgressBodyParams {
+	@IsOptional()
+	@IsArray()
+	@ArrayMaxSize(1000)
+	@IsMongoId({ each: true })
+	@ApiPropertyOptional({
+		description: 'The students whose progress is reset. Default: all students of the room.',
+		type: [String],
+	})
+	userIds?: string[];
+}
+
 export class LearningPathEnrollmentBodyParams {
 	@IsOptional()
 	@IsMongoId()

@@ -180,14 +180,16 @@ export class BoardProgressService {
 
 	// Who has completed each board: a person is done with a board when it has at least one
 	// progress item for them and they finished all of them. Assignments that have not started
-	// yet do not count, as in the student view above. Used by learning paths.
+	// yet do not count, as in the student view above. Also who has progress items on the board
+	// at all, so a board without any can be told from one that is not done yet. Used by learning paths.
 	public async computeCompletedUserIds(
 		boards: { board: ColumnBoard; users: UserWithBoardRoles[] }[],
 		enabledTypes: BoardNodeType[]
-	): Promise<Map<EntityId, Set<EntityId>>> {
-		const result = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
+	): Promise<{ done: Map<EntityId, Set<EntityId>>; withItems: Map<EntityId, Set<EntityId>> }> {
+		const done = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
+		const withItems = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
 		if (boards.length === 0 || enabledTypes.length === 0) {
-			return result;
+			return { done, withItems };
 		}
 
 		const elements = (await this.boardNodeRepo.findElementsByBoardIds(
@@ -210,16 +212,20 @@ export class BoardProgressService {
 				.map((element) => computeItemProgress(element, this.childrenOf(element, submissions, votes), entry.users))
 				.filter((progress): progress is ItemProgress => !!progress);
 
-			const done = result.get(entry.board.id) as Set<EntityId>;
+			const boardDone = done.get(entry.board.id) as Set<EntityId>;
+			const boardWithItems = withItems.get(entry.board.id) as Set<EntityId>;
 			for (const user of entry.users) {
 				const own = progresses.filter((progress) => progress.eligibleUserIds.includes(user.userId));
+				if (own.length > 0) {
+					boardWithItems.add(user.userId);
+				}
 				if (own.length > 0 && own.every((progress) => progress.doneUserIds.includes(user.userId))) {
-					done.add(user.userId);
+					boardDone.add(user.userId);
 				}
 			}
 		}
 
-		return result;
+		return { done, withItems };
 	}
 
 	// Whether the board has at least one progress item for the given person - without one,

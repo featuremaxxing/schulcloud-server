@@ -29,11 +29,23 @@ export interface LearningPathLock {
 	reason: LearningPathLockReason;
 }
 
+// Per board, the people who ...
+// - done: are done with it right now
+// - unlocked: have ever been done with it (a stored completion stays when the teacher adds more
+//   items later, so what it unlocked stays open) or are done now
+export interface CompletionState {
+	done: Map<EntityId, Set<EntityId>>;
+	unlocked: Map<EntityId, Set<EntityId>>;
+}
+
 export interface LearningPathStepState {
 	step: LearningPathStep;
 	// undefined when the linked board is gone
 	linkedBoard?: ColumnBoard;
 	status: LearningPathStepStatus;
+	// the board was completed before but something new came up, so it is not done any more. It
+	// still unlocks what follows.
+	reopened: boolean;
 }
 
 export interface LearningPathSummaryStep {
@@ -42,6 +54,8 @@ export interface LearningPathSummaryStep {
 	title: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
+	// students: completed before, but something new came up
+	reopened?: boolean;
 	// students: why a locked step is locked, which may be another learning path they go
 	lock?: LearningPathLock;
 	// editors: the students who go this learning path and completed the board
@@ -65,7 +79,7 @@ export interface LearningPathSummary {
 export interface RoomLearningPaths {
 	paths: ColumnBoard[];
 	linkedBoards: Map<EntityId, ColumnBoard>;
-	completed: Map<EntityId, Set<EntityId>>;
+	completion: CompletionState;
 	// per person, the learning paths they chose to go
 	enrolledPathIds: Map<EntityId, Set<EntityId>>;
 }
@@ -74,7 +88,7 @@ export interface LearningPathOverviewStudent {
 	userId: EntityId;
 	firstName?: string;
 	lastName?: string;
-	paths: { pathId: EntityId; done: number; total: number; nextBoardTitle?: string }[];
+	paths: { pathId: EntityId; done: number; total: number; rework: number; nextBoardTitle?: string }[];
 }
 
 export interface LearningPathOverview {
@@ -114,13 +128,11 @@ export class LearningPathStateService {
 		return new Map(boards.filter(isColumnBoard).map((board) => [board.id, board]));
 	}
 
-	// Per board: the people who completed it. Manual completions count for everybody,
-	// the progress only for people with at least one progress item on the board.
-	public async completedUserIds(
-		boards: ColumnBoard[],
-		users: UserWithBoardRoles[]
-	): Promise<Map<EntityId, Set<EntityId>>> {
-		const [byProgress, completions] = await Promise.all([
+	// A person is done with a board when they finished all its progress items, or - on a board
+	// without progress items for them - marked it as done by hand. A stored completion alone keeps
+	// the boards after it open, even when the teacher added items since (see CompletionState).
+	public async completionState(boards: ColumnBoard[], users: UserWithBoardRoles[]): Promise<CompletionState> {
+		const [progress, completions] = await Promise.all([
 			this.boardProgressService.computeCompletedUserIds(
 				boards.map((board) => {
 					return { board, users };
@@ -130,29 +142,40 @@ export class LearningPathStateService {
 			this.boardCompletionRepo.findByBoardIds(boards.map((board) => board.id)),
 		]);
 
+		const done = new Map<EntityId, Set<EntityId>>();
+		const unlocked = new Map<EntityId, Set<EntityId>>();
+		for (const board of boards) {
+			const boardDone = new Set(progress.done.get(board.id));
+			done.set(board.id, boardDone);
+			unlocked.set(board.id, new Set(boardDone));
+		}
 		for (const completion of completions) {
-			const done = byProgress.get(completion.boardId) ?? new Set<EntityId>();
-			done.add(completion.userId);
-			byProgress.set(completion.boardId, done);
+			unlocked.get(completion.boardId)?.add(completion.userId);
+			if (!progress.withItems.get(completion.boardId)?.has(completion.userId)) {
+				done.get(completion.boardId)?.add(completion.userId);
+			}
 		}
 
-		return byProgress;
+		return { done, unlocked };
 	}
 
 	public computeStates(
 		steps: LearningPathStep[],
 		linkedBoards: Map<EntityId, ColumnBoard>,
-		completed: Map<EntityId, Set<EntityId>>,
+		completion: CompletionState,
 		userId: EntityId
 	): LearningPathStepState[] {
 		const stepsById = new Map(steps.map((step) => [step.id, step]));
 
 		const isAvailable = (step: LearningPathStep): boolean => linkedBoards.get(step.linkedBoardId)?.isVisible ?? false;
-		const isDone = (step: LearningPathStep): boolean => completed.get(step.linkedBoardId)?.has(userId) ?? false;
-		// a prerequisite that is gone or not published does not block
+		const isDone = (step: LearningPathStep): boolean => completion.done.get(step.linkedBoardId)?.has(userId) ?? false;
+		const wasDone = (step: LearningPathStep): boolean =>
+			completion.unlocked.get(step.linkedBoardId)?.has(userId) ?? false;
+		// a prerequisite that is gone or not published does not block, and neither does one that
+		// was completed once
 		const isSatisfied = (stepId: EntityId): boolean => {
 			const step = stepsById.get(stepId);
-			return !step || !isAvailable(step) || isDone(step);
+			return !step || !isAvailable(step) || wasDone(step);
 		};
 
 		return steps.map((step) => {
@@ -168,7 +191,9 @@ export class LearningPathStateService {
 				status = 'open';
 			}
 
-			return { step, linkedBoard, status };
+			const reopened = status === 'open' && wasDone(step);
+
+			return { step, linkedBoard, status, reopened };
 		});
 	}
 
@@ -192,8 +217,8 @@ export class LearningPathStateService {
 
 		const allSteps = [...paths, ...extraPaths].flatMap((path) => this.getSteps(path));
 		const linkedBoards = await this.loadLinkedBoards(allSteps);
-		const [completed, enrollments] = await Promise.all([
-			this.completedUserIds(Array.from(linkedBoards.values()), users),
+		const [completion, enrollments] = await Promise.all([
+			this.completionState(Array.from(linkedBoards.values()), users),
 			this.learningPathEnrollmentRepo.findByRoom(roomId),
 		]);
 
@@ -204,7 +229,7 @@ export class LearningPathStateService {
 			enrolledPathIds.set(enrollment.userId, chosen);
 		}
 
-		return { paths, linkedBoards, completed, enrolledPathIds };
+		return { paths, linkedBoards, completion, enrolledPathIds };
 	}
 
 	// Every learning path of the room, published or not, loaded with its boards.
@@ -243,7 +268,7 @@ export class LearningPathStateService {
 		if (own.length === 0) {
 			// no learning path chosen yet: what a learning path of the room keeps closed stays closed
 			for (const path of room.paths) {
-				const states = this.computeStates(this.getSteps(path), room.linkedBoards, room.completed, userId);
+				const states = this.computeStates(this.getSteps(path), room.linkedBoards, room.completion, userId);
 				for (const { step, status } of states) {
 					if (status === 'locked' && !locks.has(step.linkedBoardId)) {
 						locks.set(step.linkedBoardId, {
@@ -259,7 +284,7 @@ export class LearningPathStateService {
 		}
 
 		for (const path of own) {
-			const states = this.computeStates(this.getSteps(path), room.linkedBoards, room.completed, userId);
+			const states = this.computeStates(this.getSteps(path), room.linkedBoards, room.completion, userId);
 			for (const { step, status } of states) {
 				if (status === 'locked' && !locks.has(step.linkedBoardId)) {
 					locks.set(step.linkedBoardId, { pathId: path.id, pathTitle: path.title, reason: 'prerequisites' });
@@ -384,7 +409,7 @@ export class LearningPathStateService {
 						const states = this.computeStates(
 							stepsByPath.get(path.id) ?? [],
 							room.linkedBoards,
-							room.completed,
+							room.completion,
 							student.userId
 						).filter((state) => state.status !== 'unavailable');
 						const next = states
@@ -395,6 +420,7 @@ export class LearningPathStateService {
 							pathId: path.id,
 							done: states.filter((state) => state.status === 'done').length,
 							total: states.length,
+							rework: states.filter((state) => state.reopened).length,
 							nextBoardTitle: next?.linkedBoard?.title,
 						};
 					}),
@@ -436,6 +462,20 @@ export class LearningPathStateService {
 		return result;
 	}
 
+	// Takes the ticks of the given people off every checkbox of the boards.
+	public async clearCheckboxes(boardIds: EntityId[], userIds: EntityId[]): Promise<void> {
+		const targets = new Set(userIds);
+		const checkboxes = await this.boardNodeRepo.findElementsByBoardIds(boardIds, [BoardNodeType.CHECKBOX_ELEMENT]);
+
+		await Promise.all(
+			checkboxes.map((checkbox) =>
+				this.boardNodeService.mutateCheckboxEntries(checkbox.id, (entries) =>
+					entries.filter((entry) => !targets.has(entry.userId))
+				)
+			)
+		);
+	}
+
 	public isEditor(user: UserWithBoardRoles): boolean {
 		return user.roles.includes(BoardRoles.EDITOR) || user.roles.includes(BoardRoles.ADMIN) || isTeacherMember(user);
 	}
@@ -459,14 +499,15 @@ export class LearningPathStateService {
 		const published = steps.filter((step) => room.linkedBoards.get(step.linkedBoardId)?.isVisible);
 		const completedStudentCount = enrolled.filter(
 			(student) =>
-				published.length > 0 && published.every((step) => room.completed.get(step.linkedBoardId)?.has(student.userId))
+				published.length > 0 &&
+				published.every((step) => room.completion.done.get(step.linkedBoardId)?.has(student.userId))
 		).length;
 
 		return {
 			color: board.learningPathColor,
 			steps: steps.map((step) => {
 				const linkedBoard = room.linkedBoards.get(step.linkedBoardId);
-				const done = enrolled.filter((student) => room.completed.get(step.linkedBoardId)?.has(student.userId));
+				const done = enrolled.filter((student) => room.completion.done.get(step.linkedBoardId)?.has(student.userId));
 				return {
 					step,
 					title: linkedBoard?.title ?? '',
@@ -488,7 +529,7 @@ export class LearningPathStateService {
 		userId: EntityId
 	): LearningPathSummary {
 		const locks = this.locksFor(room, userId);
-		const states = this.computeStates(steps, room.linkedBoards, room.completed, userId);
+		const states = this.computeStates(steps, room.linkedBoards, room.completion, userId);
 
 		return {
 			color: board.learningPathColor,
@@ -499,11 +540,14 @@ export class LearningPathStateService {
 				// what the server enforces: done and unavailable as they are, the rest by the locks of the learning paths the person goes
 				const lock = state.status === 'done' || !visible ? undefined : locks.get(state.step.linkedBoardId);
 
+				const status = !visible || state.status === 'done' ? state.status : lock ? 'locked' : 'open';
+
 				return {
 					step: state.step,
 					title: visible ? (state.linkedBoard?.title ?? '') : '',
 					isVisible: visible,
-					status: !visible || state.status === 'done' ? state.status : lock ? 'locked' : 'open',
+					status,
+					reopened: status === 'open' && state.reopened,
 					lock,
 				};
 			}),

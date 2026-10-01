@@ -43,6 +43,11 @@ export class RoomLearningPathStepResponse {
 	@ApiProperty({ enum: ['all', 'any'], description: 'Whether every prerequisite or one of them opens the step.' })
 	unlockMode: 'all' | 'any';
 
+	@ApiPropertyOptional({
+		description: 'Completed before, but something new came up. It still unlocks what follows.',
+	})
+	reopened?: boolean;
+
 	@ApiPropertyOptional({ type: RoomBoardLockResponse, description: 'What keeps a locked step closed for the user.' })
 	lock?: RoomBoardLockResponse;
 
@@ -60,6 +65,7 @@ export class RoomLearningPathStepResponse {
 		this.status = props.status;
 		this.prerequisiteStepIds = props.prerequisiteStepIds;
 		this.unlockMode = props.unlockMode;
+		this.reopened = props.reopened;
 		this.lock = props.lock;
 		this.positionX = props.positionX;
 		this.positionY = props.positionY;

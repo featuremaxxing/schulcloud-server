@@ -32,6 +32,7 @@ import {
 	LearningPathRoomUrlParams,
 	LearningPathStepResponse,
 	LearningPathStepUrlParams,
+	ResetLearningPathProgressBodyParams,
 	UpdateLearningPathBodyParams,
 	UpdateLearningPathStepBodyParams,
 } from './dto';
@@ -48,6 +49,7 @@ const toStepResponse = (view: LearningPathStepView): LearningPathStepResponse =>
 		unlockMode: view.step.unlockMode,
 		lockUntilPrerequisitesDone: view.step.lockUntilPrerequisitesDone,
 		status: view.status,
+		reopened: view.reopened,
 		lock: view.lock ? new LearningPathLockResponse(view.lock) : undefined,
 		doneCount: view.doneCount,
 		studentCount: view.studentCount,
@@ -158,6 +160,24 @@ export class LearningPathController {
 					})
 			),
 		});
+	}
+
+	@ApiOperation({
+		summary:
+			'Start over for students of a room (default: all): stored completions and checkbox ticks are removed, submissions, poll votes and chosen learning paths stay. Editors only.',
+	})
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Post('rooms/:roomId/learning-paths/reset')
+	public async resetProgress(
+		@Param() urlParams: LearningPathRoomUrlParams,
+		@Body() bodyParams: ResetLearningPathProgressBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<void> {
+		await this.learningPathUc.resetProgress(currentUser.userId, urlParams.roomId, bodyParams.userIds);
 	}
 
 	@ApiOperation({ summary: 'Add a board of the same room to a learning path.' })

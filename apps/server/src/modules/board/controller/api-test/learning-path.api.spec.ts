@@ -13,7 +13,7 @@ import { type INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { cleanupCollections } from '@testing/cleanup-collections';
 import { TestApiClientBuilder } from '@testing/test-api-client-builder';
-import { BoardExternalReferenceType, BoardLayout } from '../../domain';
+import { BoardExternalReferenceType, BoardLayout, BoardNodeType } from '../../domain';
 import { BoardCompletionEntity, BoardNodeEntity, LearningPathEnrollmentEntity } from '../../repo';
 import {
 	cardEntityFactory,
@@ -29,6 +29,7 @@ type StepJson = {
 	title: string;
 	status: string;
 	prerequisiteStepIds: string[];
+	reopened?: boolean;
 	doneCount?: number;
 	studentCount?: number;
 };
@@ -166,6 +167,8 @@ describe('learning path (api)', () => {
 			teacherClient,
 			studentClient,
 			student,
+			teacher,
+			cardA,
 			room,
 			pathBoard,
 			boardA,
@@ -410,6 +413,154 @@ describe('learning path (api)', () => {
 			});
 
 			expect(response.status).toEqual(201);
+		});
+	});
+
+	describe('when something new is added to a completed board', () => {
+		// the teacher adds a second checkbox to A, after the student completed it
+		const addCheckboxToA = async (setupResult: Awaited<ReturnType<typeof setup>>) => {
+			const { cardA, teacher } = setupResult;
+			await em.persist(checkboxElementEntityFactory.withParent(cardA).build({ creatorId: teacher.id })).flush();
+			em.clear();
+		};
+
+		it('should show the board as open again, marked for rework, but keep the next board open', async () => {
+			const result = await setup();
+			const { studentClient, teacherClient, pathBoard, boardA, boardC, checkTheBox } = result;
+			await checkTheBox();
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+			// opening the learning path stores what the student completed
+			await studentClient.get(`boards/${pathBoard.id}/learning-path`);
+
+			await addCheckboxToA(result);
+
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(statusOf(path, boardA.id)).toBe('open');
+			expect(path.steps.find((step) => step.linkedBoardId === boardA.id)?.reopened).toBe(true);
+			expect(statusOf(path, boardC.id)).toBe('open');
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+
+			const teacherPath = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(teacherPath.steps[0]).toMatchObject({ doneCount: 0, studentCount: 1 });
+		});
+
+		it('should be done again once the new checkbox is ticked', async () => {
+			const result = await setup();
+			const { studentClient, pathBoard, boardA, checkTheBox } = result;
+			await checkTheBox();
+			await studentClient.get(`boards/${pathBoard.id}/learning-path`);
+			await addCheckboxToA(result);
+			const checkboxes = await em.find(BoardNodeEntity, { type: BoardNodeType.CHECKBOX_ELEMENT });
+			// the new one nobody ticked yet
+			const newCheckbox = checkboxes.find((checkbox) => (checkbox.entries ?? []).length === 0) as BoardNodeEntity;
+			await em.nativeUpdate(
+				BoardNodeEntity,
+				{ id: newCheckbox.id },
+				{ entries: [{ userId: result.student.id, checked: true, approved: false }] }
+			);
+			em.clear();
+
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+
+			expect(statusOf(path, boardA.id)).toBe('done');
+		});
+
+		it('should let a student carry on to the board after the next one', async () => {
+			const result = await setup();
+			const { studentClient, teacherClient, room, pathBoard, boardC, stepC, checkTheBox } = result;
+			// A -> C -> D, D is locked until C is done
+			const created = await teacherClient.post('boards', {
+				title: 'D',
+				parentId: room.id,
+				parentType: BoardExternalReferenceType.Room,
+				layout: BoardLayout.COLUMNS,
+			});
+			const boardD = (created.body as { id: string }).id;
+			const stepD = (
+				(
+					await teacherClient.post('learning-path-steps', {
+						boardId: pathBoard.id,
+						linkedBoardId: boardD,
+						positionX: 0,
+						positionY: 0,
+					})
+				).body as { id: string }
+			).id;
+			await teacherClient.patch(`learning-path-steps/${stepD}`, {
+				prerequisiteStepIds: [stepC.id],
+				lockUntilPrerequisitesDone: true,
+			});
+			await teacherClient.patch(`boards/${boardD}/visibility`, { isVisible: true });
+			expect((await studentClient.get(`boards/${boardD}`)).status).toEqual(403);
+
+			await checkTheBox();
+			await studentClient.get(`boards/${pathBoard.id}/learning-path`);
+			await studentClient.put(`boards/${boardC.id}/completion`, { completed: true });
+			expect((await studentClient.get(`boards/${boardD}`)).status).toEqual(200);
+
+			await addCheckboxToA(result);
+
+			expect((await studentClient.get(`boards/${boardD}`)).status).toEqual(200);
+		});
+	});
+
+	describe('POST rooms/:roomId/learning-paths/reset', () => {
+		it('should start over for the given student, and keep the learning path they go', async () => {
+			const { studentClient, teacherClient, room, student, pathBoard, boardA, boardB, checkTheBox } = await setup();
+			await teacherClient.put(`boards/${pathBoard.id}/enrollment`, { userId: student.id });
+			await checkTheBox();
+			await studentClient.put(`boards/${boardB.id}/completion`, { completed: true });
+			await studentClient.get(`boards/${pathBoard.id}/learning-path`);
+			expect(await em.count(BoardCompletionEntity, { userId: student.id })).toBeGreaterThan(0);
+
+			const response = await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, { userIds: [student.id] });
+
+			expect(response.status).toEqual(204);
+			expect(await em.count(BoardCompletionEntity, { userId: student.id })).toBe(0);
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson & {
+				isEnrolled?: boolean;
+			};
+			expect(statusOf(path, boardA.id)).toBe('open');
+			expect(statusOf(path, boardB.id)).toBe('open');
+			expect(path.isEnrolled).toBe(true);
+			const checkboxes = await em.find(BoardNodeEntity, { type: BoardNodeType.CHECKBOX_ELEMENT });
+			expect(checkboxes.flatMap((checkbox) => checkbox.entries ?? [])).toEqual([]);
+		});
+
+		it('should reset every student of the room without a list', async () => {
+			const { studentClient, teacherClient, room, pathBoard, boardA, checkTheBox } = await setup();
+			await checkTheBox();
+
+			const response = await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, {});
+
+			expect(response.status).toEqual(204);
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(statusOf(path, boardA.id)).toBe('open');
+		});
+
+		it('should close the boards behind it again', async () => {
+			const { studentClient, teacherClient, room, boardC, checkTheBox } = await setup();
+			await checkTheBox();
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+			await studentClient.get(`rooms/${room.id}/boards`);
+
+			await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, {});
+
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(403);
+		});
+
+		it('should not let students reset', async () => {
+			const { studentClient, room } = await setup();
+
+			expect((await studentClient.post(`rooms/${room.id}/learning-paths/reset`, {})).status).toEqual(403);
+		});
+
+		it('should only reset students of the room', async () => {
+			const { teacherClient, room, teacher } = await setup();
+
+			const response = await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, { userIds: [teacher.id] });
+
+			expect(response.status).toEqual(400);
 		});
 	});
 

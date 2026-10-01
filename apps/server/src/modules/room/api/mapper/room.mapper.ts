@@ -109,7 +109,7 @@ export class RoomMapper {
 			color: summary.color,
 			isEnrolled: summary.isEnrolled,
 			steps: summary.steps.map(
-				({ step, title, isVisible, status, lock }) =>
+				({ step, title, isVisible, status, reopened, lock }) =>
 					new RoomLearningPathStepResponse({
 						id: step.id,
 						boardId: step.linkedBoardId,
@@ -118,6 +118,7 @@ export class RoomMapper {
 						status,
 						prerequisiteStepIds: step.prerequisiteStepIds,
 						unlockMode: step.unlockMode,
+						reopened,
 						lock: lock
 							? new RoomBoardLockResponse({ id: lock.pathId, title: lock.pathTitle, reason: lock.reason })
 							: undefined,

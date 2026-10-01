@@ -33,6 +33,12 @@ export class BoardCompletionRepo {
 		await this.em.nativeDelete(BoardCompletionEntity, { userId, boardId });
 	}
 
+	public async deleteByBoardIdsAndUserIds(boardIds: EntityId[], userIds: EntityId[]): Promise<void> {
+		if (boardIds.length === 0 || userIds.length === 0) return;
+
+		await this.em.nativeDelete(BoardCompletionEntity, { boardId: { $in: boardIds }, userId: { $in: userIds } });
+	}
+
 	public async deleteByBoardId(boardId: EntityId): Promise<void> {
 		await this.em.nativeDelete(BoardCompletionEntity, { boardId });
 	}

@@ -91,10 +91,15 @@ describe(LearningPathStateService.name, () => {
 		return { boardA, boardB, boardC, a, b, c, linkedBoards, userId, pathId };
 	};
 
+	// completed for good: done now and unlocking what follows
+	const doneBy = (boardId: string, userId: string) => {
+		return { done: new Map([[boardId, new Set([userId])]]), unlocked: new Map([[boardId, new Set([userId])]]) };
+	};
+
 	describe('computeStates', () => {
 		it('should lock a step until all prerequisites are done', () => {
 			const { a, b, c, boardA, linkedBoards, userId } = buildPath('all');
-			const completed = new Map([[boardA.id, new Set([userId])]]);
+			const completed = doneBy(boardA.id, userId);
 
 			const states = service.computeStates([a, b, c], linkedBoards, completed, userId);
 
@@ -103,7 +108,7 @@ describe(LearningPathStateService.name, () => {
 
 		it('should open a step when one prerequisite is enough', () => {
 			const { a, b, c, boardA, linkedBoards, userId } = buildPath('any');
-			const completed = new Map([[boardA.id, new Set([userId])]]);
+			const completed = doneBy(boardA.id, userId);
 
 			const states = service.computeStates([a, b, c], linkedBoards, completed, userId);
 
@@ -113,7 +118,7 @@ describe(LearningPathStateService.name, () => {
 		it('should not block on a prerequisite whose board is still a draft', () => {
 			const { a, b, c, boardA, boardB, linkedBoards, userId } = buildPath('all');
 			boardB.isVisible = false;
-			const completed = new Map([[boardA.id, new Set([userId])]]);
+			const completed = doneBy(boardA.id, userId);
 
 			const states = service.computeStates([a, b, c], linkedBoards, completed, userId);
 
@@ -123,7 +128,7 @@ describe(LearningPathStateService.name, () => {
 		it('should not block on a prerequisite whose board is gone', () => {
 			const { a, b, c, boardA, boardB, linkedBoards, userId } = buildPath('all');
 			linkedBoards.delete(boardB.id);
-			const completed = new Map([[boardA.id, new Set([userId])]]);
+			const completed = doneBy(boardA.id, userId);
 
 			const states = service.computeStates([a, b, c], linkedBoards, completed, userId);
 
@@ -134,30 +139,83 @@ describe(LearningPathStateService.name, () => {
 			const { a, b, c, linkedBoards, userId } = buildPath('all');
 			c.lockUntilPrerequisitesDone = false;
 
-			const states = service.computeStates([a, b, c], linkedBoards, new Map(), userId);
+			const states = service.computeStates([a, b, c], linkedBoards, { done: new Map(), unlocked: new Map() }, userId);
 
 			expect(states[2].status).toBe('open');
 		});
 	});
 
-	describe('completedUserIds', () => {
-		it('should merge progress and stored completions', async () => {
+	describe('computeStates when something new came up', () => {
+		it('should reopen a completed board but keep what follows open', () => {
+			const { a, b, c, boardA, boardB, linkedBoards, userId } = buildPath('all');
+			// A was completed before, but is not done any more; B is done
+			const completion = {
+				done: new Map([[boardB.id, new Set([userId])]]),
+				unlocked: new Map([
+					[boardA.id, new Set([userId])],
+					[boardB.id, new Set([userId])],
+				]),
+			};
+
+			const states = service.computeStates([a, b, c], linkedBoards, completion, userId);
+
+			expect(states.map((state) => state.status)).toEqual(['open', 'done', 'open']);
+			expect(states.map((state) => state.reopened)).toEqual([true, false, false]);
+		});
+
+		it('should not call a board reopened that was never completed', () => {
+			const { a, b, c, linkedBoards, userId } = buildPath('all');
+
+			const states = service.computeStates([a, b, c], linkedBoards, { done: new Map(), unlocked: new Map() }, userId);
+
+			expect(states.some((state) => state.reopened)).toBe(false);
+		});
+	});
+
+	describe('completionState', () => {
+		const setup = () => {
 			const { boardA, boardB, userId } = buildPath('all');
 			const otherId = new ObjectId().toHexString();
-			boardProgressService.computeCompletedUserIds.mockResolvedValueOnce(
-				new Map([
+			const completion = (boardId: string, id: string) =>
+				new BoardCompletionEntity({ userId: id, boardId, completedAt: new Date(), source: 'manual' });
+
+			return { boardA, boardB, userId, otherId, completion };
+		};
+
+		it('should count a stored completion on a board without progress items as done', async () => {
+			const { boardA, boardB, userId, otherId, completion } = setup();
+			boardProgressService.computeCompletedUserIds.mockResolvedValueOnce({
+				done: new Map([
 					[boardA.id, new Set([userId])],
 					[boardB.id, new Set<string>()],
-				])
-			);
-			boardCompletionRepo.findByBoardIds.mockResolvedValueOnce([
-				new BoardCompletionEntity({ userId: otherId, boardId: boardB.id, completedAt: new Date(), source: 'manual' }),
-			]);
+				]),
+				withItems: new Map([
+					[boardA.id, new Set([userId])],
+					[boardB.id, new Set<string>()],
+				]),
+			});
+			boardCompletionRepo.findByBoardIds.mockResolvedValueOnce([completion(boardB.id, otherId)]);
 
-			const result = await service.completedUserIds([boardA, boardB], []);
+			const result = await service.completionState([boardA, boardB], []);
 
-			expect(result.get(boardA.id)).toEqual(new Set([userId]));
-			expect(result.get(boardB.id)).toEqual(new Set([otherId]));
+			expect(result.done.get(boardA.id)).toEqual(new Set([userId]));
+			expect(result.done.get(boardB.id)).toEqual(new Set([otherId]));
+			expect(result.unlocked.get(boardB.id)).toEqual(new Set([otherId]));
+		});
+
+		it('should keep a stored completion unlocking when new progress items are not done', async () => {
+			const { boardA, userId, completion } = setup();
+			// the person completed A, then the teacher added a checkbox they have not ticked
+			boardProgressService.computeCompletedUserIds.mockResolvedValueOnce({
+				done: new Map([[boardA.id, new Set<string>()]]),
+				withItems: new Map([[boardA.id, new Set([userId])]]),
+			});
+			boardCompletionRepo.findByBoardIds.mockResolvedValueOnce([completion(boardA.id, userId)]);
+
+			const result = await service.completionState([boardA], []);
+
+			expect(result.done.get(boardA.id)?.has(userId)).toBe(false);
+			expect(result.unlocked.get(boardA.id)?.has(userId)).toBe(true);
 		});
 	});
 
@@ -214,7 +272,7 @@ describe(LearningPathStateService.name, () => {
 			boardNodeService.findByIds.mockImplementation((ids: string[]) =>
 				Promise.resolve(everything.filter((board) => ids.includes(board.id)))
 			);
-			boardProgressService.computeCompletedUserIds.mockResolvedValue(new Map());
+			boardProgressService.computeCompletedUserIds.mockResolvedValue({ done: new Map(), withItems: new Map() });
 			boardCompletionRepo.findByBoardIds.mockResolvedValue([]);
 			enrollmentRepo.findByRoom.mockResolvedValue([]);
 
@@ -384,7 +442,9 @@ describe(LearningPathStateService.name, () => {
 
 				expect(result.paths.map((path) => path.title)).toEqual(['Blue', 'Green']);
 				expect(result.students).toHaveLength(1);
-				expect(result.students[0].paths).toEqual([{ pathId: blue.id, done: 1, total: 2, nextBoardTitle: 'C' }]);
+				expect(result.students[0].paths).toEqual([
+					{ pathId: blue.id, done: 1, total: 2, rework: 0, nextBoardTitle: 'C' },
+				]);
 				expect(green.id).toBeDefined();
 			});
 		});

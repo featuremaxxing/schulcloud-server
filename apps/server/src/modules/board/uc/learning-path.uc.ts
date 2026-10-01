@@ -38,6 +38,8 @@ export interface LearningPathStepView {
 	title: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
+	// students: completed before, but something new came up
+	reopened?: boolean;
 	// students: what keeps the board closed
 	lock?: LearningPathLock;
 	// only for editors: how many of the students who go this learning path completed the board
@@ -244,6 +246,39 @@ export class LearningPathUc {
 		return await this.learningPathStateService.overview(roomId, auth.users);
 	}
 
+	// Starts over for the given students of the room (default: all of them): the stored completions,
+	// the hand-made "done" marks and the ticks of checkboxes are gone. Assignment submissions, poll
+	// votes and the learning paths people chose to go stay.
+	public async resetProgress(userId: EntityId, roomId: EntityId, userIds?: EntityId[]): Promise<void> {
+		this.checkFeatureEnabled();
+
+		const paths = await this.learningPathStateService.findRoomPaths(roomId);
+		if (paths.length === 0) {
+			throw new NotFoundException('The room has no learning paths');
+		}
+
+		const { user, auth } = await this.authorize(userId, paths[0]);
+		throwForbiddenIfFalse(this.boardNodeRule.can('isBoardEditor', user, auth));
+
+		const students = auth.users.filter((member) => !this.learningPathStateService.isEditor(member));
+		const studentIds = new Set(students.map((student) => student.userId));
+		if (userIds?.some((id) => !studentIds.has(id))) {
+			throw new BadRequestException('Only students of the room can be reset');
+		}
+		const targets = new Set(userIds ?? students.map((student) => student.userId));
+
+		const boards = await this.columnBoardService.findByExternalReference(
+			{ type: BoardExternalReferenceType.Room, id: roomId },
+			0
+		);
+		const boardIds = boards.filter((board) => board.hasColumns()).map((board) => board.id);
+
+		await this.boardCompletionRepo.deleteByBoardIdsAndUserIds(boardIds, Array.from(targets));
+		await this.learningPathStateService.clearCheckboxes(boardIds, Array.from(targets));
+
+		paths.forEach((path) => this.learningPathNotifier.changed(path.id));
+	}
+
 	public async deleteStep(userId: EntityId, stepId: EntityId): Promise<void> {
 		this.checkFeatureEnabled();
 
@@ -283,13 +318,13 @@ export class LearningPathUc {
 
 		const [hasItems, completed] = await Promise.all([
 			this.boardProgressService.hasProgressItemsFor(board, member, this.learningPathStateService.enabledTypes()),
-			this.learningPathStateService.completedUserIds([board], [member]),
+			this.learningPathStateService.completionState([board], [member]),
 		]);
 
 		return {
 			inLearningPath: true,
 			canMarkManually: !hasItems,
-			completed: completed.get(board.id)?.has(userId) ?? false,
+			completed: completed.done.get(board.id)?.has(userId) ?? false,
 		};
 	}
 
