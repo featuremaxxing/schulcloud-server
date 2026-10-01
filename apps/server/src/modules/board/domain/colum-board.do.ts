@@ -1,7 +1,14 @@
 import { BoardNode } from './board-node.do';
 import { Column } from './column.do';
 import { FileAreaFolder } from './file-area-folder.do';
-import { type AnyBoardNode, type BoardExternalReference, BoardLayout, type ColumnBoardProps } from './types';
+import { LearningPathStep } from './learning-path-step.do';
+import {
+	type AnyBoardNode,
+	type BoardExternalReference,
+	BoardLayout,
+	type ColumnBoardProps,
+	type LearningPathColor,
+} from './types';
 
 export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 	get title(): string {
@@ -47,13 +54,33 @@ export class ColumnBoard extends BoardNode<ColumnBoardProps> {
 		this.props.readersCanEdit = readersCanEdit;
 	}
 
+	get learningPathColor(): LearningPathColor | undefined {
+		return this.props.learningPathColor;
+	}
+
+	set learningPathColor(color: LearningPathColor | undefined) {
+		this.props.learningPathColor = color;
+	}
+
 	public isFileArea(): boolean {
 		return this.props.layout === BoardLayout.FILES;
+	}
+
+	public isLearningPath(): boolean {
+		return this.props.layout === BoardLayout.LEARNING_PATH;
+	}
+
+	// file areas and learning paths hold other nodes than columns and cards
+	public hasColumns(): boolean {
+		return !this.isFileArea() && !this.isLearningPath();
 	}
 
 	public canHaveChild(childNode: AnyBoardNode): boolean {
 		if (this.isFileArea()) {
 			return childNode instanceof FileAreaFolder;
+		}
+		if (this.isLearningPath()) {
+			return childNode instanceof LearningPathStep;
 		}
 		const allowed = childNode instanceof Column;
 		return allowed;

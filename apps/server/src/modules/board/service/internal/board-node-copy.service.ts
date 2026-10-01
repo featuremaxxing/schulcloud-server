@@ -36,6 +36,8 @@ import {
 	getBoardNodeType,
 	H5pElement,
 	handleNonExhaustiveSwitch,
+	isLearningPathStep,
+	LearningPathStep,
 	LinkElement,
 	type MediaBoard,
 	type MediaExternalToolElement,
@@ -121,6 +123,9 @@ export class BoardNodeCopyService {
 			case BoardNodeType.FILE_AREA_FOLDER:
 				result = await this.copyFileAreaFolder(boardNode as FileAreaFolder, context);
 				break;
+			case BoardNodeType.LEARNING_PATH_STEP:
+				result = this.copyLearningPathStep(boardNode as LearningPathStep);
+				break;
 			case BoardNodeType.H5P_ELEMENT:
 				result = await this.copyH5pElement(boardNode as H5pElement, context);
 				break;
@@ -167,6 +172,10 @@ export class BoardNodeCopyService {
 			...this.buildSpecificProps(childrenResults),
 		});
 
+		if (original.isLearningPath()) {
+			this.remapLearningPathArrows(childrenResults);
+		}
+
 		// a file area also keeps files directly on the board
 		const elements = original.isFileArea()
 			? [...childrenResults, ...(await this.copyFileAreaFiles(original, context, copy))]
@@ -198,6 +207,38 @@ export class BoardNodeCopyService {
 			status: CopyStatusEnum.SUCCESS,
 			originalEntity: original,
 		};
+	}
+
+	// The step keeps linking the same board. In a room copy it is pointed to the copied board
+	// afterwards (see ColumnBoardLinkService), its arrows are remapped by the copied path board.
+	public copyLearningPathStep(original: LearningPathStep): CopyStatus {
+		const copy = new LearningPathStep({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		return {
+			copyEntity: copy,
+			type: CopyElementType.LEARNING_PATH_STEP,
+			status: CopyStatusEnum.SUCCESS,
+			originalEntity: original,
+		};
+	}
+
+	private remapLearningPathArrows(stepResults: CopyStatus[]): void {
+		const copiedIds = new Map<EntityId, EntityId>();
+		for (const result of stepResults) {
+			if (isLearningPathStep(result.originalEntity) && isLearningPathStep(result.copyEntity)) {
+				copiedIds.set(result.originalEntity.id, result.copyEntity.id);
+			}
+		}
+		for (const result of stepResults) {
+			if (isLearningPathStep(result.copyEntity)) {
+				result.copyEntity.prerequisiteStepIds = result.copyEntity.prerequisiteStepIds
+					.map((id) => copiedIds.get(id))
+					.filter((id): id is EntityId => !!id);
+			}
+		}
 	}
 
 	public async copyFileAreaFolder(original: FileAreaFolder, context: CopyContext): Promise<CopyStatus> {

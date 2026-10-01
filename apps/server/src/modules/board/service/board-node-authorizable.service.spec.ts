@@ -2,11 +2,18 @@ import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { AuthorizableReferenceType, AuthorizationInjectionService } from '@modules/authorization';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ObjectId } from '@mikro-orm/mongodb';
-import { BoardNodeAuthorizable, BoardRoles, joinPath, type UserWithBoardRoles } from '../domain';
+import {
+	BoardExternalReferenceType,
+	BoardNodeAuthorizable,
+	BoardRoles,
+	joinPath,
+	type UserWithBoardRoles,
+} from '../domain';
 import { AssignmentReviewAssignmentMode, AssignmentReviewEntity, AssignmentReviewRepo, BoardNodeRepo } from '../repo';
 import { assignmentSubmissionFactory, cardFactory, columnBoardFactory, columnFactory } from '../testing';
 import { BoardNodeAuthorizableService } from './board-node-authorizable.service';
 import { BoardNodeService } from './board-node.service';
+import { LearningPathStateService } from './learning-path-state.service';
 import { BoardContextResolverService, type PreparedBoardContext } from './internal/board-context';
 
 describe(BoardNodeAuthorizableService.name, () => {
@@ -17,6 +24,7 @@ describe(BoardNodeAuthorizableService.name, () => {
 	let boardNodeService: DeepMocked<BoardNodeService>;
 	let boardContextResolverService: DeepMocked<BoardContextResolverService>;
 	let assignmentReviewRepo: DeepMocked<AssignmentReviewRepo>;
+	let learningPathStateService: DeepMocked<LearningPathStateService>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -42,6 +50,10 @@ describe(BoardNodeAuthorizableService.name, () => {
 					provide: AssignmentReviewRepo,
 					useValue: createMock<AssignmentReviewRepo>(),
 				},
+				{
+					provide: LearningPathStateService,
+					useValue: createMock<LearningPathStateService>(),
+				},
 			],
 		}).compile();
 
@@ -51,6 +63,11 @@ describe(BoardNodeAuthorizableService.name, () => {
 		boardNodeService = module.get(BoardNodeService);
 		boardContextResolverService = module.get(BoardContextResolverService);
 		assignmentReviewRepo = module.get(AssignmentReviewRepo);
+		learningPathStateService = module.get(LearningPathStateService);
+	});
+
+	beforeEach(() => {
+		learningPathStateService.lockedUserIds.mockResolvedValue(new Map());
 	});
 
 	afterEach(() => {
@@ -160,6 +177,40 @@ describe(BoardNodeAuthorizableService.name, () => {
 			});
 
 			expect(result).toEqual(expected);
+		});
+
+		describe('when a learning path locks the room board', () => {
+			const setup2 = () => {
+				const column = columnFactory.build();
+				const columnBoard = columnBoardFactory.build({
+					children: [column],
+					context: { type: BoardExternalReferenceType.Room, id: new ObjectId().toHexString() },
+				});
+				const studentId = new ObjectId().toHexString();
+
+				boardNodeService.findParent.mockResolvedValueOnce(columnBoard);
+				boardNodeService.findRoot.mockResolvedValueOnce(columnBoard);
+				const usersWithRoles: UserWithBoardRoles[] = [{ userId: studentId, roles: [BoardRoles.READER] }];
+				boardContextResolverService.resolve.mockResolvedValue({
+					type: columnBoard.context.type,
+					getUsersWithBoardRoles: () => Promise.resolve(usersWithRoles),
+					getBoardConfiguration: () => {
+						return {};
+					},
+				});
+				learningPathStateService.lockedUserIds.mockResolvedValueOnce(new Map([[columnBoard.id, [studentId]]]));
+
+				return { column, columnBoard, studentId, usersWithRoles };
+			};
+
+			it('should mark the locked users', async () => {
+				const { column, columnBoard, studentId, usersWithRoles } = setup2();
+
+				const result = await service.getBoardAuthorizable(column);
+
+				expect(learningPathStateService.lockedUserIds).toHaveBeenCalledWith([columnBoard], usersWithRoles);
+				expect(result.isLockedByLearningPath(studentId)).toBe(true);
+			});
 		});
 
 		describe('when the board node is an assignment submission', () => {

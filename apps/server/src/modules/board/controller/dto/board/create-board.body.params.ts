@@ -35,6 +35,6 @@ export class CreateBoardBodyParams {
 		enum: BoardLayout,
 		enumName: 'BoardLayout',
 	})
-	@IsIn([BoardLayout.COLUMNS, BoardLayout.LIST, BoardLayout.FILES])
+	@IsIn([BoardLayout.COLUMNS, BoardLayout.LIST, BoardLayout.FILES, BoardLayout.LEARNING_PATH])
 	layout!: BoardLayout;
 }

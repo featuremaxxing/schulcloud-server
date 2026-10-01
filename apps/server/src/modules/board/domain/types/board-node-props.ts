@@ -4,6 +4,7 @@ import type { AnyBoardNode } from './any-board-node';
 import type { BoardExternalReference } from './board-external-reference';
 import type { BoardLayout } from './board-layout.enum';
 import type { ContentElementType } from './content-element-type.enum';
+import type { LearningPathColor } from './learning-path-color.enum';
 import type { BoardRoles } from '../board-node-authorizable.do';
 import type { PollAnswer, PollAudience, PollQuestion, PollResultSnapshot, PollStatus } from './poll.types';
 
@@ -23,6 +24,8 @@ export interface ColumnBoardProps extends BoardNodeProps {
 	isVisible: boolean;
 	layout: BoardLayout;
 	readersCanEdit: boolean;
+	// only for learning paths
+	learningPathColor?: LearningPathColor;
 }
 
 export interface ColumnProps extends BoardNodeProps {
@@ -87,6 +90,19 @@ export interface FileAreaLinkElementProps extends BoardNodeProps {
 
 export interface FileAreaFolderProps extends BoardNodeProps {
 	title: string;
+}
+
+export type LearningPathUnlockMode = 'all' | 'any';
+
+// a tile on a learning path board, linking another board of the same room
+export interface LearningPathStepProps extends BoardNodeProps {
+	linkedBoardId: EntityId;
+	positionX: number;
+	positionY: number;
+	// incoming arrows: the steps that lead to this one
+	prerequisiteStepIds: EntityId[];
+	unlockMode: LearningPathUnlockMode;
+	lockUntilPrerequisitesDone: boolean;
 }
 
 export interface DeletedElementProps extends BoardNodeProps {
@@ -265,6 +281,7 @@ export type AnyBoardNodeProps =
 	| FileElementProps
 	| FileFolderElementProps
 	| FileAreaLinkElementProps
+	| LearningPathStepProps
 	| LinkElementProps
 	| RichTextElementProps
 	| VideoConferenceElementProps

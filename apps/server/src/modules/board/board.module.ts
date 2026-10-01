@@ -23,7 +23,7 @@ import { RoomMembershipModule } from '../room-membership';
 import { BoardNodeRule } from './authorisation/board-node.rule';
 import { BOARD_CONFIG_TOKEN, BoardConfig } from './board.config';
 import { BoardNodeFactory, MediaBoardNodeFactory } from './domain';
-import { AssignmentReviewRepo, BoardNodeRepo } from './repo';
+import { AssignmentReviewRepo, BoardCompletionRepo, BoardNodeRepo, LearningPathEnrollmentRepo } from './repo';
 import {
 	BoardCommonToolService,
 	BoardNodeAuthorizableService,
@@ -32,6 +32,8 @@ import {
 	ColumnBoardService,
 	ContextExternalToolDeletedEventHandlerService,
 	FileAreaNotifier,
+	LearningPathNotifier,
+	LearningPathStateService,
 	LearningRoomService,
 	MediaBoardService,
 } from './service';
@@ -79,6 +81,8 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 	providers: [
 		// TODO: move BoardDoAuthorizableService, BoardDoRepo, BoardDoService, BoardNodeRepo in separate module and move mediaboard related services in mediaboard module
 		AssignmentReviewRepo,
+		BoardCompletionRepo,
+		LearningPathEnrollmentRepo,
 		BoardContextResolverService,
 		BoardNodeAuthorizableService,
 		BoardNodeRepo,
@@ -97,6 +101,8 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		ColumnBoardTitleService,
 		ContextExternalToolDeletedEventHandlerService,
 		FileAreaNotifier,
+		LearningPathNotifier,
+		LearningPathStateService,
 		LearningRoomService,
 		// TODO replace by import of MediaBoardModule (fix dependency cycle)
 		MediaBoardNodeFactory,
@@ -112,6 +118,10 @@ import { TLDRAW_CLIENT_CONFIG_TOKEN, TldrawClientConfig } from './tldraw-client.
 		BoardCommonToolService,
 		ColumnBoardService,
 		FileAreaNotifier,
+		LearningPathNotifier,
+		LearningPathStateService,
+		BoardCompletionRepo,
+		LearningPathEnrollmentRepo,
 		LearningRoomService,
 	],
 })

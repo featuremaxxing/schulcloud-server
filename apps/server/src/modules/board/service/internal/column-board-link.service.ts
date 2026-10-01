@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AnyBoardNode, isFileAreaLinkElement, isLinkElement } from '../../domain';
+import { AnyBoardNode, isFileAreaLinkElement, isLearningPathStep, isLinkElement } from '../../domain';
 import { BoardNodeRepo } from '../../repo/board-node.repo';
 
 @Injectable()
@@ -27,6 +27,13 @@ export class ColumnBoardLinkService {
 			const targetId = replacementMap[boardNode.targetId];
 			if (fileAreaId && targetId) {
 				boardNode.setTarget({ fileAreaId, targetType: boardNode.targetType, targetId, title: boardNode.title });
+			}
+		}
+		if (isLearningPathStep(boardNode)) {
+			// a copied room gets its own boards: the copied learning path leads through them
+			const linkedBoardId = replacementMap[boardNode.linkedBoardId];
+			if (linkedBoardId) {
+				boardNode.linkedBoardId = linkedBoardId;
 			}
 		}
 		boardNode.children.forEach((bn) => this.updateLinkElements(bn, replacementMap));
