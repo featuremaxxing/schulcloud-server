@@ -46,6 +46,9 @@ export class RoomItemResponse {
 	@ApiProperty({ type: Number })
 	totalMembers: number;
 
+	@ApiPropertyOptional({ description: 'The personal collection the room is placed in' })
+	collectionId?: string;
+
 	constructor(room: RoomItemResponse) {
 		this.id = room.id;
 		this.name = room.name;
@@ -60,5 +63,6 @@ export class RoomItemResponse {
 		this.allowedOperations = room.allowedOperations;
 		this.isLocked = room.isLocked;
 		this.totalMembers = room.totalMembers;
+		this.collectionId = room.collectionId;
 	}
 }

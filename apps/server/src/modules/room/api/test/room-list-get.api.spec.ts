@@ -187,6 +187,66 @@ describe('Room Controller (API)', () => {
 					expect(resultIds).toEqual(expectedIds);
 				});
 
+				describe('when rooms are grouped in a collection', () => {
+					const setupWithCollection = async () => {
+						const fixtures = await setup();
+						const { studentUser, rooms, roomsLocked } = fixtures;
+						const collection = { id: '0b6f1f7e-3d1c-4a63-9a43-6f7c2f1d9a10', title: 'Mathe' };
+
+						const roomArrangement = roomArrangementEntityFactory.build({
+							userId: studentUser.id,
+							items: [
+								{ id: rooms[0].id, collectionId: collection.id },
+								{ id: rooms[1].id, collectionId: collection.id },
+								...roomsLocked.map((room) => {
+									return { id: room.id };
+								}),
+							],
+							collections: [collection, { id: '7d1a5c2e-8b9f-4e3a-b1c2-d3e4f5a6b7c8', title: 'Leer' }],
+						});
+						await em.persist([roomArrangement]).flush();
+						em.clear();
+
+						return { ...fixtures, collection };
+					};
+
+					it('should return the collection id for each grouped room', async () => {
+						const { loggedInClient, rooms, roomsLocked, collection } = await setupWithCollection();
+
+						const response = await loggedInClient.get();
+
+						const result = response.body as RoomListResponse;
+						expect(result.data.map((room) => [room.id, room.collectionId])).toEqual([
+							[rooms[0].id, collection.id],
+							[rooms[1].id, collection.id],
+							[roomsLocked[0].id, undefined],
+							[roomsLocked[1].id, undefined],
+						]);
+					});
+
+					it('should return only collections that contain rooms', async () => {
+						const { loggedInClient, collection } = await setupWithCollection();
+
+						const response = await loggedInClient.get();
+
+						const result = response.body as RoomListResponse;
+						expect(result.collections).toEqual([collection]);
+					});
+
+					describe('when all rooms of a collection are gone', () => {
+						it('should drop the collection', async () => {
+							const { loggedInClient, rooms } = await setupWithCollection();
+
+							await em.nativeDelete('RoomEntity', { id: { $in: rooms.map((room) => room.id) } });
+
+							const response = await loggedInClient.get();
+
+							const result = response.body as RoomListResponse;
+							expect(result.collections).toEqual([]);
+						});
+					});
+				});
+
 				describe('when a room was added that is not in the arrangement', () => {
 					it('should return the new room at the end of the list', async () => {
 						const { loggedInClient, userGroupEntity, school } = await setupWithArrangement();

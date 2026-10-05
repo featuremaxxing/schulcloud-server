@@ -28,6 +28,7 @@ import {
 	ROOM_INCOMING_REQUEST_TIMEOUT_ROOM_STATS,
 } from '../timeout.config';
 import { AddByEmailBodyParams } from './dto/request/add-by-email.body.params';
+import { ArrangeRoomsBodyParams } from './dto/request/arrange-rooms.body.params';
 import { AddRoomMembersBodyParams } from './dto/request/add-room-members.body.params';
 import { ApplicantIdsBodyParams } from './dto/request/applicant-ids.body.params';
 import { ChangeRoomRoleBodyParams } from './dto/request/change-room-role.body.params';
@@ -74,9 +75,9 @@ export class RoomController {
 	@ApiResponse({ status: HttpStatus.FORBIDDEN, type: ForbiddenException })
 	@ApiResponse({ status: '5XX', type: ErrorResponse })
 	public async getRooms(@CurrentUser() currentUser: ICurrentUser): Promise<RoomListResponse> {
-		const rooms = await this.roomArrangementUc.getRoomsByUserArrangement(currentUser.userId);
+		const { rooms, collections } = await this.roomArrangementUc.getRoomsByUserArrangement(currentUser.userId);
 
-		const response = RoomMapper.mapToRoomListResponse(rooms);
+		const response = RoomMapper.mapToRoomListResponse(rooms, collections);
 
 		return response;
 	}
@@ -93,6 +94,19 @@ export class RoomController {
 		@Body() bodyParams: MoveItemBodyParams
 	): Promise<void> {
 		await this.roomArrangementUc.moveRoomInUserArrangement(currentUser.userId, bodyParams.id, bodyParams.toPosition);
+	}
+
+	@ApiOperation({ summary: 'Replace the personal arrangement of rooms including collections.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 401, type: UnauthorizedException })
+	@HttpCode(204)
+	@Put('arrangement')
+	public async arrangeRooms(
+		@CurrentUser() currentUser: ICurrentUser,
+		@Body() bodyParams: ArrangeRoomsBodyParams
+	): Promise<void> {
+		await this.roomArrangementUc.arrangeRoomsOfUser(currentUser.userId, bodyParams.items, bodyParams.collections);
 	}
 
 	@RequestTimeout(ROOM_INCOMING_REQUEST_TIMEOUT_ROOM_STATS)

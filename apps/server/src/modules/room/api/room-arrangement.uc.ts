@@ -5,8 +5,8 @@ import { RoomRule } from '@modules/room-membership/authorization/room.rule';
 import { Injectable } from '@nestjs/common';
 import { TypeGuard } from '@shared/common/guards';
 import { EntityId } from '@shared/domain/types';
-import { RoomArrangementService, RoomService } from '../domain';
-import { RoomWithAllowedOperationsAndLockedStatus } from './type/room-with-locked-status';
+import { RoomArrangementItem, RoomArrangementService, RoomCollection, RoomService } from '../domain';
+import { RoomListWithCollections } from './type/room-list-with-collections';
 import { throwForbiddenIfFalse } from '@shared/common/utils/wrap-with-exception';
 
 @Injectable()
@@ -19,14 +19,16 @@ export class RoomArrangementUc {
 		private readonly roomRule: RoomRule
 	) {}
 
-	public async getRoomsByUserArrangement(userId: EntityId): Promise<RoomWithAllowedOperationsAndLockedStatus[]> {
+	public async getRoomsByUserArrangement(userId: EntityId): Promise<RoomListWithCollections> {
 		const accessibleRoomAuthorizables = await this.roomMembershipService.getRoomAuthorizablesByUserId(userId);
 		const roomIds = accessibleRoomAuthorizables.map((item) => item.roomId);
 		const user = await this.authorizationService.getUserWithPermissions(userId);
 
 		const rooms = await this.roomService.getRoomsByIds(roomIds);
 		const existingRoomIds = rooms.map((room) => room.id);
-		const orderedRoomIds = await this.roomArrangementService.sortRoomIdsByUserArrangement(userId, existingRoomIds);
+		const arrangement = await this.roomArrangementService.getArrangement(userId, existingRoomIds);
+		const orderedRoomIds = arrangement.items.map((item) => item.id);
+		const collectionIdByRoomId = new Map(arrangement.items.map((item) => [item.id, item.collectionId]));
 		rooms.sort((a, b) => orderedRoomIds.indexOf(a.id) - orderedRoomIds.indexOf(b.id));
 
 		const roomsWithAllowedOperationsAndLockedStatus = rooms
@@ -45,11 +47,12 @@ export class RoomArrangementUc {
 					allowedOperations,
 					isLocked: !hasOwner,
 					totalMembers: roomAuthorizable.members.length,
+					collectionId: collectionIdByRoomId.get(room.id),
 				};
 			})
 			.filter((room) => TypeGuard.isNotNullOrUndefined(room));
 
-		return roomsWithAllowedOperationsAndLockedStatus;
+		return { rooms: roomsWithAllowedOperationsAndLockedStatus, collections: arrangement.collections };
 	}
 
 	public async moveRoomInUserArrangement(userId: EntityId, roomId: EntityId, toPosition: number): Promise<void> {
@@ -59,5 +62,13 @@ export class RoomArrangementUc {
 		throwForbiddenIfFalse(this.roomRule.can('arrangeRooms', user, roomAuthorizable));
 
 		await this.roomArrangementService.moveRoom(userId, roomId, toPosition);
+	}
+
+	public async arrangeRoomsOfUser(
+		userId: EntityId,
+		items: RoomArrangementItem[],
+		collections: RoomCollection[]
+	): Promise<void> {
+		await this.roomArrangementService.arrangeRooms(userId, items, collections);
 	}
 }

@@ -1,24 +1,62 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
 import { RoomArrangementRepo } from '../../repo';
-import { RoomArrangementItem } from '../type';
+import { RoomArrangement, RoomArrangementItem, RoomCollection } from '../type';
 
 @Injectable()
 export class RoomArrangementService {
 	constructor(private readonly roomArrangementRepo: RoomArrangementRepo) {}
 
 	public async sortRoomIdsByUserArrangement(userId: EntityId, roomIds: EntityId[]): Promise<EntityId[]> {
+		const arrangement = await this.getArrangement(userId, roomIds);
+
+		return arrangement.items.map((item) => item.id);
+	}
+
+	public async getArrangement(userId: EntityId, availableRoomIds: EntityId[]): Promise<RoomArrangement> {
 		const arrangementExists = await this.roomArrangementRepo.hasArrangementForUserId(userId);
 
-		let userIdsByArrangement: EntityId[];
+		if (!arrangementExists) {
+			await this.createArranagement(userId, availableRoomIds);
 
-		if (arrangementExists) {
-			userIdsByArrangement = await this.sortAndUpdateArrangement(userId, roomIds);
-		} else {
-			await this.createArranagement(userId, roomIds);
-			userIdsByArrangement = roomIds;
+			return {
+				items: availableRoomIds.map((id) => {
+					return { id };
+				}),
+				collections: [],
+			};
 		}
-		return userIdsByArrangement;
+
+		const arrangement = await this.sortAndUpdateArrangement(userId, availableRoomIds);
+
+		return arrangement;
+	}
+
+	public async arrangeRooms(
+		userId: EntityId,
+		requestedItems: RoomArrangementItem[],
+		requestedCollections: RoomCollection[]
+	): Promise<void> {
+		const knownItems = await this.roomArrangementRepo.findItemsByUserId(userId);
+		const knownRoomIds = new Set(knownItems.map((item) => item.id));
+		const collectionIds = new Set(requestedCollections.map((collection) => collection.id));
+
+		const seenRoomIds = new Set<EntityId>();
+		const items: RoomArrangementItem[] = [];
+		for (const { id, collectionId } of requestedItems) {
+			if (knownRoomIds.has(id) && !seenRoomIds.has(id)) {
+				seenRoomIds.add(id);
+				items.push(this.buildItem(id, collectionId && collectionIds.has(collectionId) ? collectionId : undefined));
+			}
+		}
+		// rooms the client did not know about yet stay ungrouped at the end
+		for (const { id } of knownItems) {
+			if (!seenRoomIds.has(id)) items.push({ id });
+		}
+
+		const collections = this.keepUsedCollections(requestedCollections, items);
+
+		await this.roomArrangementRepo.updateArrangement(userId, items, collections);
 	}
 
 	public async moveRoom(userId: EntityId, roomId: EntityId, toPosition: number): Promise<void> {
@@ -54,23 +92,47 @@ export class RoomArrangementService {
 		await this.roomArrangementRepo.createArrangement(userId, items);
 	}
 
-	private async sortAndUpdateArrangement(userId: EntityId, availableRoomIds: EntityId[]): Promise<EntityId[]> {
-		const roomIds = (await this.roomArrangementRepo.findItemsByUserId(userId)).map((item) => item.id);
-		const roomIdSet = new Set(roomIds);
+	private async sortAndUpdateArrangement(userId: EntityId, availableRoomIds: EntityId[]): Promise<RoomArrangement> {
+		const arrangement = await this.roomArrangementRepo.findArrangementByUserId(userId);
+		const roomIds = arrangement.items.map((item) => item.id);
+		const collectionIdByRoomId = new Map(arrangement.items.map((item) => [item.id, item.collectionId]));
 
 		const knownRoomIds = availableRoomIds
-			.filter((roomId) => roomIdSet.has(roomId))
+			.filter((roomId) => collectionIdByRoomId.has(roomId))
 			.sort((a, b) => roomIds.indexOf(a) - roomIds.indexOf(b));
-		const unknownRoomIds = availableRoomIds.filter((roomId) => !roomIdSet.has(roomId));
+		const unknownRoomIds = availableRoomIds.filter((roomId) => !collectionIdByRoomId.has(roomId));
 
-		const sortedRoomIds = [...knownRoomIds, ...unknownRoomIds];
+		const items: RoomArrangementItem[] = [
+			...knownRoomIds.map((roomId) => this.buildItem(roomId, collectionIdByRoomId.get(roomId))),
+			...unknownRoomIds.map((roomId) => this.buildItem(roomId)),
+		];
+		const collections = this.keepUsedCollections(arrangement.collections, items);
+		const collectionIds = new Set(collections.map((collection) => collection.id));
+		const cleanedItems = items.map((item) =>
+			item.collectionId && !collectionIds.has(item.collectionId) ? this.buildItem(item.id) : item
+		);
 
-		const items: RoomArrangementItem[] = sortedRoomIds.map((roomId) => {
-			return { id: roomId };
+		await this.roomArrangementRepo.updateArrangement(userId, cleanedItems, collections);
+
+		return { items: cleanedItems, collections };
+	}
+
+	private keepUsedCollections(collections: RoomCollection[], items: RoomArrangementItem[]): RoomCollection[] {
+		const usedCollectionIds = new Set(items.map((item) => item.collectionId).filter((id) => !!id));
+		const seenCollectionIds = new Set<string>();
+
+		const usedCollections = collections.filter((collection) => {
+			const keep = usedCollectionIds.has(collection.id) && !seenCollectionIds.has(collection.id);
+			seenCollectionIds.add(collection.id);
+			return keep;
 		});
 
-		await this.roomArrangementRepo.updateArrangement(userId, items);
+		return usedCollections.map(({ id, title }) => {
+			return { id, title };
+		});
+	}
 
-		return sortedRoomIds;
+	private buildItem(id: EntityId, collectionId?: string): RoomArrangementItem {
+		return collectionId ? { id, collectionId } : { id };
 	}
 }

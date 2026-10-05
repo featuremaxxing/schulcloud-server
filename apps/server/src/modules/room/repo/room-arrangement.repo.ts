@@ -1,7 +1,7 @@
 import { EntityManager } from '@mikro-orm/mongodb';
 import { Injectable } from '@nestjs/common';
 import { EntityId } from '@shared/domain/types';
-import { RoomArrangementItem } from '../domain';
+import { RoomArrangement, RoomArrangementItem, RoomCollection } from '../domain';
 import { RoomArrangementEntity } from './entity';
 
 @Injectable()
@@ -14,6 +14,12 @@ export class RoomArrangementRepo {
 		return roomArrangement.items;
 	}
 
+	public async findArrangementByUserId(userId: EntityId): Promise<RoomArrangement> {
+		const roomArrangement = await this.em.findOneOrFail(RoomArrangementEntity, { userId });
+
+		return { items: roomArrangement.items, collections: roomArrangement.collections ?? [] };
+	}
+
 	public async hasArrangementForUserId(userId: EntityId): Promise<boolean> {
 		const count = await this.em.count(RoomArrangementEntity, { userId });
 		return count > 0;
@@ -24,10 +30,17 @@ export class RoomArrangementRepo {
 		await this.em.flush();
 	}
 
-	public async updateArrangement(userId: EntityId, items: RoomArrangementItem[]): Promise<void> {
+	public async updateArrangement(
+		userId: EntityId,
+		items: RoomArrangementItem[],
+		collections?: RoomCollection[]
+	): Promise<void> {
 		this.em.clear();
 		const roomArrangement = await this.em.findOneOrFail(RoomArrangementEntity, { userId });
 		roomArrangement.items = items;
+		if (collections) {
+			roomArrangement.collections = collections;
+		}
 		this.em.persist(roomArrangement);
 		await this.em.flush();
 	}

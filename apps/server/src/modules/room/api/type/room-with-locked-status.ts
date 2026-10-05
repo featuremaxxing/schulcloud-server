@@ -6,4 +6,5 @@ export type RoomWithAllowedOperationsAndLockedStatus = {
 	allowedOperations: Record<RoomOperation, boolean>;
 	isLocked: boolean;
 	totalMembers: number;
+	collectionId?: string;
 };

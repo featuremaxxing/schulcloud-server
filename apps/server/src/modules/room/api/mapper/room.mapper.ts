@@ -4,6 +4,7 @@ import { type RoomOperation } from '@modules/room-membership/authorization/room.
 import { type PaginationParams } from '@shared/controller/dto';
 import { type Page } from '@shared/domain/domainobject';
 import { type Room } from '../../domain/do/room.do';
+import { type RoomCollection } from '../../domain/type';
 import {
 	RoomBoardItemResponse,
 	RoomBoardLockResponse,
@@ -11,6 +12,7 @@ import {
 	RoomLearningPathStepResponse,
 } from '../dto/response/room-board-item.response';
 import { RoomBoardListResponse } from '../dto/response/room-board-list.response';
+import { RoomCollectionResponse } from '../dto/response/room-collection.response';
 import { RoomCreatedResponse } from '../dto/response/room-created.response';
 import { RoomDetailsResponse } from '../dto/response/room-details.response';
 import { RoomItemResponse } from '../dto/response/room-item.response';
@@ -36,6 +38,7 @@ export class RoomMapper {
 		allowedOperations,
 		isLocked,
 		totalMembers,
+		collectionId,
 	}: RoomWithAllowedOperationsAndLockedStatus): RoomItemResponse {
 		const response = new RoomItemResponse({
 			id: room.id,
@@ -49,16 +52,23 @@ export class RoomMapper {
 			allowedOperations,
 			isLocked,
 			totalMembers,
+			collectionId,
 		});
 
 		return response;
 	}
 
-	public static mapToRoomListResponse(rooms: RoomWithAllowedOperationsAndLockedStatus[]): RoomListResponse {
+	public static mapToRoomListResponse(
+		rooms: RoomWithAllowedOperationsAndLockedStatus[],
+		collections: RoomCollection[] = []
+	): RoomListResponse {
 		const roomResponseData: RoomItemResponse[] = rooms.map((room): RoomItemResponse =>
 			this.mapToRoomItemResponse(room)
 		);
-		const response = new RoomListResponse(roomResponseData);
+		const collectionResponseData = collections.map(
+			(collection) => new RoomCollectionResponse({ id: collection.id, title: collection.title })
+		);
+		const response = new RoomListResponse(roomResponseData, collectionResponseData);
 
 		return response;
 	}
