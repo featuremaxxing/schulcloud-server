@@ -7,6 +7,7 @@ export enum BoardNodeType {
 	FILE_FOLDER_ELEMENT = 'file-folder-element',
 	FILE_AREA_FOLDER = 'file-area-folder',
 	FILE_AREA_LINK_ELEMENT = 'file-area-link-element',
+	LEARNING_PATH_STEP = 'learning-path-step',
 	LINK_ELEMENT = 'link-element',
 	RICH_TEXT_ELEMENT = 'rich-text-element',
 	DRAWING_ELEMENT = 'drawing-element',

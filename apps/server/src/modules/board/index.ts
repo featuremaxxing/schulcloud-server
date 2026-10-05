@@ -36,6 +36,8 @@ export {
 	// modules/assignment/api/assignment.uc.ts
 	isStudentMember,
 	isTeacherMember,
+	// modules/room/api/dto/response/room-board-item.response.ts
+	LearningPathColor,
 	// @modules/tool/tool-launch/service/auto-parameter-strategy/auto-context-name.strategy.ts
 	MediaBoard,
 } from './domain';
@@ -60,6 +62,10 @@ export {
 	BoardProgressService,
 	BoardWithAuth,
 	ColumnBoardService,
+	LearningPathStateService,
+	type LearningPathLock,
+	type LearningPathLockReason,
+	type LearningPathSummary,
 	ProgressItemResult,
 	ProgressItemType,
 	ProgressStudentResult,

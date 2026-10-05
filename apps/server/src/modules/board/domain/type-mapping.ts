@@ -17,6 +17,7 @@ import { FileAreaLinkElement } from './file-area-link-element.do';
 import { FileElement } from './file-element.do';
 import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
+import { LearningPathStep } from './learning-path-step.do';
 import { LinkElement } from './link-element.do';
 import { MediaBoard, MediaExternalToolElement, MediaLine } from './media-board';
 import { PinnedCard } from './pinned-card.do';
@@ -44,6 +45,7 @@ const BoardNodeTypeToConstructor = {
 	[BoardNodeType.FILE_FOLDER_ELEMENT]: FileFolderElement,
 	[BoardNodeType.FILE_AREA_FOLDER]: FileAreaFolder,
 	[BoardNodeType.FILE_AREA_LINK_ELEMENT]: FileAreaLinkElement,
+	[BoardNodeType.LEARNING_PATH_STEP]: LearningPathStep,
 	[BoardNodeType.LINK_ELEMENT]: LinkElement,
 	[BoardNodeType.MEDIA_BOARD]: MediaBoard,
 	[BoardNodeType.MEDIA_EXTERNAL_TOOL_ELEMENT]: MediaExternalToolElement,

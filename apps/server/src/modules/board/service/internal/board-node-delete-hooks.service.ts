@@ -35,6 +35,7 @@ import {
 	LinkElement,
 	MediaExternalToolElement,
 } from '../../domain';
+import { BoardCompletionRepo, BoardNodeRepo, LearningPathEnrollmentRepo } from '../../repo';
 
 @Injectable()
 export class BoardNodeDeleteHooksService {
@@ -44,7 +45,10 @@ export class BoardNodeDeleteHooksService {
 		private readonly drawingElementAdapterService: TldrawClientAdapter,
 		private readonly collaborativeTextEditorService: CollaborativeTextEditorService,
 		private readonly h5pEditorProducer: H5pEditorProducer,
-		private readonly errorHandler: DomainErrorHandler
+		private readonly errorHandler: DomainErrorHandler,
+		private readonly boardNodeRepo: BoardNodeRepo,
+		private readonly boardCompletionRepo: BoardCompletionRepo,
+		private readonly learningPathEnrollmentRepo: LearningPathEnrollmentRepo
 	) {}
 
 	public async afterDelete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {
@@ -62,6 +66,8 @@ export class BoardNodeDeleteHooksService {
 			(isColumnBoard(boardNode) && boardNode.isFileArea())
 		) {
 			this.afterDeleteFileElement(boardNode);
+		} else if (isColumnBoard(boardNode)) {
+			await this.afterDeleteColumnBoard(boardNode);
 		} else if (isLinkElement(boardNode)) {
 			await this.afterDeleteLinkElement(boardNode);
 		} else if (isDrawingElement(boardNode)) {
@@ -87,6 +93,16 @@ export class BoardNodeDeleteHooksService {
 		}
 
 		await Promise.allSettled(boardNode.children.map((child: AnyBoardNode): Promise<void> => this.afterDelete(child)));
+	}
+
+	// a deleted board leaves every learning path it was part of, completions of it are obsolete,
+	// and nobody is enrolled in a deleted learning path any more
+	public async afterDeleteColumnBoard(board: ColumnBoard): Promise<void> {
+		await Promise.all([
+			this.boardNodeRepo.removeLearningPathStepsLinking(board.id),
+			this.boardCompletionRepo.deleteByBoardId(board.id),
+			this.learningPathEnrollmentRepo.deleteByPathBoardId(board.id),
+		]);
 	}
 
 	public afterDeleteFileElement(fileElement: FileElement | FileFolderElement | FileAreaFolder | ColumnBoard): void {

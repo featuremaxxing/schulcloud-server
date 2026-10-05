@@ -16,11 +16,17 @@ import {
 	Colors,
 	ContentElementType,
 	isAiQuestionElement,
+	isAssignmentElement,
 	isCheckboxElement,
 	isColumnBoard,
+	isPollElement,
 	isTeacherMember,
+	type UserWithBoardRoles,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService } from '../service';
+import { BoardNodeAuthorizableService, BoardNodeService, LearningPathStateService } from '../service';
+
+// the elements that count in the progress of a board
+const PROGRESS_ELEMENT_TYPES = [ContentElementType.CHECKBOX, ContentElementType.ASSIGNMENT, ContentElementType.POLL];
 
 @Injectable()
 export class CardUc {
@@ -32,6 +38,7 @@ export class CardUc {
 		private readonly boardNodeFactory: BoardNodeFactory,
 		private readonly logger: LegacyLogger,
 		private readonly boardNodeRule: BoardNodeRule,
+		private readonly learningPathStateService: LearningPathStateService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig
 	) {
 		this.logger.setContext(CardUc.name);
@@ -136,6 +143,10 @@ export class CardUc {
 			throwForbiddenIfFalse(this.boardNodeRule.can('manageVideoConference', user, boardNodeAuthorizable));
 		}
 
+		if (PROGRESS_ELEMENT_TYPES.includes(type)) {
+			await this.rememberCompletions(card, boardNodeAuthorizable.users);
+		}
+
 		const element = this.boardNodeFactory.buildContentElement(type, userId);
 
 		await this.boardNodeService.addToParent(card, element, toPosition);
@@ -172,8 +183,24 @@ export class CardUc {
 			throwForbiddenIfFalse(this.boardNodeRule.can('updateElement', user, elementAuthorizable));
 		}
 
+		if (
+			(isCheckboxElement(element) || isAssignmentElement(element) || isPollElement(element)) &&
+			element.rootId !== targetCard.rootId
+		) {
+			await this.rememberCompletions(targetCard, boardNodeAuthorizable.users);
+		}
+
 		await this.boardNodeService.move(element, targetCard, targetPosition);
 
 		return element;
+	}
+
+	// A board with learning path steps keeps what its completions unlocked when a progress item is
+	// added: the people who are done now are remembered before the new item makes them not done.
+	private async rememberCompletions(card: Card, users: UserWithBoardRoles[]): Promise<void> {
+		const board = await this.boardNodeService.findRoot(card, 0);
+		if (isColumnBoard(board)) {
+			await this.learningPathStateService.rememberCompletions(board, users);
+		}
 	}
 }

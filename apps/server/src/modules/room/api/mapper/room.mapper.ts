@@ -1,10 +1,15 @@
-import { type ColumnBoard } from '@modules/board';
+import { type ColumnBoard, type LearningPathSummary } from '@modules/board';
 import { type BoardOperation } from '@modules/board/authorisation/board-node.rule';
 import { type RoomOperation } from '@modules/room-membership/authorization/room.rule';
 import { type PaginationParams } from '@shared/controller/dto';
 import { type Page } from '@shared/domain/domainobject';
 import { type Room } from '../../domain/do/room.do';
-import { RoomBoardItemResponse } from '../dto/response/room-board-item.response';
+import {
+	RoomBoardItemResponse,
+	RoomBoardLockResponse,
+	RoomLearningPathResponse,
+	RoomLearningPathStepResponse,
+} from '../dto/response/room-board-item.response';
 import { RoomBoardListResponse } from '../dto/response/room-board-list.response';
 import { RoomCreatedResponse } from '../dto/response/room-created.response';
 import { RoomDetailsResponse } from '../dto/response/room-details.response';
@@ -80,7 +85,9 @@ export class RoomMapper {
 
 	public static mapToRoomBoardItemReponse(
 		board: ColumnBoard,
-		allowedOperations: Partial<Record<BoardOperation, boolean>>
+		allowedOperations: Partial<Record<BoardOperation, boolean>>,
+		lockedByLearningPath?: RoomBoardLockResponse,
+		learningPath?: LearningPathSummary
 	): RoomBoardItemResponse {
 		const response = new RoomBoardItemResponse({
 			id: board.id,
@@ -90,16 +97,50 @@ export class RoomMapper {
 			createdAt: board.createdAt,
 			updatedAt: board.updatedAt,
 			allowedOperations: Object.fromEntries(Object.entries(allowedOperations).filter(([, value]) => value)),
+			lockedByLearningPath: lockedByLearningPath ? new RoomBoardLockResponse(lockedByLearningPath) : undefined,
+			learningPath: learningPath ? this.mapToRoomLearningPathResponse(learningPath) : undefined,
 		});
 
 		return response;
 	}
 
+	private static mapToRoomLearningPathResponse(summary: LearningPathSummary): RoomLearningPathResponse {
+		return new RoomLearningPathResponse({
+			color: summary.color,
+			isEnrolled: summary.isEnrolled,
+			steps: summary.steps.map(
+				({ step, title, isVisible, status, reopened, lock }) =>
+					new RoomLearningPathStepResponse({
+						id: step.id,
+						boardId: step.linkedBoardId,
+						title,
+						isVisible,
+						status,
+						prerequisiteStepIds: step.prerequisiteStepIds,
+						unlockMode: step.unlockMode,
+						reopened,
+						lock: lock
+							? new RoomBoardLockResponse({ id: lock.pathId, title: lock.pathTitle, reason: lock.reason })
+							: undefined,
+						positionX: step.positionX,
+						positionY: step.positionY,
+					})
+			),
+			studentCount: summary.studentCount,
+			completedStudentCount: summary.completedStudentCount,
+		});
+	}
+
 	public static mapToRoomBoardListResponse(
-		boardsWithOperations: { board: ColumnBoard; allowedOperations: Record<BoardOperation, boolean> }[]
+		boardsWithOperations: {
+			board: ColumnBoard;
+			allowedOperations: Record<BoardOperation, boolean>;
+			lockedByLearningPath?: RoomBoardLockResponse;
+			learningPath?: LearningPathSummary;
+		}[]
 	): RoomBoardListResponse {
-		const itemData = boardsWithOperations.map(({ board, allowedOperations }) =>
-			this.mapToRoomBoardItemReponse(board, allowedOperations)
+		const itemData = boardsWithOperations.map(({ board, allowedOperations, lockedByLearningPath, learningPath }) =>
+			this.mapToRoomBoardItemReponse(board, allowedOperations, lockedByLearningPath, learningPath)
 		);
 
 		const response = new RoomBoardListResponse(itemData, boardsWithOperations.length);

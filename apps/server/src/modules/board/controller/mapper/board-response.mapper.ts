@@ -15,8 +15,8 @@ export class BoardResponseMapper {
 		const result = new BoardResponse({
 			id: board.id,
 			title: board.title,
-			// a file area has folders instead of columns, they are served by the file area endpoints
-			columns: board.isFileArea()
+			// file areas and learning paths have no columns, their nodes are served by own endpoints
+			columns: !board.hasColumns()
 				? []
 				: board.children.map((column) => {
 						/* istanbul ignore next */
@@ -29,6 +29,7 @@ export class BoardResponseMapper {
 			isVisible: board.isVisible,
 			readersCanEdit: board.readersCanEdit,
 			layout: board.layout,
+			learningPathColor: board.learningPathColor,
 			features,
 			allowedOperations,
 		});

@@ -3,4 +3,5 @@ export enum BoardLayout {
 	LIST = 'list',
 	GRID = 'grid',
 	FILES = 'files',
+	LEARNING_PATH = 'learningPath',
 }

@@ -22,6 +22,7 @@ export * from './file-area-link-element.do';
 export * from './file-element.do';
 export * from './file-folder-element.do';
 export * from './h5p-element.do';
+export * from './learning-path-step.do';
 export * from './link-element.do';
 export * from './media-board';
 export * from './member-role';

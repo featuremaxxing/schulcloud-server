@@ -42,6 +42,10 @@ export interface BoardNodeAuthorizableProps extends AuthorizableObject {
 	// container once that reviewer's review has actually been submitted (mirrors the release
 	// rule for the teacher's own container, gated on submission.returnedAt instead).
 	submittedPeerReviewerIds?: EntityId[];
+	// The people the root board is locked for because a learning path requires them to
+	// complete other boards first (see LearningPathStateService.lockedUserIds). Board
+	// editors never appear here.
+	learningPathLockedUserIds?: EntityId[];
 }
 
 export interface BoardConfiguration {
@@ -88,6 +92,10 @@ export class BoardNodeAuthorizable extends DomainObject<BoardNodeAuthorizablePro
 
 	get submittedPeerReviewerIds(): EntityId[] | undefined {
 		return this.props.submittedPeerReviewerIds;
+	}
+
+	public isLockedByLearningPath(userId: EntityId): boolean {
+		return this.props.learningPathLockedUserIds?.includes(userId) ?? false;
 	}
 
 	public getUserPermissions(userId: EntityId): Permission[] {

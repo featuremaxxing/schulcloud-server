@@ -54,6 +54,45 @@ describe(BoardNodeRule.name, () => {
 		});
 	});
 
+	describe('when a learning path locks the board', () => {
+		const setup = (roles: BoardRoles[]) => {
+			const user = userFactory.buildWithId();
+			const columnBoard = columnBoardFactory.build({ isVisible: true });
+			const boardNodeAuthorizable = boardNodeAuthorizableFactory.build({
+				users: [{ userId: user.id, roles }],
+				id: columnBoard.id,
+				boardNode: columnBoard,
+				rootNode: columnBoard,
+				boardConfiguration: { isLocked: false },
+				learningPathLockedUserIds: [user.id],
+			});
+			userService.resolvePermissions.mockReturnValue([]);
+
+			return { user, boardNodeAuthorizable };
+		};
+
+		it('should deny a reader every operation', () => {
+			const { user, boardNodeAuthorizable } = setup([BoardRoles.READER]);
+
+			expect(boardNodeRule.can('findBoard', user, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('findCards', user, boardNodeAuthorizable)).toBe(false);
+			expect(Object.values(boardNodeRule.listAllowedOperations(user, boardNodeAuthorizable))).not.toContain(true);
+			expect(
+				boardNodeRule.hasPermission(user, boardNodeAuthorizable, {
+					action: Action.read,
+					requiredPermissions: [],
+				})
+			).toBe(false);
+		});
+
+		it('should never lock an editor', () => {
+			const { user, boardNodeAuthorizable } = setup([BoardRoles.EDITOR]);
+
+			expect(boardNodeRule.isLockedByLearningPath(user, boardNodeAuthorizable)).toBe(false);
+			expect(boardNodeRule.can('findBoard', user, boardNodeAuthorizable)).toBe(true);
+		});
+	});
+
 	describe('isApplicable', () => {
 		describe('when entity is applicable', () => {
 			const setup = () => {
@@ -2018,9 +2057,15 @@ describe(BoardNodeRule.name, () => {
 				expect(boardNodeRule.can(operation, colleague, authorizable)).toBe(false);
 				expect(boardNodeRule.can(operation, studentEditor, authorizable)).toBe(false);
 			}
-			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(true);
-			expect(boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
-			expect(boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(false);
+			expect(boardNodeRule.hasPermission(owner, authorizable, { action: Action.write, requiredPermissions: [] })).toBe(
+				true
+			);
+			expect(
+				boardNodeRule.hasPermission(colleague, authorizable, { action: Action.write, requiredPermissions: [] })
+			).toBe(false);
+			expect(
+				boardNodeRule.hasPermission(studentEditor, authorizable, { action: Action.write, requiredPermissions: [] })
+			).toBe(false);
 		});
 	});
 

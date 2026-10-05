@@ -13,6 +13,7 @@ import {
 	PollAudience,
 	BoardRoles,
 	getBoardNodeType,
+	type LearningPathStep,
 	PollVote,
 } from '../domain';
 import { pathOfChildren } from '../domain/path-utils';
@@ -286,6 +287,41 @@ export class BoardNodeRepo {
 		});
 
 		return answers.map((entity) => new TreeBuilder().build(entity)) as AiQuestionAnswer[];
+	}
+
+	// Learning path steps (on any learning path) that link one of the given boards.
+	public async findLearningPathStepsLinking(boardIds: EntityId[]): Promise<LearningPathStep[]> {
+		if (boardIds.length === 0) {
+			return [];
+		}
+
+		const steps = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.LEARNING_PATH_STEP,
+			linkedBoardId: { $in: boardIds },
+		});
+
+		return steps.map((entity) => new TreeBuilder().build(entity)) as LearningPathStep[];
+	}
+
+	// A deleted board leaves its learning paths: its steps go, and so do the arrows to them.
+	public async removeLearningPathStepsLinking(boardId: EntityId): Promise<void> {
+		const steps = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.LEARNING_PATH_STEP,
+			linkedBoardId: boardId,
+		});
+		if (steps.length === 0) {
+			return;
+		}
+
+		const stepIds = steps.map((step) => step.id);
+		await this.em.nativeDelete(BoardNodeEntity, { id: { $in: stepIds } });
+		steps.forEach((step) => this.em.getUnitOfWork().unsetIdentity(step));
+		await this.em
+			.getCollection(BoardNodeEntity)
+			.updateMany(
+				{ type: BoardNodeType.LEARNING_PATH_STEP, prerequisiteStepIds: { $in: stepIds } },
+				{ $pull: { prerequisiteStepIds: { $in: stepIds } }, $set: { updatedAt: new Date() } }
+			);
 	}
 
 	public async delete(boardNode: AnyBoardNode | AnyBoardNode[]): Promise<void> {

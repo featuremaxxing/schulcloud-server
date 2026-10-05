@@ -16,6 +16,7 @@ import type {
 	DrawingElementProps,
 	ExternalToolElementProps,
 	FileElementProps,
+	LearningPathStepProps,
 	LinkElementProps,
 	MediaBoardProps,
 	MediaExternalToolElementProps,
@@ -72,4 +73,5 @@ export interface BoardNodeEntityProps
 		ComponentProps<DeletedElementProps>,
 		ComponentProps<PollElementProps>,
 		ComponentProps<PollVoteProps>,
-		ComponentProps<CheckboxElementProps> {}
+		ComponentProps<CheckboxElementProps>,
+		ComponentProps<LearningPathStepProps> {}

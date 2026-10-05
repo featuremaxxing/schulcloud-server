@@ -12,6 +12,7 @@ import {
 	assignmentFeedbackFactory,
 	assignmentSubmissionFactory,
 	collaborativeTextEditorFactory,
+	columnBoardFactory,
 	drawingElementFactory,
 	externalToolElementFactory,
 	fileElementFactory,
@@ -20,6 +21,7 @@ import {
 	linkElementFactory,
 	pollVoteFactory,
 } from '../../testing';
+import { BoardCompletionRepo, BoardNodeRepo, LearningPathEnrollmentRepo } from '../../repo';
 import { BoardNodeDeleteHooksService } from './board-node-delete-hooks.service';
 
 describe(BoardNodeDeleteHooksService.name, () => {
@@ -31,6 +33,9 @@ describe(BoardNodeDeleteHooksService.name, () => {
 	let collaborativeTextEditorService: DeepMocked<CollaborativeTextEditorService>;
 	let h5pEditorProducer: DeepMocked<H5pEditorProducer>;
 	let domainErrorHandler: DeepMocked<DomainErrorHandler>;
+	let boardNodeRepo: DeepMocked<BoardNodeRepo>;
+	let boardCompletionRepo: DeepMocked<BoardCompletionRepo>;
+	let learningPathEnrollmentRepo: DeepMocked<LearningPathEnrollmentRepo>;
 
 	beforeAll(async () => {
 		module = await Test.createTestingModule({
@@ -60,6 +65,18 @@ describe(BoardNodeDeleteHooksService.name, () => {
 					provide: DomainErrorHandler,
 					useValue: createMock<DomainErrorHandler>(),
 				},
+				{
+					provide: BoardNodeRepo,
+					useValue: createMock<BoardNodeRepo>(),
+				},
+				{
+					provide: BoardCompletionRepo,
+					useValue: createMock<BoardCompletionRepo>(),
+				},
+				{
+					provide: LearningPathEnrollmentRepo,
+					useValue: createMock<LearningPathEnrollmentRepo>(),
+				},
 			],
 		}).compile();
 
@@ -70,6 +87,9 @@ describe(BoardNodeDeleteHooksService.name, () => {
 		collaborativeTextEditorService = module.get(CollaborativeTextEditorService);
 		h5pEditorProducer = module.get(H5pEditorProducer);
 		domainErrorHandler = module.get(DomainErrorHandler);
+		boardNodeRepo = module.get(BoardNodeRepo);
+		boardCompletionRepo = module.get(BoardCompletionRepo);
+		learningPathEnrollmentRepo = module.get(LearningPathEnrollmentRepo);
 	});
 
 	afterEach(() => {
@@ -307,6 +327,18 @@ describe(BoardNodeDeleteHooksService.name, () => {
 				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(boardNode.id);
 				expect(filesStorageClientAdapterService.deleteFilesOfParent).toHaveBeenCalledWith(feedback.id);
 			});
+		});
+	});
+
+	describe('when called with a regular board', () => {
+		it('should remove it from learning paths and drop its completions and enrollments', async () => {
+			const board = columnBoardFactory.build();
+
+			await service.afterDelete(board);
+
+			expect(boardNodeRepo.removeLearningPathStepsLinking).toHaveBeenCalledWith(board.id);
+			expect(boardCompletionRepo.deleteByBoardId).toHaveBeenCalledWith(board.id);
+			expect(learningPathEnrollmentRepo.deleteByPathBoardId).toHaveBeenCalledWith(board.id);
 		});
 	});
 });
