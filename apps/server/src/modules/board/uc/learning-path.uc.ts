@@ -1,4 +1,5 @@
 import { AuthorizationService } from '@modules/authorization';
+import { RoomContentService } from '@modules/room';
 import { type User } from '@modules/user/repo';
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { throwForbiddenIfFalse } from '@shared/common/utils';
@@ -101,6 +102,7 @@ export class LearningPathUc {
 		private readonly columnBoardService: ColumnBoardService,
 		private readonly learningPathStateService: LearningPathStateService,
 		private readonly learningPathNotifier: LearningPathNotifier,
+		private readonly roomContentService: RoomContentService,
 		@Inject(BOARD_CONFIG_TOKEN) private readonly config: BoardConfig
 	) {}
 
@@ -552,10 +554,29 @@ export class LearningPathUc {
 		}
 	}
 
+	// the boards of the room in the order the room shows them; boards the room does not list yet
+	// come last, by title
 	private async findAvailableBoards(pathBoard: ColumnBoard): Promise<ColumnBoard[]> {
-		const boards = await this.columnBoardService.findByExternalReference(pathBoard.context, 0);
+		const [boards, order] = await Promise.all([
+			this.columnBoardService.findByExternalReference(pathBoard.context, 0),
+			this.findRoomBoardOrder(pathBoard),
+		]);
+		const positionOf = (board: ColumnBoard): number => {
+			const index = order.indexOf(board.id);
+			return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+		};
 
-		return boards.filter((board) => board.hasColumns()).sort((a, b) => a.title.localeCompare(b.title));
+		return boards
+			.filter((board) => board.hasColumns())
+			.sort((a, b) => positionOf(a) - positionOf(b) || a.title.localeCompare(b.title));
+	}
+
+	private async findRoomBoardOrder(pathBoard: ColumnBoard): Promise<EntityId[]> {
+		const roomId = pathBoard.context.id;
+		if (pathBoard.context.type !== BoardExternalReferenceType.Room) return [];
+		if (!(await this.roomContentService.contentExists(roomId))) return [];
+
+		return await this.roomContentService.getBoardOrder(roomId);
 	}
 
 	private async findLearningPath(boardId: EntityId): Promise<ColumnBoard> {

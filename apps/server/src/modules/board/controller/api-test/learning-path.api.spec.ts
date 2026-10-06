@@ -4,7 +4,8 @@ import { accountFactory } from '@modules/account/testing';
 import { GroupEntityTypes } from '@modules/group/entity';
 import { groupEntityFactory } from '@modules/group/testing';
 import { roomMembershipEntityFactory } from '@modules/room-membership/testing';
-import { roomEntityFactory } from '@modules/room/testing';
+import { RoomContentType } from '@modules/room';
+import { roomContentEntityFactory, roomEntityFactory } from '@modules/room/testing';
 import { RoomRolesTestFactory } from '@modules/room/testing/room-roles.test.factory';
 import { schoolEntityFactory } from '@modules/school/testing';
 import { ServerTestModule } from '@modules/server/server.app.module';
@@ -324,6 +325,24 @@ describe('learning path (api)', () => {
 
 			const response = await studentClient.put(`boards/${boardA.id}/completion`, { completed: true });
 			expect(response.status).toEqual(403);
+		});
+	});
+
+	describe('the boards to add', () => {
+		it('should come in the order of the room, not by title', async () => {
+			const { teacherClient, room, pathBoard, boardA, boardB, boardC } = await setup();
+			const roomContent = roomContentEntityFactory.build({
+				roomId: room.id,
+				items: [pathBoard, boardC, boardA, boardB].map((board) => {
+					return { id: board.id, type: RoomContentType.BOARD };
+				}),
+			});
+			await em.persist(roomContent).flush();
+			em.clear();
+
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+
+			expect(path.availableBoards.map((board) => board.id)).toEqual([boardC.id, boardA.id, boardB.id]);
 		});
 	});
 
