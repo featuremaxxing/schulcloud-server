@@ -40,6 +40,8 @@ export interface LearningPathStepView {
 	title: string;
 	// card steps: the board the card lies on
 	boardTitle?: string;
+	// text tiles: what they say (not for students while locked)
+	text?: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
 	// students: completed before, but something new came up
@@ -72,6 +74,9 @@ export interface LearningPathStepUpdate {
 	prerequisiteStepIds?: EntityId[];
 	unlockMode?: LearningPathUnlockMode;
 	lockUntilPrerequisitesDone?: boolean;
+	// text tiles only
+	title?: string;
+	text?: string;
 }
 
 export interface BoardCompletionView {
@@ -181,6 +186,32 @@ export class LearningPathUc {
 		return step;
 	}
 
+	// A text tile on the learning path: a heading or work instructions. It links nothing and has
+	// nothing to complete, but can be locked like any step - students then cannot read it yet.
+	public async createTextStep(
+		userId: EntityId,
+		boardId: EntityId,
+		title: string,
+		text: string,
+		positionX: number,
+		positionY: number
+	): Promise<LearningPathStep> {
+		this.checkFeatureEnabled();
+
+		const board = await this.findLearningPath(boardId);
+		await this.checkEditor(userId, board);
+
+		if (this.learningPathStateService.getSteps(board).length >= LEARNING_PATH_MAX_STEPS) {
+			throw new BadRequestException(`A learning path holds at most ${LEARNING_PATH_MAX_STEPS} boards`);
+		}
+
+		const step = this.boardNodeFactory.buildLearningPathText(title, text, positionX, positionY);
+		await this.boardNodeService.addToParent(board, step);
+		this.learningPathNotifier.changed(board.id);
+
+		return step;
+	}
+
 	public async updateStep(
 		userId: EntityId,
 		stepId: EntityId,
@@ -208,6 +239,13 @@ export class LearningPathUc {
 		if (update.unlockMode !== undefined) step.unlockMode = update.unlockMode;
 		if (update.lockUntilPrerequisitesDone !== undefined) {
 			step.lockUntilPrerequisitesDone = update.lockUntilPrerequisitesDone;
+		}
+		if (update.title !== undefined || update.text !== undefined) {
+			if (!step.isText) {
+				throw new BadRequestException('Only text tiles have a title and text of their own');
+			}
+			if (update.title !== undefined) step.title = update.title;
+			if (update.text !== undefined) step.text = update.text;
 		}
 
 		await this.boardNodeService.save(step);
@@ -311,7 +349,7 @@ export class LearningPathUc {
 
 	private async resetPath(path: ColumnBoard, userIds: EntityId[]): Promise<void> {
 		const steps = this.learningPathStateService.getSteps(path);
-		const boardIds = steps.filter((step) => !step.linkedCardId).map((step) => step.linkedBoardId);
+		const boardIds = steps.filter((step) => !step.linkedCardId && !step.isText).map((step) => step.linkedBoardId);
 		const cards = steps
 			.filter((step) => step.linkedCardId)
 			.map((step) => {
@@ -319,7 +357,7 @@ export class LearningPathUc {
 			});
 
 		await this.boardCompletionRepo.deleteByTargetIdsAndUserIds(
-			steps.map((step) => step.targetId),
+			steps.filter((step) => !step.isText).map((step) => step.targetId),
 			userIds
 		);
 		await this.learningPathStateService.clearCheckboxes(boardIds, userIds, cards);

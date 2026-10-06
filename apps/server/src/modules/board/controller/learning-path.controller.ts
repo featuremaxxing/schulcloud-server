@@ -48,6 +48,8 @@ const toStepResponse = (view: LearningPathStepView): LearningPathStepResponse =>
 		linkedCardId: view.step.linkedCardId,
 		title: view.title,
 		boardTitle: view.boardTitle,
+		isText: view.step.isText || undefined,
+		text: view.text,
 		isVisible: view.isVisible,
 		positionX: view.step.positionX,
 		positionY: view.step.positionY,
@@ -63,7 +65,13 @@ const toStepResponse = (view: LearningPathStepView): LearningPathStepResponse =>
 
 // a changed step is only seen by editors, the path is reloaded for the full view
 const toChangedStepResponse = (step: LearningPathStep): LearningPathStepResponse =>
-	toStepResponse({ step, title: '', isVisible: true, status: 'open' });
+	toStepResponse({
+		step,
+		title: step.isText ? step.title : '',
+		text: step.isText ? step.text : undefined,
+		isVisible: true,
+		status: 'open',
+	});
 
 const toCompletionResponse = (view: BoardCompletionView): BoardCompletionResponse => new BoardCompletionResponse(view);
 
@@ -202,14 +210,24 @@ export class LearningPathController {
 		@Body() bodyParams: CreateLearningPathStepBodyParams,
 		@CurrentUser() currentUser: ICurrentUser
 	): Promise<LearningPathStepResponse> {
-		const step = await this.learningPathUc.createStep(
-			currentUser.userId,
-			bodyParams.boardId,
-			bodyParams.linkedBoardId,
-			bodyParams.positionX,
-			bodyParams.positionY,
-			bodyParams.linkedCardId
-		);
+		const { boardId, linkedBoardId, positionX, positionY } = bodyParams;
+		const step = linkedBoardId
+			? await this.learningPathUc.createStep(
+					currentUser.userId,
+					boardId,
+					linkedBoardId,
+					positionX,
+					positionY,
+					bodyParams.linkedCardId
+				)
+			: await this.learningPathUc.createTextStep(
+					currentUser.userId,
+					boardId,
+					bodyParams.title ?? '',
+					bodyParams.text ?? '',
+					positionX,
+					positionY
+				);
 
 		return toChangedStepResponse(step);
 	}

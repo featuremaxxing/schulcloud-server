@@ -108,25 +108,28 @@ export class RoomMapper {
 		return new RoomLearningPathResponse({
 			color: summary.color,
 			isEnrolled: summary.isEnrolled,
-			steps: summary.steps.map(
-				({ step, title, isVisible, status, reopened, lock }) =>
-					new RoomLearningPathStepResponse({
-						id: step.id,
-						boardId: step.linkedBoardId,
-						cardId: step.linkedCardId,
-						title,
-						isVisible,
-						status,
-						prerequisiteStepIds: step.prerequisiteStepIds,
-						unlockMode: step.unlockMode,
-						reopened,
-						lock: lock
-							? new RoomBoardLockResponse({ id: lock.pathId, title: lock.pathTitle, reason: lock.reason })
-							: undefined,
-						positionX: step.positionX,
-						positionY: step.positionY,
-					})
-			),
+			// text tiles are only part of the learning path itself
+			steps: summary.steps
+				.filter(({ step }) => !step.isText)
+				.map(
+					({ step, title, isVisible, status, reopened, lock }) =>
+						new RoomLearningPathStepResponse({
+							id: step.id,
+							boardId: step.linkedBoardId,
+							cardId: step.linkedCardId,
+							title,
+							isVisible,
+							status,
+							prerequisiteStepIds: step.prerequisiteStepIds,
+							unlockMode: step.unlockMode,
+							reopened,
+							lock: lock
+								? new RoomBoardLockResponse({ id: lock.pathId, title: lock.pathTitle, reason: lock.reason })
+								: undefined,
+							positionX: step.positionX,
+							positionY: step.positionY,
+						})
+				),
 			studentCount: summary.studentCount,
 			completedStudentCount: summary.completedStudentCount,
 		});

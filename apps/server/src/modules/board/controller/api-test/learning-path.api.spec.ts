@@ -29,6 +29,8 @@ type StepJson = {
 	linkedCardId?: string;
 	title: string;
 	boardTitle?: string;
+	isText?: boolean;
+	text?: string;
 	status: string;
 	prerequisiteStepIds: string[];
 	reopened?: boolean;
@@ -961,6 +963,90 @@ describe('learning path (api)', () => {
 				linkedBoardId: boardA.id,
 				boardTitle: 'A',
 			});
+		});
+	});
+
+	describe('text tiles', () => {
+		// A -> text -> C: the text is locked until A is done, C waits for the text
+		const setupText = async () => {
+			const base = await setup();
+			const created = await base.teacherClient.post('learning-path-steps', {
+				boardId: base.pathBoard.id,
+				title: 'Teil 2',
+				text: 'Lest die Karten und notiert drei Fragen.',
+				positionX: 0,
+				positionY: 300,
+			});
+			const textStep = created.body as StepJson;
+			await base.teacherClient.patch(`learning-path-steps/${textStep.id}`, {
+				prerequisiteStepIds: [base.stepA.id],
+				lockUntilPrerequisitesDone: true,
+			});
+			await base.teacherClient.patch(`learning-path-steps/${base.stepC.id}`, { prerequisiteStepIds: [textStep.id] });
+
+			return { ...base, textStep, createStatus: created.status };
+		};
+
+		it('should add a text tile that the teacher can read and change', async () => {
+			const { teacherClient, pathBoard, textStep, createStatus } = await setupText();
+
+			expect(createStatus).toEqual(201);
+			expect(textStep).toMatchObject({ isText: true, title: 'Teil 2', text: 'Lest die Karten und notiert drei Fragen.' });
+
+			await teacherClient.patch(`learning-path-steps/${textStep.id}`, { title: 'Teil 2: Vertiefung' });
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(path.steps.find((step) => step.id === textStep.id)).toMatchObject({
+				isText: true,
+				title: 'Teil 2: Vertiefung',
+				status: 'open',
+			});
+		});
+
+		it('should hide the text from a student until the step before it is done', async () => {
+			const { studentClient, pathBoard, boardC, textStep, checkTheBox } = await setupText();
+
+			const before = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			const lockedText = before.steps.find((step) => step.id === textStep.id);
+			expect(lockedText).toMatchObject({ isText: true, status: 'locked', title: '' });
+			expect(lockedText?.text).toBeUndefined();
+			expect(statusOf(before, boardC.id)).toEqual('locked');
+
+			await checkTheBox();
+
+			const after = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(after.steps.find((step) => step.id === textStep.id)).toMatchObject({
+				status: 'open',
+				title: 'Teil 2',
+				text: 'Lest die Karten und notiert drei Fragen.',
+			});
+			// the text has nothing to complete and lets through to C
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+		});
+
+		it('should leave text tiles out of the room and the counts', async () => {
+			const { teacherClient, room, pathBoard } = await setupText();
+
+			const boards = (await teacherClient.get(`rooms/${room.id}/boards`)).body as { data: RoomBoardJson[] };
+			const path = boards.data.find((board) => board.id === pathBoard.id);
+			expect(path?.learningPath?.steps.map((step) => step.title)).toEqual(['A', 'B', 'C']);
+			const overview = (await teacherClient.get(`rooms/${room.id}/learning-paths/overview`)).body as {
+				paths: { total: number }[];
+			};
+			expect(overview.paths[0].total).toEqual(3);
+		});
+
+		it('should refuse a step without a board or a text, and a text on a board step', async () => {
+			const { teacherClient, pathBoard, stepA } = await setupText();
+
+			const empty = await teacherClient.post('learning-path-steps', {
+				boardId: pathBoard.id,
+				positionX: 0,
+				positionY: 0,
+			});
+			const textOnBoard = await teacherClient.patch(`learning-path-steps/${stepA.id}`, { text: 'nope' });
+
+			expect(empty.status).toEqual(400);
+			expect(textOnBoard.status).toEqual(400);
 		});
 	});
 });

@@ -62,6 +62,8 @@ export interface LearningPathSummaryStep {
 	title: string;
 	// card steps: the board the card lies on
 	boardTitle?: string;
+	// text tiles: what they say, not for students while locked
+	text?: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
 	// students: completed before, but something new came up
@@ -152,7 +154,7 @@ export class LearningPathStateService {
 	}
 
 	public async loadLinkedBoards(steps: LearningPathStep[]): Promise<Map<EntityId, ColumnBoard>> {
-		const ids = Array.from(new Set(steps.map((step) => step.linkedBoardId)));
+		const ids = Array.from(new Set(steps.filter((step) => !step.isText).map((step) => step.linkedBoardId)));
 		const boards = ids.length > 0 ? await this.boardNodeService.findByIds(ids, 0) : [];
 
 		return new Map(boards.filter(isColumnBoard).map((board) => [board.id, board]));
@@ -171,6 +173,9 @@ export class LearningPathStateService {
 	// What a step is called: the board's title, or for a card its title - or, for a card without
 	// one, what it links to or the start of its text.
 	public stepTitle(step: LearningPathStep, linkedBoard?: ColumnBoard, linkedCard?: Card): string {
+		if (step.isText) {
+			return step.title;
+		}
 		if (!step.linkedCardId) {
 			return linkedBoard?.title ?? '';
 		}
@@ -248,9 +253,10 @@ export class LearningPathStateService {
 		const isDone = (step: LearningPathStep): boolean => completion.done.get(step.targetId)?.has(userId) ?? false;
 		const wasDone = (step: LearningPathStep): boolean => completion.unlocked.get(step.targetId)?.has(userId) ?? false;
 		// a prerequisite that is gone or not published does not block, and neither does one that
-		// was completed once
+		// was completed once. A text tile has nothing to complete: it lets through what comes before it.
 		const isSatisfied = (stepId: EntityId): boolean => {
 			const step = stepsById.get(stepId);
+			if (step?.isText) return this.prerequisitesMet(step, isSatisfied);
 			return !step || !isAvailable(step) || wasDone(step);
 		};
 
@@ -260,6 +266,8 @@ export class LearningPathStateService {
 			let status: LearningPathStepStatus;
 			if (!isAvailable(step)) {
 				status = 'unavailable';
+			} else if (step.isText) {
+				status = step.lockUntilPrerequisitesDone && !this.prerequisitesMet(step, isSatisfied) ? 'locked' : 'open';
 			} else if (isDone(step)) {
 				status = 'done';
 			} else if (step.lockUntilPrerequisitesDone && !this.prerequisitesMet(step, isSatisfied)) {
@@ -268,7 +276,7 @@ export class LearningPathStateService {
 				status = 'open';
 			}
 
-			const reopened = status === 'open' && wasDone(step);
+			const reopened = status === 'open' && !step.isText && wasDone(step);
 
 			return { step, linkedBoard, linkedCard, status, reopened };
 		});
@@ -285,6 +293,9 @@ export class LearningPathStateService {
 		linkedBoards: Map<EntityId, ColumnBoard>,
 		linkedCards: Map<EntityId, Card>
 	): boolean {
+		if (step.isText) {
+			return true;
+		}
 		const boardVisible = linkedBoards.get(step.linkedBoardId)?.isVisible ?? false;
 		if (!step.linkedCardId) {
 			return boardVisible;
@@ -369,7 +380,7 @@ export class LearningPathStateService {
 			// no learning path chosen yet: what a learning path of the room keeps closed stays closed
 			for (const path of room.paths) {
 				for (const { step, status } of this.roomStates(room, path, userId)) {
-					if (status === 'locked' && !step.linkedCardId && !locks.has(step.linkedBoardId)) {
+					if (status === 'locked' && !step.linkedCardId && !step.isText && !locks.has(step.linkedBoardId)) {
 						locks.set(step.linkedBoardId, {
 							pathId: path.id,
 							pathTitle: path.title,
@@ -384,7 +395,7 @@ export class LearningPathStateService {
 
 		for (const path of own) {
 			for (const { step, status } of this.roomStates(room, path, userId)) {
-				if (status === 'locked' && !step.linkedCardId && !locks.has(step.linkedBoardId)) {
+				if (status === 'locked' && !step.linkedCardId && !step.isText && !locks.has(step.linkedBoardId)) {
 					locks.set(step.linkedBoardId, { pathId: path.id, pathTitle: path.title, reason: 'prerequisites' });
 				}
 			}
@@ -486,8 +497,9 @@ export class LearningPathStateService {
 		const room = await this.loadRoomPaths(roomId, students);
 
 		const stepsByPath = new Map(room.paths.map((path) => [path.id, this.getSteps(path)]));
+		// text tiles have nothing to complete
 		const isPublished = (step: LearningPathStep): boolean =>
-			this.isAvailable(step, room.linkedBoards, room.linkedCards);
+			!step.isText && this.isAvailable(step, room.linkedBoards, room.linkedCards);
 
 		return {
 			paths: room.paths.map((path) => {
@@ -508,7 +520,7 @@ export class LearningPathStateService {
 					lastName: student.lastName,
 					paths: room.paths.map((path) => {
 						const states = this.roomStates(room, path, student.userId).filter(
-							(state) => state.status !== 'unavailable'
+							(state) => state.status !== 'unavailable' && !state.step.isText
 						);
 						const next = states
 							.filter(
@@ -559,7 +571,9 @@ export class LearningPathStateService {
 		const paths = isEditor || own.length === 0 ? room.paths : own;
 
 		for (const path of paths) {
-			const states = this.roomStates(room, path, member.userId).filter((state) => state.status !== 'unavailable');
+			const states = this.roomStates(room, path, member.userId).filter(
+				(state) => state.status !== 'unavailable' && !state.step.isText
+			);
 			const statusOf = new Map(states.map((state) => [state.step.id, state.status]));
 			orderedSteps(states.map((state) => state.step)).forEach((step, index) => {
 				if (!step.linkedCardId || step.linkedBoardId !== board.id) return;
@@ -732,7 +746,9 @@ export class LearningPathStateService {
 	): LearningPathSummary {
 		const students = users.filter((member) => !this.isEditor(member));
 		const enrolled = students.filter((student) => this.isEnrolled(room, student.userId, board.id));
-		const published = steps.filter((step) => this.isAvailable(step, room.linkedBoards, room.linkedCards));
+		const published = steps.filter(
+			(step) => !step.isText && this.isAvailable(step, room.linkedBoards, room.linkedCards)
+		);
 		const completedStudentCount = enrolled.filter(
 			(student) =>
 				published.length > 0 && published.every((step) => room.completion.done.get(step.targetId)?.has(student.userId))
@@ -741,6 +757,9 @@ export class LearningPathStateService {
 		return {
 			color: board.learningPathColor,
 			steps: steps.map((step) => {
+				if (step.isText) {
+					return { step, title: step.title, text: step.text, isVisible: true, status: 'open' };
+				}
 				const linkedBoard = room.linkedBoards.get(step.linkedBoardId);
 				const linkedCard = step.linkedCardId ? room.linkedCards.get(step.linkedCardId) : undefined;
 				const exists = !!linkedBoard && (!step.linkedCardId || linkedCard?.rootId === step.linkedBoardId);
@@ -768,8 +787,8 @@ export class LearningPathStateService {
 	): LearningPathSummary {
 		const locks = this.locksFor(room, userId);
 		const states = this.computeStates(steps, room.linkedBoards, room.completion, userId, room.linkedCards);
-		// card steps only guide: they show as locked in the learning paths the person goes - or in
-		// every one while they have not chosen any - but never close the card
+		// card steps and text tiles only guide: they show as locked in the learning paths the person
+		// goes - or in every one while they have not chosen any - but never close a card
 		const own = this.ownPaths(room, userId);
 		const goesPath = own.some((path) => path.id === board.id);
 		const cardLock = (status: LearningPathStepStatus): LearningPathLock | undefined => {
@@ -787,11 +806,24 @@ export class LearningPathStateService {
 				const lock =
 					state.status === 'done' || !visible
 						? undefined
-						: state.step.linkedCardId
+						: state.step.linkedCardId || state.step.isText
 							? cardLock(state.status)
 							: locks.get(state.step.linkedBoardId);
 
 				const status = !visible || state.status === 'done' ? state.status : lock ? 'locked' : 'open';
+
+				if (state.step.isText) {
+					// a locked text tile is not to be read yet
+					const readable = status !== 'locked';
+					return {
+						step: state.step,
+						title: readable ? state.step.title : '',
+						text: readable ? state.step.text : undefined,
+						isVisible: true,
+						status,
+						lock,
+					};
+				}
 
 				return {
 					step: state.step,

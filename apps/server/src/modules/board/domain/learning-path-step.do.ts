@@ -6,12 +6,35 @@ import type { LearningPathStepProps, LearningPathUnlockMode } from './types';
 // same room, or one card of such a board; arrows between tiles are stored as
 // prerequisiteStepIds on the target tile.
 export class LearningPathStep extends BoardNode<LearningPathStepProps> {
+	// empty for a text tile
 	get linkedBoardId(): EntityId {
-		return this.props.linkedBoardId;
+		return this.props.linkedBoardId ?? '';
 	}
 
 	set linkedBoardId(value: EntityId) {
 		this.props.linkedBoardId = value;
+	}
+
+	// A text tile (heading, work instructions) links nothing and has nothing to complete. Locked,
+	// its students do not get to read it yet.
+	get isText(): boolean {
+		return !this.props.linkedBoardId;
+	}
+
+	get title(): string {
+		return this.props.title ?? '';
+	}
+
+	set title(value: string) {
+		this.props.title = value;
+	}
+
+	get text(): string {
+		return this.props.text ?? '';
+	}
+
+	set text(value: string) {
+		this.props.text = value;
 	}
 
 	// set when the step is a single card; linkedBoardId is then the board the card lies on
@@ -23,9 +46,9 @@ export class LearningPathStep extends BoardNode<LearningPathStepProps> {
 		this.props.linkedCardId = value;
 	}
 
-	// what has to be completed for the step: the card, or else the whole board
+	// what has to be completed for the step: the card, or else the whole board (a text tile: itself)
 	get targetId(): EntityId {
-		return this.props.linkedCardId ?? this.props.linkedBoardId;
+		return this.props.linkedCardId ?? this.props.linkedBoardId ?? this.id;
 	}
 
 	get positionX(): number {

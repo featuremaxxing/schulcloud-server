@@ -37,6 +37,12 @@ export class LearningPathStepResponse {
 	@ApiPropertyOptional({ description: 'Card steps: title of the board the card lies on.' })
 	boardTitle?: string;
 
+	@ApiPropertyOptional({ description: 'A text tile (heading, work instructions) that links nothing.' })
+	isText?: boolean;
+
+	@ApiPropertyOptional({ description: 'Text tiles: the text. Left out for students while the tile is locked.' })
+	text?: string;
+
 	@ApiProperty({ description: 'Whether the linked board is published.' })
 	isVisible: boolean;
 
@@ -82,6 +88,8 @@ export class LearningPathStepResponse {
 		this.linkedCardId = props.linkedCardId;
 		this.title = props.title;
 		this.boardTitle = props.boardTitle;
+		this.isText = props.isText;
+		this.text = props.text;
 		this.isVisible = props.isVisible;
 		this.positionX = props.positionX;
 		this.positionY = props.positionY;

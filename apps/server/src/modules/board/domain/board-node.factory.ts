@@ -77,6 +77,21 @@ export class BoardNodeFactory {
 		return step;
 	}
 
+	public buildLearningPathText(title: string, text: string, positionX: number, positionY: number): LearningPathStep {
+		const step = new LearningPathStep({
+			...this.getBaseProps(),
+			title,
+			text,
+			positionX,
+			positionY,
+			prerequisiteStepIds: [],
+			unlockMode: 'all',
+			lockUntilPrerequisitesDone: false,
+		});
+
+		return step;
+	}
+
 	public buildColumn(): Column {
 		const column = new Column({ ...this.getBaseProps() });
 

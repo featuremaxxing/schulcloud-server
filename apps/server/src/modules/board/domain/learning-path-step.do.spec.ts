@@ -35,6 +35,16 @@ describe('LearningPathStep', () => {
 		expect(cardStep.targetId).toBe('card-1');
 	});
 
+	it('should be a text tile when it links no board, completed as itself', () => {
+		const text = learningPathStepFactory.build({ linkedBoardId: undefined, title: 'Teil 2', text: 'Los geht es' });
+
+		expect(text.isText).toBe(true);
+		expect(text.linkedBoardId).toBe('');
+		expect(text.targetId).toBe(text.id);
+		expect([text.title, text.text]).toEqual(['Teil 2', 'Los geht es']);
+		expect(learningPathStepFactory.build().isText).toBe(false);
+	});
+
 	describe('wouldCreateCycle', () => {
 		const setup = () => {
 			const a = learningPathStepFactory.build();
