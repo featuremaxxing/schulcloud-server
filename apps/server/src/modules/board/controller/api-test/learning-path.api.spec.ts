@@ -43,7 +43,7 @@ type RoomBoardJson = {
 	id: string;
 	lockedByLearningPath?: { id: string; title: string; reason: string };
 	learningPath?: {
-		steps: { boardId: string; title: string; status: string }[];
+		steps: { boardId: string; title: string; status: string; isText?: boolean }[];
 		studentCount?: number;
 		completedStudentCount?: number;
 	};
@@ -1046,12 +1046,17 @@ describe('learning path (api)', () => {
 			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
 		});
 
-		it('should leave text tiles out of the room and the counts', async () => {
+		it('should number text tiles with the steps in the room, but leave them out of the counts', async () => {
 			const { teacherClient, room, pathBoard } = await setupText();
 
 			const boards = (await teacherClient.get(`rooms/${room.id}/boards`)).body as { data: RoomBoardJson[] };
 			const path = boards.data.find((board) => board.id === pathBoard.id);
-			expect(path?.learningPath?.steps.map((step) => step.title)).toEqual(['A', 'B', 'C']);
+			expect(path?.learningPath?.steps.map((step) => [step.title, step.isText ?? false])).toEqual([
+				['A', false],
+				['B', false],
+				['C', false],
+				['Teil 2', true],
+			]);
 			const overview = (await teacherClient.get(`rooms/${room.id}/learning-paths/overview`)).body as {
 				paths: { total: number }[];
 			};

@@ -571,9 +571,8 @@ export class LearningPathStateService {
 		const paths = isEditor || own.length === 0 ? room.paths : own;
 
 		for (const path of paths) {
-			const states = this.roomStates(room, path, member.userId).filter(
-				(state) => state.status !== 'unavailable' && !state.step.isText
-			);
+			// text tiles are numbered with the steps, as when paging through the learning path
+			const states = this.roomStates(room, path, member.userId).filter((state) => state.status !== 'unavailable');
 			const statusOf = new Map(states.map((state) => [state.step.id, state.status]));
 			orderedSteps(states.map((state) => state.step)).forEach((step, index) => {
 				if (!step.linkedCardId || step.linkedBoardId !== board.id) return;
