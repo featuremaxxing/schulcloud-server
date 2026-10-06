@@ -6,6 +6,7 @@ import {
 	BoardExternalReferenceType,
 	BoardLayout,
 	BoardRoles,
+	type Card,
 	type ColumnBoard,
 	type LearningPathStep,
 	type UserWithBoardRoles,
@@ -17,7 +18,13 @@ import {
 	LearningPathEnrollmentEntity,
 	LearningPathEnrollmentRepo,
 } from '../repo';
-import { columnBoardFactory, learningPathStepFactory } from '../testing';
+import {
+	cardFactory,
+	columnBoardFactory,
+	learningPathStepFactory,
+	linkElementFactory,
+	richTextElementFactory,
+} from '../testing';
 import { BoardNodeService } from './board-node.service';
 import { BoardProgressService } from './board-progress.service';
 import { LearningPathStateService } from './learning-path-state.service';
@@ -482,6 +489,223 @@ describe(LearningPathStateService.name, () => {
 					{ pathId: blue.id, done: 1, total: 2, rework: 0, nextBoardTitle: 'C' },
 				]);
 				expect(green.id).toBeDefined();
+			});
+		});
+	});
+	// A room with board A whose cards K1 and K2 are steps, and board C:
+	// red: K1 -> K2 -> C (K2 and C locked until what comes before is done), yellow: K1
+	describe('card steps', () => {
+		const setup = () => {
+			const roomId = new ObjectId().toHexString();
+			const context = { type: BoardExternalReferenceType.Room, id: roomId };
+			const boardA = columnBoardFactory.build({ title: 'A', isVisible: true, context });
+			const boardC = columnBoardFactory.build({ title: 'C', isVisible: true, context });
+			const columnId = new ObjectId().toHexString();
+			const cardPath = `,${boardA.id},${columnId},`;
+			const card1 = cardFactory.build({ title: 'K1', path: cardPath, level: 2 });
+			const card2 = cardFactory.build({ title: 'K2', path: cardPath, level: 2 });
+
+			const buildPath = (title: string, build: (path: string) => LearningPathStep[]) => {
+				const id = new ObjectId().toHexString();
+				const children = build(`,${id},`);
+				return columnBoardFactory.build({
+					id,
+					title,
+					layout: BoardLayout.LEARNING_PATH,
+					isVisible: true,
+					context,
+					children,
+				});
+			};
+			const red = buildPath('Red', (path) => {
+				const k1 = learningPathStepFactory.build({
+					path,
+					level: 1,
+					linkedBoardId: boardA.id,
+					linkedCardId: card1.id,
+					positionY: 0,
+				});
+				const k2 = learningPathStepFactory.build({
+					path,
+					level: 1,
+					linkedBoardId: boardA.id,
+					linkedCardId: card2.id,
+					prerequisiteStepIds: [k1.id],
+					lockUntilPrerequisitesDone: true,
+					positionY: 100,
+				});
+				const c = learningPathStepFactory.build({
+					path,
+					level: 1,
+					linkedBoardId: boardC.id,
+					prerequisiteStepIds: [k2.id],
+					lockUntilPrerequisitesDone: true,
+					positionY: 200,
+				});
+				return [k1, k2, c];
+			});
+			const yellow = buildPath('Yellow', (path) => [
+				learningPathStepFactory.build({ path, level: 1, linkedBoardId: boardA.id, linkedCardId: card1.id }),
+			]);
+
+			const teacher: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.EDITOR] };
+			const student: UserWithBoardRoles = { userId: new ObjectId().toHexString(), roles: [BoardRoles.READER] };
+			const everything = [red, yellow, boardA, boardC, card1, card2];
+			const allSteps = [...red.children, ...yellow.children] as LearningPathStep[];
+
+			boardNodeRepo.findByExternalReference.mockResolvedValue([red, yellow, boardA, boardC]);
+			boardNodeRepo.findLearningPathStepsLinking.mockImplementation((ids: string[]) =>
+				Promise.resolve(allSteps.filter((step) => ids.includes(step.linkedBoardId)))
+			);
+			boardNodeService.findByIds.mockImplementation((ids: string[]) =>
+				Promise.resolve(everything.filter((node) => ids.includes(node.id)))
+			);
+			boardProgressService.computeCompletedUserIds.mockResolvedValue({ done: new Map(), withItems: new Map() });
+			boardCompletionRepo.findByBoardIds.mockResolvedValue([]);
+			enrollmentRepo.findByRoom.mockResolvedValue([
+				new LearningPathEnrollmentEntity({ userId: student.userId, pathBoardId: red.id, roomId }),
+			]);
+
+			const complete = (...cards: Card[]) => {
+				boardCompletionRepo.findByBoardIds.mockResolvedValue(
+					cards.map(
+						(card) =>
+							new BoardCompletionEntity({
+								userId: student.userId,
+								boardId: card.id,
+								cardBoardId: boardA.id,
+								completedAt: new Date(),
+								source: 'manual',
+							})
+					)
+				);
+			};
+
+			return { boardA, boardC, card1, card2, red, yellow, teacher, student, complete };
+		};
+
+		it('should show a card step with its card and board title and follow its completion', async () => {
+			const { red, card1, student, complete } = setup();
+			complete(card1);
+
+			const result = await service.summarize([{ board: red, users: [student], isEditor: false }], student.userId);
+
+			const steps = result.get(red.id)?.steps ?? [];
+			expect(steps.map((step) => [step.title, step.boardTitle, step.status])).toEqual([
+				['K1', 'A', 'done'],
+				['K2', 'A', 'open'],
+				['C', undefined, 'locked'],
+			]);
+		});
+
+		it('should show a card step as locked without closing its board', async () => {
+			const { red, boardA, boardC, student } = setup();
+
+			const result = await service.summarize([{ board: red, users: [student], isEditor: false }], student.userId);
+			const locks = await service.findLocks([boardA, boardC], student);
+
+			const steps = result.get(red.id)?.steps ?? [];
+			expect(steps[1].status).toBe('locked');
+			expect(steps[1].lock).toEqual({ pathId: red.id, pathTitle: 'Red', reason: 'prerequisites' });
+			expect(locks.has(boardA.id)).toBe(false);
+			expect(locks.get(boardC.id)?.pathId).toBe(red.id);
+		});
+
+		it('should count a completed card in every learning path', async () => {
+			const { yellow, card1, student, complete } = setup();
+			complete(card1);
+
+			const result = await service.summarize([{ board: yellow, users: [student], isEditor: false }], student.userId);
+
+			expect(result.get(yellow.id)?.steps[0].status).toBe('done');
+		});
+
+		it('should judge cards by the progress items on them', async () => {
+			const { boardA, card1, student } = setup();
+			boardProgressService.computeCompletedUserIds.mockResolvedValueOnce({
+				done: new Map([[card1.id, new Set([student.userId])]]),
+				withItems: new Map([[card1.id, new Set([student.userId])]]),
+			});
+
+			const result = await service.completionState([], [student], [card1]);
+
+			expect(boardProgressService.computeCompletedUserIds).toHaveBeenCalledWith([], expect.any(Array), [
+				{ cardId: card1.id, boardId: boardA.id, users: [student] },
+			]);
+			expect(result.done.get(card1.id)?.has(student.userId)).toBe(true);
+		});
+
+		it('should name the learning paths of the cards of a board', async () => {
+			const { boardA, card1, card2, red, yellow, student, teacher, complete } = setup();
+			complete(card1);
+
+			const forStudent = await service.cardStepsOnBoard(boardA, student);
+			const forTeacher = await service.cardStepsOnBoard(boardA, teacher);
+
+			expect(forStudent.get(card1.id)).toEqual([
+				{ pathId: red.id, pathTitle: 'Red', color: undefined, position: 1, status: 'done' },
+			]);
+			expect(forStudent.get(card2.id)?.[0]).toMatchObject({ position: 2, status: 'open' });
+			expect(forTeacher.get(card1.id)?.map((entry) => entry.pathId)).toEqual([red.id, yellow.id]);
+		});
+
+		it('should remember the completion of a card before a progress item is added to it', async () => {
+			const { boardA, card1, student, teacher } = setup();
+			boardProgressService.computeCompletedUserIds.mockResolvedValue({
+				done: new Map([[card1.id, new Set([student.userId])]]),
+				withItems: new Map(),
+			});
+
+			await service.rememberCompletions(boardA, [teacher, student], card1);
+
+			expect(boardCompletionRepo.markCompleted).toHaveBeenCalledWith(student.userId, card1.id, 'progress', boardA.id);
+		});
+
+		describe('cardMoved', () => {
+			it('should let the steps follow a card within the room', async () => {
+				const { boardA, boardC, card1 } = setup();
+				boardNodeRepo.findLearningPathStepsLinkingCards.mockResolvedValue([
+					learningPathStepFactory.build({ linkedBoardId: boardA.id, linkedCardId: card1.id }),
+				]);
+
+				await service.cardMoved(card1.id, boardA, boardC);
+
+				expect(boardNodeRepo.updateLearningPathStepsLinkingCard).toHaveBeenCalledWith(card1.id, boardC.id);
+				expect(boardCompletionRepo.updateCardBoard).toHaveBeenCalledWith(card1.id, boardC.id);
+			});
+
+			it('should take a card out of the learning paths when it leaves the room', async () => {
+				const { boardA, card1 } = setup();
+				boardNodeRepo.findLearningPathStepsLinkingCards.mockResolvedValue([
+					learningPathStepFactory.build({ linkedBoardId: boardA.id, linkedCardId: card1.id }),
+				]);
+				const elsewhere = columnBoardFactory.build({
+					context: { type: BoardExternalReferenceType.Room, id: new ObjectId().toHexString() },
+				});
+
+				await service.cardMoved(card1.id, boardA, elsewhere);
+
+				expect(boardNodeRepo.removeLearningPathStepsLinkingCard).toHaveBeenCalledWith(card1.id);
+				expect(boardCompletionRepo.deleteByCardId).toHaveBeenCalledWith(card1.id);
+			});
+		});
+
+		describe('stepTitle', () => {
+			it('should fall back to what an untitled card links to, then to its text', () => {
+				const { boardA, card1 } = setup();
+				const step = learningPathStepFactory.build({ linkedBoardId: boardA.id, linkedCardId: card1.id });
+				const withLink = cardFactory.build({
+					title: '',
+					children: [linkElementFactory.build({ title: 'Karte: Was ist KI?' })],
+				});
+				const withText = cardFactory.build({
+					title: undefined,
+					children: [richTextElementFactory.build({ text: '<p>Large&nbsp;Language <b>Models</b></p>' })],
+				});
+
+				expect(service.stepTitle(step, boardA, withLink)).toBe('Karte: Was ist KI?');
+				expect(service.stepTitle(step, boardA, withText)).toBe('Large Language Models');
+				expect(service.stepTitle(step, boardA, undefined)).toBe('');
 			});
 		});
 	});

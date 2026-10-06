@@ -11,7 +11,12 @@ import { setupEntities } from '@testing/database';
 import { CopyElementType, type CopyStatus, CopyStatusEnum } from '../../copy-helper';
 import { BoardNodeRule } from '../authorisation/board-node.rule';
 import { type BoardExternalReference, BoardExternalReferenceType, BoardNodeFactory } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
+import {
+	BoardNodeAuthorizableService,
+	BoardNodeService,
+	ColumnBoardService,
+	LearningPathStateService,
+} from '../service';
 import { boardNodeAuthorizableFactory, cardFactory, columnBoardFactory, columnFactory } from '../testing';
 import { ColumnUc } from './column.uc';
 
@@ -47,6 +52,10 @@ describe(ColumnUc.name, () => {
 				{
 					provide: BoardNodeAuthorizableService,
 					useValue: createMock<BoardNodeAuthorizableService>(),
+				},
+				{
+					provide: LearningPathStateService,
+					useValue: createMock<LearningPathStateService>(),
 				},
 				{
 					provide: LegacyLogger,

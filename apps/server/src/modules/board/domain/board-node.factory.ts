@@ -57,10 +57,16 @@ export class BoardNodeFactory {
 		return folder;
 	}
 
-	public buildLearningPathStep(linkedBoardId: EntityId, positionX: number, positionY: number): LearningPathStep {
+	public buildLearningPathStep(
+		linkedBoardId: EntityId,
+		positionX: number,
+		positionY: number,
+		linkedCardId?: EntityId
+	): LearningPathStep {
 		const step = new LearningPathStep({
 			...this.getBaseProps(),
 			linkedBoardId,
+			linkedCardId,
 			positionX,
 			positionY,
 			prerequisiteStepIds: [],

@@ -9,6 +9,7 @@ import {
 	BoardExternalReferenceType,
 	BoardNodeAuthorizable,
 	BoardNodeFactory,
+	Card,
 	ColumnBoard,
 	isColumnBoard,
 	LEARNING_PATH_MAX_STEPS,
@@ -25,6 +26,7 @@ import {
 	BoardNodeService,
 	BoardProgressService,
 	ColumnBoardService,
+	type LearningPathCardStep,
 	type LearningPathLock,
 	LearningPathNotifier,
 	type LearningPathOverview,
@@ -36,6 +38,8 @@ export interface LearningPathStepView {
 	step: LearningPathStep;
 	// empty when a student may not see the board yet (draft) or the board is gone
 	title: string;
+	// card steps: the board the card lies on
+	boardTitle?: string;
 	isVisible: boolean;
 	status: LearningPathStepStatus;
 	// students: completed before, but something new came up
@@ -75,6 +79,8 @@ export interface BoardCompletionView {
 	canMarkManually: boolean;
 	completed: boolean;
 }
+
+const NO_COMPLETION: BoardCompletionView = { inLearningPath: false, canMarkManually: false, completed: false };
 
 @Injectable()
 export class LearningPathUc {
@@ -135,24 +141,32 @@ export class LearningPathUc {
 		};
 	}
 
+	// A step links a board of the room, or - with linkedCardId - one card of such a board.
 	public async createStep(
 		userId: EntityId,
 		boardId: EntityId,
 		linkedBoardId: EntityId,
 		positionX: number,
-		positionY: number
+		positionY: number,
+		linkedCardId?: EntityId
 	): Promise<LearningPathStep> {
 		this.checkFeatureEnabled();
 
 		const board = await this.findLearningPath(boardId);
 		await this.checkEditor(userId, board);
 
+		if (linkedCardId) {
+			const card = await this.boardNodeService.findByClassAndId(Card, linkedCardId, 0);
+			linkedBoardId = card.rootId;
+		}
+
 		const steps = this.learningPathStateService.getSteps(board);
 		if (steps.length >= LEARNING_PATH_MAX_STEPS) {
 			throw new BadRequestException(`A learning path holds at most ${LEARNING_PATH_MAX_STEPS} boards`);
 		}
-		if (steps.some((step) => step.linkedBoardId === linkedBoardId)) {
-			throw new BadRequestException('The board is already part of this learning path');
+		const targetId = linkedCardId ?? linkedBoardId;
+		if (steps.some((step) => step.targetId === targetId)) {
+			throw new BadRequestException(`The ${linkedCardId ? 'card' : 'board'} is already part of this learning path`);
 		}
 
 		const linkedBoard = await this.boardNodeService.findById(linkedBoardId, 0);
@@ -160,7 +174,7 @@ export class LearningPathUc {
 			throw new BadRequestException('Only regular boards of the same room can be added to a learning path');
 		}
 
-		const step = this.boardNodeFactory.buildLearningPathStep(linkedBoardId, positionX, positionY);
+		const step = this.boardNodeFactory.buildLearningPathStep(linkedBoardId, positionX, positionY, linkedCardId);
 		await this.boardNodeService.addToParent(board, step);
 		this.learningPathNotifier.changed(board.id);
 
@@ -298,34 +312,13 @@ export class LearningPathUc {
 	}
 
 	public async getCompletion(userId: EntityId, boardId: EntityId): Promise<BoardCompletionView> {
-		const none: BoardCompletionView = { inLearningPath: false, canMarkManually: false, completed: false };
 		if (!this.config.featureBoardLearningPathEnabled) {
-			return none;
+			return NO_COMPLETION;
 		}
 
 		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId, 0);
-		const { user, auth } = await this.authorize(userId, board);
-		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, auth));
 
-		if ((await this.learningPathStateService.findPublishedPaths(board.id)).length === 0) {
-			return none;
-		}
-
-		const member = auth.users.find((candidate) => candidate.userId === userId);
-		if (!member || this.learningPathStateService.isEditor(member)) {
-			return { inLearningPath: true, canMarkManually: false, completed: false };
-		}
-
-		const [hasItems, completed] = await Promise.all([
-			this.boardProgressService.hasProgressItemsFor(board, member, this.learningPathStateService.enabledTypes()),
-			this.learningPathStateService.completionState([board], [member]),
-		]);
-
-		return {
-			inLearningPath: true,
-			canMarkManually: !hasItems,
-			completed: completed.done.get(board.id)?.has(userId) ?? false,
-		};
+		return await this.completionOf(userId, board);
 	}
 
 	public async setCompletion(userId: EntityId, boardId: EntityId, completed: boolean): Promise<BoardCompletionView> {
@@ -345,17 +338,104 @@ export class LearningPathUc {
 		return { ...current, completed };
 	}
 
-	// A board once completed through its progress stays completed, even when the teacher adds
-	// new items later - otherwise the path behind it would lock again.
+	// the same for a card that is a step of a learning path
+	public async getCardCompletion(userId: EntityId, cardId: EntityId): Promise<BoardCompletionView> {
+		if (!this.config.featureBoardLearningPathEnabled) {
+			return NO_COMPLETION;
+		}
+
+		const card = await this.boardNodeService.findByClassAndId(Card, cardId, 0);
+		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, card.rootId, 0);
+
+		return await this.completionOf(userId, board, card);
+	}
+
+	public async setCardCompletion(userId: EntityId, cardId: EntityId, completed: boolean): Promise<BoardCompletionView> {
+		this.checkFeatureEnabled();
+
+		const current = await this.getCardCompletion(userId, cardId);
+		if (!current.canMarkManually) {
+			throw new ForbiddenException('This card cannot be marked as done by hand');
+		}
+
+		if (completed) {
+			const card = await this.boardNodeService.findByClassAndId(Card, cardId, 0);
+			await this.boardCompletionRepo.markCompleted(userId, cardId, 'manual', card.rootId);
+		} else {
+			await this.boardCompletionRepo.deleteOne(userId, cardId);
+		}
+
+		return { ...current, completed };
+	}
+
+	// The cards of the board that are steps of a learning path, for a hint on them.
+	public async getBoardCardSteps(userId: EntityId, boardId: EntityId): Promise<Map<EntityId, LearningPathCardStep[]>> {
+		if (!this.config.featureBoardLearningPathEnabled) {
+			return new Map();
+		}
+
+		const board = await this.boardNodeService.findByClassAndId(ColumnBoard, boardId, 0);
+		const { user, auth } = await this.authorize(userId, board);
+		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, auth));
+
+		return await this.learningPathStateService.cardStepsOnBoard(board, this.findMember(auth, userId));
+	}
+
+	private async completionOf(userId: EntityId, board: ColumnBoard, card?: Card): Promise<BoardCompletionView> {
+		const { user, auth } = await this.authorize(userId, board);
+		throwForbiddenIfFalse(this.boardNodeRule.can('findBoard', user, auth));
+
+		const paths = card
+			? await this.learningPathStateService.findPublishedPathsForCard(card.id)
+			: await this.learningPathStateService.findPublishedPaths(board.id);
+		if (paths.length === 0) {
+			return NO_COMPLETION;
+		}
+
+		const member = auth.users.find((candidate) => candidate.userId === userId);
+		if (!member || this.learningPathStateService.isEditor(member)) {
+			return { inLearningPath: true, canMarkManually: false, completed: false };
+		}
+
+		const [hasItems, completed] = await Promise.all([
+			this.boardProgressService.hasProgressItemsFor(
+				board,
+				member,
+				this.learningPathStateService.enabledTypes(),
+				card?.id
+			),
+			card
+				? this.learningPathStateService.completionState([], [member], [card])
+				: this.learningPathStateService.completionState([board], [member]),
+		]);
+
+		return {
+			inLearningPath: true,
+			canMarkManually: !hasItems,
+			completed: completed.done.get(card?.id ?? board.id)?.has(userId) ?? false,
+		};
+	}
+
+	// A board or card once completed through its progress stays completed, even when the teacher
+	// adds new items later - otherwise the path behind it would lock again.
 	private async keepCompletions(userId: EntityId, doneSteps: LearningPathStep[]): Promise<void> {
 		if (doneSteps.length === 0) return;
 
-		const boardIds = doneSteps.map((step) => step.linkedBoardId);
+		const targetIds = doneSteps.map((step) => step.targetId);
 		const existing = new Set(
-			(await this.boardCompletionRepo.findByBoardIds(boardIds, [userId])).map((completion) => completion.boardId)
+			(await this.boardCompletionRepo.findByBoardIds(targetIds, [userId])).map((completion) => completion.boardId)
 		);
-		const missing = boardIds.filter((id) => !existing.has(id));
-		await Promise.all(missing.map((id) => this.boardCompletionRepo.markCompleted(userId, id, 'progress')));
+		const missing = doneSteps.filter((step) => !existing.has(step.targetId));
+		await Promise.all(
+			missing.map((step) =>
+				this.boardCompletionRepo.markCompleted(
+					userId,
+					step.targetId,
+					'progress',
+					step.linkedCardId ? step.linkedBoardId : undefined
+				)
+			)
+		);
 	}
 
 	private async authorizeEnrollment(

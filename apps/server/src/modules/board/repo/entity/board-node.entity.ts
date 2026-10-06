@@ -190,6 +190,10 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: ObjectIdType, nullable: true })
 	linkedBoardId: EntityId | undefined;
 
+	@Index()
+	@Property({ type: ObjectIdType, nullable: true })
+	linkedCardId: EntityId | undefined;
+
 	@Property({ type: 'integer', nullable: true })
 	positionX: number | undefined;
 

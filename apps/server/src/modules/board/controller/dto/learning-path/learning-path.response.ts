@@ -25,11 +25,17 @@ export class LearningPathStepResponse {
 	@ApiProperty()
 	id: string;
 
-	@ApiProperty({ description: 'The board the step leads to.' })
+	@ApiProperty({ description: 'The board the step leads to - for a card step the board the card lies on.' })
 	linkedBoardId: string;
 
-	@ApiProperty({ description: 'Title of the linked board, empty when it is not available to the user.' })
+	@ApiPropertyOptional({ description: 'Card steps: the card the step leads to.' })
+	linkedCardId?: string;
+
+	@ApiProperty({ description: 'Title of the linked board or card, empty when it is not available to the user.' })
 	title: string;
+
+	@ApiPropertyOptional({ description: 'Card steps: title of the board the card lies on.' })
+	boardTitle?: string;
 
 	@ApiProperty({ description: 'Whether the linked board is published.' })
 	isVisible: boolean;
@@ -73,7 +79,9 @@ export class LearningPathStepResponse {
 	constructor(props: LearningPathStepResponse) {
 		this.id = props.id;
 		this.linkedBoardId = props.linkedBoardId;
+		this.linkedCardId = props.linkedCardId;
 		this.title = props.title;
+		this.boardTitle = props.boardTitle;
 		this.isVisible = props.isVisible;
 		this.positionX = props.positionX;
 		this.positionY = props.positionY;
@@ -85,6 +93,53 @@ export class LearningPathStepResponse {
 		this.lock = props.lock;
 		this.doneCount = props.doneCount;
 		this.studentCount = props.studentCount;
+	}
+}
+
+export class LearningPathCardStepPathResponse {
+	@ApiProperty()
+	pathId: string;
+
+	@ApiProperty()
+	pathTitle: string;
+
+	@ApiPropertyOptional({ enum: LearningPathColor, enumName: 'LearningPathColor' })
+	color?: LearningPathColor;
+
+	@ApiProperty({ description: 'Number of the step in the learning path.' })
+	position: number;
+
+	@ApiProperty({ enum: STEP_STATUSES, enumName: 'LearningPathStepStatus' })
+	status: LearningPathStepStatus;
+
+	constructor(props: LearningPathCardStepPathResponse) {
+		this.pathId = props.pathId;
+		this.pathTitle = props.pathTitle;
+		this.color = props.color;
+		this.position = props.position;
+		this.status = props.status;
+	}
+}
+
+export class LearningPathCardStepResponse {
+	@ApiProperty()
+	cardId: string;
+
+	@ApiProperty({ type: [LearningPathCardStepPathResponse] })
+	paths: LearningPathCardStepPathResponse[];
+
+	constructor(props: LearningPathCardStepResponse) {
+		this.cardId = props.cardId;
+		this.paths = props.paths;
+	}
+}
+
+export class LearningPathCardStepListResponse {
+	@ApiProperty({ type: [LearningPathCardStepResponse] })
+	data: LearningPathCardStepResponse[];
+
+	constructor(props: LearningPathCardStepListResponse) {
+		this.data = props.data;
 	}
 }
 

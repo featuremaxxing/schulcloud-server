@@ -26,7 +26,9 @@ import {
 type StepJson = {
 	id: string;
 	linkedBoardId: string;
+	linkedCardId?: string;
 	title: string;
+	boardTitle?: string;
 	status: string;
 	prerequisiteStepIds: string[];
 	reopened?: boolean;
@@ -169,6 +171,7 @@ describe('learning path (api)', () => {
 			student,
 			teacher,
 			cardA,
+			columnA,
 			room,
 			pathBoard,
 			boardA,
@@ -765,6 +768,150 @@ describe('learning path (api)', () => {
 			await teacherClient.delete(`boards/${pathBoard.id}`);
 
 			expect(await em.count(LearningPathEnrollmentEntity, { pathBoardId: pathBoard.id })).toBe(0);
+		});
+	});
+
+	describe('card steps', () => {
+		// board B gets a column with card K (nothing to tick) and card L; the path gets K -> C instead of A -> C
+		const setupCards = async () => {
+			const base = await setup();
+			const columnB = columnEntityFactory.withParent(base.boardB).build();
+			const cardK = cardEntityFactory.withParent(columnB).build({ title: 'K' });
+			const cardL = cardEntityFactory.withParent(columnB).build({ title: 'L', position: 1 });
+			const foreignColumn = columnEntityFactory.withParent(base.foreignBoard).build();
+			const foreignCard = cardEntityFactory.withParent(foreignColumn).build();
+			await em.persist([columnB, cardK, cardL, foreignColumn, foreignCard]).flush();
+			em.clear();
+
+			const created = await base.teacherClient.post('learning-path-steps', {
+				boardId: base.pathBoard.id,
+				linkedBoardId: base.boardB.id,
+				linkedCardId: cardK.id,
+				positionX: 0,
+				positionY: 300,
+			});
+			const stepK = created.body as StepJson;
+			await base.teacherClient.patch(`learning-path-steps/${base.stepC.id}`, { prerequisiteStepIds: [stepK.id] });
+
+			return { ...base, columnB, cardK, cardL, foreignCard, stepK, createStatus: created.status };
+		};
+
+		it('should add a card of the room as a step, once', async () => {
+			const { teacherClient, pathBoard, boardA, boardB, cardK, foreignCard, foreignBoard, stepK, createStatus } =
+				await setupCards();
+
+			expect(createStatus).toEqual(201);
+			expect(stepK).toMatchObject({ linkedBoardId: boardB.id, linkedCardId: cardK.id });
+
+			const duplicate = await teacherClient.post('learning-path-steps', {
+				boardId: pathBoard.id,
+				linkedBoardId: boardA.id,
+				linkedCardId: cardK.id,
+				positionX: 0,
+				positionY: 0,
+			});
+			const foreign = await teacherClient.post('learning-path-steps', {
+				boardId: pathBoard.id,
+				linkedBoardId: foreignBoard.id,
+				linkedCardId: foreignCard.id,
+				positionX: 0,
+				positionY: 0,
+			});
+			expect(duplicate.status).toEqual(400);
+			expect(foreign.status).toEqual(400);
+
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			const step = path.steps.find((candidate) => candidate.linkedCardId === cardK.id);
+			expect(step).toMatchObject({ title: 'K', boardTitle: 'B' });
+		});
+
+		it('should guide through a card without closing its board, and open what follows once it is done', async () => {
+			const { studentClient, pathBoard, boardB, boardC, cardK } = await setupCards();
+
+			const before = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(before.steps.find((step) => step.linkedCardId === cardK.id)?.status).toEqual('open');
+			expect(statusOf(before, boardC.id)).toEqual('locked');
+			expect((await studentClient.get(`boards/${boardB.id}`)).status).toEqual(200);
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(403);
+
+			const completion = await studentClient.get(`cards/${cardK.id}/completion`);
+			expect(completion.body).toEqual({ inLearningPath: true, canMarkManually: true, completed: false });
+			const marked = await studentClient.put(`cards/${cardK.id}/completion`, { completed: true });
+			expect(marked.status).toEqual(200);
+
+			const after = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(after.steps.find((step) => step.linkedCardId === cardK.id)?.status).toEqual('done');
+			expect((await studentClient.get(`boards/${boardC.id}`)).status).toEqual(200);
+			// the board of the card is not completed by that
+			expect(statusOf(after, boardB.id)).toEqual('open');
+		});
+
+		it('should show a locked card step as locked on its board', async () => {
+			const { teacherClient, studentClient, pathBoard, boardB, cardL, stepK } = await setupCards();
+			const created = await teacherClient.post('learning-path-steps', {
+				boardId: pathBoard.id,
+				linkedBoardId: boardB.id,
+				linkedCardId: cardL.id,
+				positionX: 0,
+				positionY: 400,
+			});
+			const stepL = created.body as StepJson;
+			await teacherClient.patch(`learning-path-steps/${stepL.id}`, {
+				prerequisiteStepIds: [stepK.id],
+				lockUntilPrerequisitesDone: true,
+			});
+
+			const response = await studentClient.get(`boards/${boardB.id}/learning-path-cards`);
+
+			expect(response.status).toEqual(200);
+			const body = response.body as { data: { cardId: string; paths: { status: string; position: number }[] }[] };
+			const forL = body.data.find((entry) => entry.cardId === cardL.id);
+			expect(forL?.paths).toEqual([expect.objectContaining({ pathId: pathBoard.id, status: 'locked' })]);
+			// the card itself stays readable
+			expect((await studentClient.get(`cards?ids=${cardL.id}`)).status).toEqual(200);
+		});
+
+		it('should judge a card with a checkbox by the checkbox', async () => {
+			const { teacherClient, studentClient, pathBoard, boardA, cardA, checkTheBox } = await setup();
+			await teacherClient.post('learning-path-steps', {
+				boardId: pathBoard.id,
+				linkedBoardId: boardA.id,
+				linkedCardId: cardA.id,
+				positionX: 0,
+				positionY: 300,
+			});
+
+			const completion = await studentClient.get(`cards/${cardA.id}/completion`);
+			expect(completion.body).toMatchObject({ inLearningPath: true, canMarkManually: false, completed: false });
+			expect((await studentClient.put(`cards/${cardA.id}/completion`, { completed: true })).status).toEqual(403);
+
+			await checkTheBox();
+
+			const path = (await studentClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(path.steps.find((step) => step.linkedCardId === cardA.id)?.status).toEqual('done');
+		});
+
+		it('should drop the step of a deleted card', async () => {
+			const { teacherClient, pathBoard, cardK, stepC } = await setupCards();
+
+			expect((await teacherClient.delete(`cards/${cardK.id}`)).status).toEqual(204);
+
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(path.steps.some((step) => step.linkedCardId === cardK.id)).toBe(false);
+			expect(path.steps.find((step) => step.id === stepC.id)?.prerequisiteStepIds).toEqual([]);
+		});
+
+		it('should follow a card that moves to another board of the room', async () => {
+			const { teacherClient, pathBoard, boardA, columnA, cardK } = await setupCards();
+
+			const moved = await teacherClient.put(`cards/${cardK.id}/position`, { toColumnId: columnA.id, toPosition: 0 });
+			expect(moved.status).toEqual(200);
+
+			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
+			expect(path.steps.find((step) => step.linkedCardId === cardK.id)).toMatchObject({
+				linkedBoardId: boardA.id,
+				boardTitle: 'A',
+			});
 		});
 	});
 });

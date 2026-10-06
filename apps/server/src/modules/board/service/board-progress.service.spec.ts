@@ -180,4 +180,49 @@ describe('BoardProgressService', () => {
 
 		expect(result.items[0]).toMatchObject({ done: true, eligible: true });
 	});
+
+	describe('computeCompletedUserIds for cards', () => {
+		it('judges a card by the progress items on it only', async () => {
+			const otherCardId = new ObjectId().toHexString();
+			const onCard = checkboxElementFactory.build({
+				path: elementPath,
+				creatorId: teacherId,
+				entries: [{ userId: studentId, checked: true, approved: false }],
+			});
+			const onOtherCard = checkboxElementFactory.build({
+				path: `,${boardId},${columnId},${otherCardId},`,
+				creatorId: teacherId,
+				entries: [],
+			});
+			boardNodeRepo.findElementsByBoardIds.mockResolvedValue([onCard, onOtherCard]);
+			boardNodeRepo.findAssignmentSubmissionsByParentIds.mockResolvedValue([]);
+			const users = [studentMember, otherStudentMember];
+
+			const result = await service.computeCompletedUserIds(
+				[],
+				[BoardNodeType.CHECKBOX_ELEMENT],
+				[
+					{ cardId, boardId, users },
+					{ cardId: otherCardId, boardId, users },
+				]
+			);
+
+			expect(boardNodeRepo.findElementsByBoardIds).toHaveBeenCalledWith([boardId], [BoardNodeType.CHECKBOX_ELEMENT]);
+			expect(result.done.get(cardId)).toEqual(new Set([studentId]));
+			expect(result.done.get(otherCardId)).toEqual(new Set());
+			expect(result.withItems.get(cardId)).toEqual(new Set([studentId, otherStudentId]));
+		});
+
+		it('tells whether a card has progress items for a person', async () => {
+			const checkbox = checkboxElementFactory.build({ path: elementPath, creatorId: teacherId, entries: [] });
+			boardNodeRepo.findElementsByBoardIds.mockResolvedValue([checkbox]);
+			const board = columnBoardFactory.build({ id: boardId });
+			const types = [BoardNodeType.CHECKBOX_ELEMENT];
+
+			await expect(service.hasProgressItemsFor(board, studentMember, types, cardId)).resolves.toBe(true);
+			await expect(
+				service.hasProgressItemsFor(board, studentMember, types, new ObjectId().toHexString())
+			).resolves.toBe(false);
+		});
+	});
 });

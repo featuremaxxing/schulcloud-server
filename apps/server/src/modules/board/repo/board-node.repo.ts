@@ -303,11 +303,47 @@ export class BoardNodeRepo {
 		return steps.map((entity) => new TreeBuilder().build(entity)) as LearningPathStep[];
 	}
 
-	// A deleted board leaves its learning paths: its steps go, and so do the arrows to them.
-	public async removeLearningPathStepsLinking(boardId: EntityId): Promise<void> {
+	// Learning path steps (on any learning path) that link one of the given cards.
+	public async findLearningPathStepsLinkingCards(cardIds: EntityId[]): Promise<LearningPathStep[]> {
+		if (cardIds.length === 0) {
+			return [];
+		}
+
 		const steps = await this.em.find(BoardNodeEntity, {
 			type: BoardNodeType.LEARNING_PATH_STEP,
-			linkedBoardId: boardId,
+			linkedCardId: { $in: cardIds },
+		});
+
+		return steps.map((entity) => new TreeBuilder().build(entity)) as LearningPathStep[];
+	}
+
+	// A deleted board leaves its learning paths: its steps go, and so do the arrows to them.
+	// That includes the steps linking a card of the board.
+	public async removeLearningPathStepsLinking(boardId: EntityId): Promise<void> {
+		await this.removeLearningPathSteps({ linkedBoardId: boardId });
+	}
+
+	// Same for a deleted card, or a card that moved to another room.
+	public async removeLearningPathStepsLinkingCard(cardId: EntityId): Promise<void> {
+		await this.removeLearningPathSteps({ linkedCardId: cardId });
+	}
+
+	// The steps of a card that moved to another board of the room follow it.
+	public async updateLearningPathStepsLinkingCard(cardId: EntityId, boardId: EntityId): Promise<void> {
+		const steps = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.LEARNING_PATH_STEP,
+			linkedCardId: cardId,
+		});
+		steps.forEach((step) => {
+			step.linkedBoardId = boardId;
+		});
+		await this.em.flush();
+	}
+
+	private async removeLearningPathSteps(filter: { linkedBoardId?: EntityId; linkedCardId?: EntityId }): Promise<void> {
+		const steps = await this.em.find(BoardNodeEntity, {
+			type: BoardNodeType.LEARNING_PATH_STEP,
+			...filter,
 		});
 		if (steps.length === 0) {
 			return;

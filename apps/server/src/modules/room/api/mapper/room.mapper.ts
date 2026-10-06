@@ -113,6 +113,7 @@ export class RoomMapper {
 					new RoomLearningPathStepResponse({
 						id: step.id,
 						boardId: step.linkedBoardId,
+						cardId: step.linkedCardId,
 						title,
 						isVisible,
 						status,

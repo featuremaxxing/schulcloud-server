@@ -9,13 +9,16 @@ export interface BoardCompletionEntityProps {
 	id?: EntityId;
 	userId: EntityId;
 	boardId: EntityId;
+	cardBoardId?: EntityId;
 	completedAt: Date;
 	source: BoardCompletionSource;
 }
 
-// A person has completed a board of a learning path: either marked by hand (boards without
+// A person has completed a board or a card of a learning path: either marked by hand (without
 // progress items) or recorded once the progress reached 100 %. Kept so a completed step stays
 // completed when the teacher adds items later. Not a BoardNode, it is personal data.
+// boardId is what was completed; for a card it is the card's id and cardBoardId the board the
+// card lies on (so the completions of a board's cards go with the board).
 @Entity({ tableName: 'board-completions' })
 @Unique({ properties: ['userId', 'boardId'] })
 export class BoardCompletionEntity extends BaseEntityWithTimestamps {
@@ -26,6 +29,10 @@ export class BoardCompletionEntity extends BaseEntityWithTimestamps {
 	@Property({ type: ObjectIdType })
 	@Index()
 	boardId: EntityId;
+
+	@Property({ type: ObjectIdType, nullable: true })
+	@Index()
+	cardBoardId?: EntityId;
 
 	@Property({ type: 'Date' })
 	completedAt: Date;
@@ -38,6 +45,7 @@ export class BoardCompletionEntity extends BaseEntityWithTimestamps {
 		if (props.id) this.id = props.id;
 		this.userId = props.userId;
 		this.boardId = props.boardId;
+		this.cardBoardId = props.cardBoardId;
 		this.completedAt = props.completedAt;
 		this.source = props.source;
 	}

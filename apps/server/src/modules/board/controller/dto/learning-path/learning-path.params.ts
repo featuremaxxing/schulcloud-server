@@ -27,6 +27,12 @@ export class LearningPathRoomUrlParams {
 	roomId!: string;
 }
 
+export class LearningPathCardUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the card.', required: true, nullable: false })
+	cardId!: string;
+}
+
 export class LearningPathStepUrlParams {
 	@IsMongoId()
 	@ApiProperty({ description: 'The id of the learning path step.', required: true, nullable: false })
@@ -41,6 +47,13 @@ export class CreateLearningPathStepBodyParams {
 	@IsMongoId()
 	@ApiProperty({ description: 'The id of the board of the same room the step leads to.', required: true })
 	linkedBoardId!: string;
+
+	@IsOptional()
+	@IsMongoId()
+	@ApiPropertyOptional({
+		description: 'The card the step leads to, on a board of the same room. Its board is taken as linkedBoardId.',
+	})
+	linkedCardId?: string;
 
 	@IsInt()
 	@Min(-MAX_COORDINATE)

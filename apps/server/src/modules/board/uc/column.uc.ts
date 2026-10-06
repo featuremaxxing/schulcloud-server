@@ -17,7 +17,12 @@ import {
 	isCard,
 	isTeacherMember,
 } from '../domain';
-import { BoardNodeAuthorizableService, BoardNodeService, ColumnBoardService } from '../service';
+import {
+	BoardNodeAuthorizableService,
+	BoardNodeService,
+	ColumnBoardService,
+	LearningPathStateService,
+} from '../service';
 
 @Injectable()
 export class ColumnUc {
@@ -28,6 +33,7 @@ export class ColumnUc {
 		private readonly boardNodeService: BoardNodeService,
 		private readonly columnBoardService: ColumnBoardService,
 		private readonly boardNodeFactory: BoardNodeFactory,
+		private readonly learningPathStateService: LearningPathStateService,
 
 		private readonly logger: LegacyLogger
 	) {
@@ -123,6 +129,9 @@ export class ColumnUc {
 		}
 
 		await this.boardNodeService.move(card, toColumn, toPosition);
+		if (fromBoard.id !== toBoard.id) {
+			await this.learningPathStateService.cardMoved(card.id, fromBoard, toBoard);
+		}
 
 		return { card, fromBoard, toBoard, fromColumn, toColumn };
 	}

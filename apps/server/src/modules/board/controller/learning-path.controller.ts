@@ -22,6 +22,10 @@ import {
 	CreateLearningPathStepBodyParams,
 	LearningPathAvailableBoardResponse,
 	LearningPathBoardUrlParams,
+	LearningPathCardStepListResponse,
+	LearningPathCardStepPathResponse,
+	LearningPathCardStepResponse,
+	LearningPathCardUrlParams,
 	LearningPathEnrollmentBodyParams,
 	LearningPathLockResponse,
 	LearningPathOverviewPathResponse,
@@ -41,7 +45,9 @@ const toStepResponse = (view: LearningPathStepView): LearningPathStepResponse =>
 	new LearningPathStepResponse({
 		id: view.step.id,
 		linkedBoardId: view.step.linkedBoardId,
+		linkedCardId: view.step.linkedCardId,
 		title: view.title,
+		boardTitle: view.boardTitle,
 		isVisible: view.isVisible,
 		positionX: view.step.positionX,
 		positionY: view.step.positionY,
@@ -195,7 +201,8 @@ export class LearningPathController {
 			bodyParams.boardId,
 			bodyParams.linkedBoardId,
 			bodyParams.positionX,
-			bodyParams.positionY
+			bodyParams.positionY,
+			bodyParams.linkedCardId
 		);
 
 		return toChangedStepResponse(step);
@@ -258,5 +265,61 @@ export class LearningPathController {
 		const view = await this.learningPathUc.setCompletion(currentUser.userId, urlParams.boardId, bodyParams.completed);
 
 		return toCompletionResponse(view);
+	}
+
+	@ApiOperation({ summary: 'Whether the current user completed a card that is a step of a learning path.' })
+	@ApiResponse({ status: 200, type: BoardCompletionResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@Get('cards/:cardId/completion')
+	public async getCardCompletion(
+		@Param() urlParams: LearningPathCardUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<BoardCompletionResponse> {
+		const view = await this.learningPathUc.getCardCompletion(currentUser.userId, urlParams.cardId);
+
+		return toCompletionResponse(view);
+	}
+
+	@ApiOperation({ summary: 'Mark a card without progress items as done, or undo it.' })
+	@ApiResponse({ status: 200, type: BoardCompletionResponse })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@Put('cards/:cardId/completion')
+	public async setCardCompletion(
+		@Param() urlParams: LearningPathCardUrlParams,
+		@Body() bodyParams: BoardCompletionBodyParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<BoardCompletionResponse> {
+		const view = await this.learningPathUc.setCardCompletion(
+			currentUser.userId,
+			urlParams.cardId,
+			bodyParams.completed
+		);
+
+		return toCompletionResponse(view);
+	}
+
+	@ApiOperation({ summary: 'The cards of a board that are steps of a learning path, with their learning paths.' })
+	@ApiResponse({ status: 200, type: LearningPathCardStepListResponse })
+	@ApiResponse({ status: 403, type: ForbiddenException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@Get('boards/:boardId/learning-path-cards')
+	public async getBoardCardSteps(
+		@Param() urlParams: LearningPathBoardUrlParams,
+		@CurrentUser() currentUser: ICurrentUser
+	): Promise<LearningPathCardStepListResponse> {
+		const steps = await this.learningPathUc.getBoardCardSteps(currentUser.userId, urlParams.boardId);
+
+		return new LearningPathCardStepListResponse({
+			data: Array.from(steps.entries()).map(
+				([cardId, paths]) =>
+					new LearningPathCardStepResponse({
+						cardId,
+						paths: paths.map((path) => new LearningPathCardStepPathResponse(path)),
+					})
+			),
+		});
 	}
 }
