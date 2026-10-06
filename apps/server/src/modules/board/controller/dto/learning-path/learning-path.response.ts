@@ -250,6 +250,12 @@ export class LearningPathOverviewProgressResponse {
 	@ApiProperty()
 	pathId: string;
 
+	@ApiProperty({ description: 'Whether the student goes this learning path.' })
+	isEnrolled: boolean;
+
+	@ApiProperty({ description: 'Whether the student completed every published step, gone or not.' })
+	completed: boolean;
+
 	@ApiProperty()
 	done: number;
 
@@ -264,6 +270,8 @@ export class LearningPathOverviewProgressResponse {
 
 	constructor(props: LearningPathOverviewProgressResponse) {
 		this.pathId = props.pathId;
+		this.isEnrolled = props.isEnrolled;
+		this.completed = props.completed;
 		this.done = props.done;
 		this.total = props.total;
 		this.rework = props.rework;

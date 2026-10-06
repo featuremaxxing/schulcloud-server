@@ -184,7 +184,12 @@ export class LearningPathController {
 		@Body() bodyParams: ResetLearningPathProgressBodyParams,
 		@CurrentUser() currentUser: ICurrentUser
 	): Promise<void> {
-		await this.learningPathUc.resetProgress(currentUser.userId, urlParams.roomId, bodyParams.userIds);
+		await this.learningPathUc.resetProgress(
+			currentUser.userId,
+			urlParams.roomId,
+			bodyParams.userIds,
+			bodyParams.pathId
+		);
 	}
 
 	@ApiOperation({ summary: 'Add a board of the same room to a learning path.' })

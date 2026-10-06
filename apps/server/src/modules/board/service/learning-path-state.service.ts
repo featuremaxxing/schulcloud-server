@@ -15,6 +15,7 @@ import {
 	isTeacherMember,
 	type LearningPathColor,
 	orderedSteps,
+	pathSegmentOf,
 	type LearningPathStep,
 	type UserWithBoardRoles,
 } from '../domain';
@@ -107,7 +108,17 @@ export interface LearningPathOverviewStudent {
 	userId: EntityId;
 	firstName?: string;
 	lastName?: string;
-	paths: { pathId: EntityId; done: number; total: number; rework: number; nextBoardTitle?: string }[];
+	// every learning path of the room: whether the student goes it, and how far they got (completed
+	// boards count in every learning path, so a path can be completed without going it any more)
+	paths: {
+		pathId: EntityId;
+		isEnrolled: boolean;
+		completed: boolean;
+		done: number;
+		total: number;
+		rework: number;
+		nextBoardTitle?: string;
+	}[];
 }
 
 export interface LearningPathOverview {
@@ -489,13 +500,13 @@ export class LearningPathStateService {
 			}),
 			students: students.map((student) => {
 				const locks = this.locksFor(room, student.userId);
-				const own = this.ownPaths(room, student.userId);
+				const own = new Set(this.ownPaths(room, student.userId).map((path) => path.id));
 
 				return {
 					userId: student.userId,
 					firstName: student.firstName,
 					lastName: student.lastName,
-					paths: own.map((path) => {
+					paths: room.paths.map((path) => {
 						const states = this.roomStates(room, path, student.userId).filter(
 							(state) => state.status !== 'unavailable'
 						);
@@ -508,9 +519,13 @@ export class LearningPathStateService {
 							)
 							.sort((a, b) => a.step.positionY - b.step.positionY || a.step.positionX - b.step.positionX)[0];
 
+						const done = states.filter((state) => state.status === 'done').length;
+
 						return {
 							pathId: path.id,
-							done: states.filter((state) => state.status === 'done').length,
+							isEnrolled: own.has(path.id),
+							completed: states.length > 0 && done === states.length,
+							done,
 							total: states.length,
 							rework: states.filter((state) => state.reopened).length,
 							nextBoardTitle: next ? this.stepTitle(next.step, next.linkedBoard, next.linkedCard) : undefined,
@@ -661,10 +676,9 @@ export class LearningPathStateService {
 			toBoard.context.id === fromBoard.context.id &&
 			toBoard.hasColumns();
 		if (sameRoom) {
-			await Promise.all([
-				this.boardNodeRepo.updateLearningPathStepsLinkingCard(cardId, toBoard.id),
-				this.boardCompletionRepo.updateCardBoard(cardId, toBoard.id),
-			]);
+			// one after the other: both flush the same entity manager
+			await this.boardNodeRepo.updateLearningPathStepsLinkingCard(cardId, toBoard.id);
+			await this.boardCompletionRepo.updateCardBoard(cardId, toBoard.id);
 		} else {
 			await Promise.all([
 				this.boardNodeRepo.removeLearningPathStepsLinkingCard(cardId),
@@ -673,10 +687,21 @@ export class LearningPathStateService {
 		}
 	}
 
-	// Takes the ticks of the given people off every checkbox of the boards.
-	public async clearCheckboxes(boardIds: EntityId[], userIds: EntityId[]): Promise<void> {
+	// Takes the ticks of the given people off every checkbox of the boards, and of the given cards.
+	public async clearCheckboxes(
+		boardIds: EntityId[],
+		userIds: EntityId[],
+		cards: { cardId: EntityId; boardId: EntityId }[] = []
+	): Promise<void> {
 		const targets = new Set(userIds);
-		const checkboxes = await this.boardNodeRepo.findElementsByBoardIds(boardIds, [BoardNodeType.CHECKBOX_ELEMENT]);
+		const wholeBoards = new Set(boardIds);
+		const cardIds = new Set(cards.map((card) => card.cardId));
+		const searched = Array.from(new Set([...boardIds, ...cards.map((card) => card.boardId)]));
+		const checkboxes = (
+			await this.boardNodeRepo.findElementsByBoardIds(searched, [BoardNodeType.CHECKBOX_ELEMENT])
+		).filter(
+			(checkbox) => wholeBoards.has(pathSegmentOf(checkbox, 0) ?? '') || cardIds.has(pathSegmentOf(checkbox, 2) ?? '')
+		);
 
 		await Promise.all(
 			checkboxes.map((checkbox) =>

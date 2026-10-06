@@ -545,6 +545,55 @@ describe('learning path (api)', () => {
 			expect(checkboxes.flatMap((checkbox) => checkbox.entries ?? [])).toEqual([]);
 		});
 
+		it('should show a completed learning path and let it start over on its own', async () => {
+			const { studentClient, teacherClient, room, student, pathBoard, boardB, boardC, foreignBoard, checkTheBox } =
+				await setup();
+			await checkTheBox();
+			await studentClient.put(`boards/${boardB.id}/completion`, { completed: true });
+			await studentClient.put(`boards/${boardC.id}/completion`, { completed: true });
+			// a completion outside of the learning path stays
+			await em
+				.persist(
+					new BoardCompletionEntity({
+						userId: student.id,
+						boardId: foreignBoard.id,
+						completedAt: new Date(),
+						source: 'manual',
+					})
+				)
+				.flush();
+			em.clear();
+
+			type OverviewJson = { students: { userId: string; paths: { pathId: string; completed: boolean }[] }[] };
+			const before = (await teacherClient.get(`rooms/${room.id}/learning-paths/overview`)).body as OverviewJson;
+			expect(before.students[0].paths).toEqual([
+				expect.objectContaining({ pathId: pathBoard.id, isEnrolled: true, completed: true, done: 3, total: 3 }),
+			]);
+
+			const response = await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, {
+				userIds: [student.id],
+				pathId: pathBoard.id,
+			});
+
+			expect(response.status).toEqual(204);
+			const after = (await teacherClient.get(`rooms/${room.id}/learning-paths/overview`)).body as OverviewJson;
+			expect(after.students[0].paths[0]).toMatchObject({ completed: false, done: 0 });
+			const left = await em.find(BoardCompletionEntity, { userId: student.id });
+			expect(left.map((completion) => completion.boardId)).toEqual([foreignBoard.id]);
+			const checkboxes = await em.find(BoardNodeEntity, { type: BoardNodeType.CHECKBOX_ELEMENT });
+			expect(checkboxes.flatMap((checkbox) => checkbox.entries ?? [])).toEqual([]);
+		});
+
+		it('should refuse a learning path of another room', async () => {
+			const { teacherClient, room, foreignBoard } = await setup();
+
+			const response = await teacherClient.post(`rooms/${room.id}/learning-paths/reset`, {
+				pathId: foreignBoard.id,
+			});
+
+			expect(response.status).toEqual(400);
+		});
+
 		it('should reset every student of the room without a list', async () => {
 			const { studentClient, teacherClient, room, pathBoard, boardA, checkTheBox } = await setup();
 			await checkTheBox();

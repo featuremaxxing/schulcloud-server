@@ -262,8 +262,14 @@ export class LearningPathUc {
 
 	// Starts over for the given students of the room (default: all of them): the stored completions,
 	// the hand-made "done" marks and the ticks of checkboxes are gone. Assignment submissions, poll
-	// votes and the learning paths people chose to go stay.
-	public async resetProgress(userId: EntityId, roomId: EntityId, userIds?: EntityId[]): Promise<void> {
+	// votes and the learning paths people chose to go stay. With a pathId only the boards and cards
+	// of that learning path start over, e.g. to have somebody go it once more.
+	public async resetProgress(
+		userId: EntityId,
+		roomId: EntityId,
+		userIds?: EntityId[],
+		pathId?: EntityId
+	): Promise<void> {
 		this.checkFeatureEnabled();
 
 		const paths = await this.learningPathStateService.findRoomPaths(roomId);
@@ -281,6 +287,16 @@ export class LearningPathUc {
 		}
 		const targets = new Set(userIds ?? students.map((student) => student.userId));
 
+		if (pathId) {
+			const path = paths.find((candidate) => candidate.id === pathId);
+			if (!path) {
+				throw new BadRequestException('The learning path is not part of the room');
+			}
+			await this.resetPath(path, Array.from(targets));
+			this.learningPathNotifier.changed(path.id);
+			return;
+		}
+
 		const boards = await this.columnBoardService.findByExternalReference(
 			{ type: BoardExternalReferenceType.Room, id: roomId },
 			0
@@ -291,6 +307,22 @@ export class LearningPathUc {
 		await this.learningPathStateService.clearCheckboxes(boardIds, Array.from(targets));
 
 		paths.forEach((path) => this.learningPathNotifier.changed(path.id));
+	}
+
+	private async resetPath(path: ColumnBoard, userIds: EntityId[]): Promise<void> {
+		const steps = this.learningPathStateService.getSteps(path);
+		const boardIds = steps.filter((step) => !step.linkedCardId).map((step) => step.linkedBoardId);
+		const cards = steps
+			.filter((step) => step.linkedCardId)
+			.map((step) => {
+				return { cardId: step.linkedCardId as EntityId, boardId: step.linkedBoardId };
+			});
+
+		await this.boardCompletionRepo.deleteByTargetIdsAndUserIds(
+			steps.map((step) => step.targetId),
+			userIds
+		);
+		await this.learningPathStateService.clearCheckboxes(boardIds, userIds, cards);
 	}
 
 	public async deleteStep(userId: EntityId, stepId: EntityId): Promise<void> {

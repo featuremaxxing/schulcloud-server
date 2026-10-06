@@ -130,6 +130,13 @@ export class ResetLearningPathProgressBodyParams {
 		type: [String],
 	})
 	userIds?: string[];
+
+	@IsOptional()
+	@IsMongoId()
+	@ApiPropertyOptional({
+		description: 'Only reset the boards and cards of this learning path. Default: every board of the room.',
+	})
+	pathId?: string;
 }
 
 export class LearningPathEnrollmentBodyParams {

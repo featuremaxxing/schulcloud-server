@@ -48,6 +48,13 @@ export class BoardCompletionRepo {
 		});
 	}
 
+	// exactly the given boards and cards, not the cards of the boards
+	public async deleteByTargetIdsAndUserIds(targetIds: EntityId[], userIds: EntityId[]): Promise<void> {
+		if (targetIds.length === 0 || userIds.length === 0) return;
+
+		await this.em.nativeDelete(BoardCompletionEntity, { boardId: { $in: targetIds }, userId: { $in: userIds } });
+	}
+
 	// the board's own completions and those of its cards
 	public async deleteByBoardId(boardId: EntityId): Promise<void> {
 		await this.em.nativeDelete(BoardCompletionEntity, { $or: [{ boardId }, { cardBoardId: boardId }] });

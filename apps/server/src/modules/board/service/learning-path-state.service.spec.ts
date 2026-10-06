@@ -486,9 +486,25 @@ describe(LearningPathStateService.name, () => {
 				expect(result.paths.map((path) => path.title)).toEqual(['Blue', 'Green']);
 				expect(result.students).toHaveLength(1);
 				expect(result.students[0].paths).toEqual([
-					{ pathId: blue.id, done: 1, total: 2, rework: 0, nextBoardTitle: 'C' },
+					{
+						pathId: blue.id,
+						isEnrolled: true,
+						completed: false,
+						done: 1,
+						total: 2,
+						rework: 0,
+						nextBoardTitle: 'C',
+					},
+					{
+						pathId: green.id,
+						isEnrolled: false,
+						completed: false,
+						done: 0,
+						total: 2,
+						rework: 0,
+						nextBoardTitle: 'B',
+					},
 				]);
-				expect(green.id).toBeDefined();
 			});
 		});
 	});
