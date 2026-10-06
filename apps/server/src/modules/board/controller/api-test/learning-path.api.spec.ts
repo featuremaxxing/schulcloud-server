@@ -991,7 +991,11 @@ describe('learning path (api)', () => {
 			const { teacherClient, pathBoard, textStep, createStatus } = await setupText();
 
 			expect(createStatus).toEqual(201);
-			expect(textStep).toMatchObject({ isText: true, title: 'Teil 2', text: 'Lest die Karten und notiert drei Fragen.' });
+			expect(textStep).toMatchObject({
+				isText: true,
+				title: 'Teil 2',
+				text: 'Lest die Karten und notiert drei Fragen.',
+			});
 
 			await teacherClient.patch(`learning-path-steps/${textStep.id}`, { title: 'Teil 2: Vertiefung' });
 			const path = (await teacherClient.get(`boards/${pathBoard.id}/learning-path`)).body as PathJson;
