@@ -164,6 +164,9 @@ export class LearningPathResponse {
 	@ApiProperty()
 	boardId: string;
 
+	@ApiProperty({ description: 'The title of the learning path.' })
+	title: string;
+
 	@ApiProperty({ description: 'Whether the user may change the learning path.' })
 	isEditor: boolean;
 
@@ -193,6 +196,7 @@ export class LearningPathResponse {
 
 	constructor(props: LearningPathResponse) {
 		this.boardId = props.boardId;
+		this.title = props.title;
 		this.isEditor = props.isEditor;
 		this.color = props.color;
 		this.isEnrolled = props.isEnrolled;

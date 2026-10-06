@@ -86,6 +86,7 @@ export class LearningPathController {
 
 		return new LearningPathResponse({
 			boardId: view.board.id,
+			title: view.board.title,
 			isEditor: view.isEditor,
 			color: view.color,
 			isEnrolled: view.isEnrolled,
