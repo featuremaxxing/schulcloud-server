@@ -8,12 +8,17 @@ import {
 	IsInt,
 	IsMongoId,
 	IsOptional,
+	IsString,
 	Max,
+	MaxLength,
 	Min,
+	ValidateIf,
 } from 'class-validator';
 import { LEARNING_PATH_MAX_STEPS, LearningPathColor, type LearningPathUnlockMode } from '../../../domain';
 
 const MAX_COORDINATE = 100000;
+const LEARNING_PATH_TEXT_TITLE_MAX = 200;
+const LEARNING_PATH_TEXT_MAX = 5000;
 
 export class LearningPathBoardUrlParams {
 	@IsMongoId()
@@ -27,6 +32,12 @@ export class LearningPathRoomUrlParams {
 	roomId!: string;
 }
 
+export class LearningPathCardUrlParams {
+	@IsMongoId()
+	@ApiProperty({ description: 'The id of the card.', required: true, nullable: false })
+	cardId!: string;
+}
+
 export class LearningPathStepUrlParams {
 	@IsMongoId()
 	@ApiProperty({ description: 'The id of the learning path step.', required: true, nullable: false })
@@ -38,9 +49,31 @@ export class CreateLearningPathStepBodyParams {
 	@ApiProperty({ description: 'The id of the learning path board.', required: true })
 	boardId!: string;
 
+	@ValidateIf((params: CreateLearningPathStepBodyParams) => params.title === undefined && params.text === undefined)
 	@IsMongoId()
-	@ApiProperty({ description: 'The id of the board of the same room the step leads to.', required: true })
-	linkedBoardId!: string;
+	@ApiPropertyOptional({
+		description: 'The id of the board of the same room the step leads to. Left out for a text tile.',
+	})
+	linkedBoardId?: string;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(LEARNING_PATH_TEXT_TITLE_MAX)
+	@ApiPropertyOptional({ description: 'Text tiles: the heading.' })
+	title?: string;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(LEARNING_PATH_TEXT_MAX)
+	@ApiPropertyOptional({ description: 'Text tiles: the text, e.g. work instructions.' })
+	text?: string;
+
+	@IsOptional()
+	@IsMongoId()
+	@ApiPropertyOptional({
+		description: 'The card the step leads to, on a board of the same room. Its board is taken as linkedBoardId.',
+	})
+	linkedCardId?: string;
 
 	@IsInt()
 	@Min(-MAX_COORDINATE)
@@ -89,6 +122,18 @@ export class UpdateLearningPathStepBodyParams {
 	@IsBoolean()
 	@ApiPropertyOptional({ description: 'Students can open the board only after completing the prerequisites.' })
 	lockUntilPrerequisitesDone?: boolean;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(LEARNING_PATH_TEXT_TITLE_MAX)
+	@ApiPropertyOptional({ description: 'Text tiles only: the heading.' })
+	title?: string;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(LEARNING_PATH_TEXT_MAX)
+	@ApiPropertyOptional({ description: 'Text tiles only: the text.' })
+	text?: string;
 }
 
 export class BoardCompletionBodyParams {
@@ -117,6 +162,13 @@ export class ResetLearningPathProgressBodyParams {
 		type: [String],
 	})
 	userIds?: string[];
+
+	@IsOptional()
+	@IsMongoId()
+	@ApiPropertyOptional({
+		description: 'Only reset the boards and cards of this learning path. Default: every board of the room.',
+	})
+	pathId?: string;
 }
 
 export class LearningPathEnrollmentBodyParams {

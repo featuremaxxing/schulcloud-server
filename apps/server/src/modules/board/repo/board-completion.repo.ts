@@ -20,12 +20,18 @@ export class BoardCompletionRepo {
 		return await this.em.findOne(BoardCompletionEntity, { userId, boardId });
 	}
 
-	// idempotent: an existing completion keeps its date and source
-	public async markCompleted(userId: EntityId, boardId: EntityId, source: BoardCompletionSource): Promise<void> {
+	// idempotent: an existing completion keeps its date and source. For a card, boardId is the
+	// card's id and cardBoardId the board it lies on.
+	public async markCompleted(
+		userId: EntityId,
+		boardId: EntityId,
+		source: BoardCompletionSource,
+		cardBoardId?: EntityId
+	): Promise<void> {
 		const existing = await this.findOne(userId, boardId);
 		if (existing) return;
 
-		this.em.persist(new BoardCompletionEntity({ userId, boardId, completedAt: new Date(), source }));
+		this.em.persist(new BoardCompletionEntity({ userId, boardId, cardBoardId, completedAt: new Date(), source }));
 		await this.em.flush();
 	}
 
@@ -36,11 +42,35 @@ export class BoardCompletionRepo {
 	public async deleteByBoardIdsAndUserIds(boardIds: EntityId[], userIds: EntityId[]): Promise<void> {
 		if (boardIds.length === 0 || userIds.length === 0) return;
 
-		await this.em.nativeDelete(BoardCompletionEntity, { boardId: { $in: boardIds }, userId: { $in: userIds } });
+		await this.em.nativeDelete(BoardCompletionEntity, {
+			$or: [{ boardId: { $in: boardIds } }, { cardBoardId: { $in: boardIds } }],
+			userId: { $in: userIds },
+		});
 	}
 
+	// exactly the given boards and cards, not the cards of the boards
+	public async deleteByTargetIdsAndUserIds(targetIds: EntityId[], userIds: EntityId[]): Promise<void> {
+		if (targetIds.length === 0 || userIds.length === 0) return;
+
+		await this.em.nativeDelete(BoardCompletionEntity, { boardId: { $in: targetIds }, userId: { $in: userIds } });
+	}
+
+	// the board's own completions and those of its cards
 	public async deleteByBoardId(boardId: EntityId): Promise<void> {
-		await this.em.nativeDelete(BoardCompletionEntity, { boardId });
+		await this.em.nativeDelete(BoardCompletionEntity, { $or: [{ boardId }, { cardBoardId: boardId }] });
+	}
+
+	public async deleteByCardId(cardId: EntityId): Promise<void> {
+		await this.em.nativeDelete(BoardCompletionEntity, { boardId: cardId });
+	}
+
+	// a card moved to another board
+	public async updateCardBoard(cardId: EntityId, cardBoardId: EntityId): Promise<void> {
+		const completions = await this.em.find(BoardCompletionEntity, { boardId: cardId });
+		completions.forEach((completion) => {
+			completion.cardBoardId = cardBoardId;
+		});
+		await this.em.flush();
 	}
 
 	public async deleteByUserId(userId: EntityId): Promise<number> {

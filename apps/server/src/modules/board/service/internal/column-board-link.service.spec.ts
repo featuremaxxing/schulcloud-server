@@ -8,6 +8,7 @@ import {
 	columnBoardFactory,
 	columnFactory,
 	fileAreaLinkElementFactory,
+	learningPathStepFactory,
 	linkElementFactory,
 	richTextElementFactory,
 } from '../../testing';
@@ -214,6 +215,27 @@ describe(ColumnBoardLinkService.name, () => {
 			await service.rewriteLinkUrlsInBoardNode(board, idMap);
 
 			expect([link.fileAreaId, link.targetId]).toEqual(['oldArea', 'oldFolder']);
+		});
+	});
+
+	describe('when a learning path has a card step', () => {
+		it('should point the step to the copied card and its copied board', async () => {
+			const step = learningPathStepFactory.build({ linkedBoardId: 'oldBoard', linkedCardId: 'oldCard' });
+			const path = columnBoardFactory.build({ children: [step] });
+			const idMap = { oldBoard: 'newBoard', '/boards/oldBoard#card-oldCard': '/boards/newBoard#card-newCard' };
+
+			await service.rewriteLinkUrlsInBoardNode(path, idMap);
+
+			expect([step.linkedBoardId, step.linkedCardId]).toEqual(['newBoard', 'newCard']);
+		});
+
+		it('should keep the card when it was not copied', async () => {
+			const step = learningPathStepFactory.build({ linkedBoardId: 'oldBoard', linkedCardId: 'oldCard' });
+			const path = columnBoardFactory.build({ children: [step] });
+
+			await service.rewriteLinkUrlsInBoardNode(path, {});
+
+			expect([step.linkedBoardId, step.linkedCardId]).toEqual(['oldBoard', 'oldCard']);
 		});
 	});
 });

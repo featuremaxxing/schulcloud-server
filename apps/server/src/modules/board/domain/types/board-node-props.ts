@@ -94,9 +94,13 @@ export interface FileAreaFolderProps extends BoardNodeProps {
 
 export type LearningPathUnlockMode = 'all' | 'any';
 
-// a tile on a learning path board, linking another board of the same room
+// a tile on a learning path board, linking another board of the same room or one of its cards -
+// or a text tile (heading, work instructions) that links nothing
 export interface LearningPathStepProps extends BoardNodeProps {
-	linkedBoardId: EntityId;
+	linkedBoardId?: EntityId;
+	linkedCardId?: EntityId;
+	title?: string;
+	text?: string;
 	positionX: number;
 	positionY: number;
 	// incoming arrows: the steps that lead to this one

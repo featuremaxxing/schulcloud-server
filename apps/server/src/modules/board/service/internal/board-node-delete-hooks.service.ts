@@ -11,6 +11,7 @@ import {
 	AnyBoardNode,
 	AssignmentFeedback,
 	AssignmentSubmission,
+	Card,
 	CollaborativeTextEditorElement,
 	DrawingElement,
 	ExternalToolElement,
@@ -21,6 +22,7 @@ import {
 	H5pElement,
 	isAssignmentFeedback,
 	isAssignmentSubmission,
+	isCard,
 	isCollaborativeTextEditorElement,
 	isDrawingElement,
 	isExternalToolElement,
@@ -68,6 +70,8 @@ export class BoardNodeDeleteHooksService {
 			this.afterDeleteFileElement(boardNode);
 		} else if (isColumnBoard(boardNode)) {
 			await this.afterDeleteColumnBoard(boardNode);
+		} else if (isCard(boardNode)) {
+			await this.afterDeleteCard(boardNode);
 		} else if (isLinkElement(boardNode)) {
 			await this.afterDeleteLinkElement(boardNode);
 		} else if (isDrawingElement(boardNode)) {
@@ -102,6 +106,14 @@ export class BoardNodeDeleteHooksService {
 			this.boardNodeRepo.removeLearningPathStepsLinking(board.id),
 			this.boardCompletionRepo.deleteByBoardId(board.id),
 			this.learningPathEnrollmentRepo.deleteByPathBoardId(board.id),
+		]);
+	}
+
+	// a deleted card leaves every learning path it was a step of
+	public async afterDeleteCard(card: Card): Promise<void> {
+		await Promise.all([
+			this.boardNodeRepo.removeLearningPathStepsLinkingCard(card.id),
+			this.boardCompletionRepo.deleteByCardId(card.id),
 		]);
 	}
 

@@ -31,6 +31,14 @@ export class ColumnBoardLinkService {
 		}
 		if (isLearningPathStep(boardNode)) {
 			// a copied room gets its own boards: the copied learning path leads through them
+			if (boardNode.linkedCardId) {
+				// copied cards are only in the map as card links
+				const cardLink = replacementMap[`/boards/${boardNode.linkedBoardId}#card-${boardNode.linkedCardId}`];
+				const copiedCardId = cardLink?.split('#card-')[1];
+				if (copiedCardId) {
+					boardNode.linkedCardId = copiedCardId;
+				}
+			}
 			const linkedBoardId = replacementMap[boardNode.linkedBoardId];
 			if (linkedBoardId) {
 				boardNode.linkedBoardId = linkedBoardId;

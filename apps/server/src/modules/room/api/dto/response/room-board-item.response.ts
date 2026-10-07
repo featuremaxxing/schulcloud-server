@@ -29,6 +29,14 @@ export class RoomLearningPathStepResponse {
 	boardId: string;
 
 	@ApiProperty({ description: 'Empty when the board is not available to the user.' })
+	@ApiPropertyOptional({ description: 'Card steps: the card the step leads to (on the board boardId).' })
+	cardId?: string;
+
+	@ApiPropertyOptional({
+		description: 'A text tile (heading, work instructions): numbered with the steps, nothing to complete.',
+	})
+	isText?: boolean;
+
 	title: string;
 
 	@ApiProperty()
@@ -59,6 +67,8 @@ export class RoomLearningPathStepResponse {
 
 	constructor(props: RoomLearningPathStepResponse) {
 		this.id = props.id;
+		this.isText = props.isText;
+		this.cardId = props.cardId;
 		this.boardId = props.boardId;
 		this.title = props.title;
 		this.isVisible = props.isVisible;

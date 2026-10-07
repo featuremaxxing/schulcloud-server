@@ -181,19 +181,31 @@ export class BoardProgressService {
 	// Who has completed each board: a person is done with a board when it has at least one
 	// progress item for them and they finished all of them. Assignments that have not started
 	// yet do not count, as in the student view above. Also who has progress items on the board
-	// at all, so a board without any can be told from one that is not done yet. Used by learning paths.
+	// at all, so a board without any can be told from one that is not done yet. Cards are judged
+	// the same way by the items on them; their results are keyed by the card's id.
+	// Used by learning paths.
 	public async computeCompletedUserIds(
 		boards: { board: ColumnBoard; users: UserWithBoardRoles[] }[],
-		enabledTypes: BoardNodeType[]
+		enabledTypes: BoardNodeType[],
+		cards: { cardId: EntityId; boardId: EntityId; users: UserWithBoardRoles[] }[] = []
 	): Promise<{ done: Map<EntityId, Set<EntityId>>; withItems: Map<EntityId, Set<EntityId>> }> {
-		const done = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
-		const withItems = new Map<EntityId, Set<EntityId>>(boards.map((entry) => [entry.board.id, new Set<EntityId>()]));
-		if (boards.length === 0 || enabledTypes.length === 0) {
+		const targets = [
+			...boards.map((entry) => {
+				return { id: entry.board.id, segment: 0, users: entry.users };
+			}),
+			...cards.map((entry) => {
+				return { id: entry.cardId, segment: 2, users: entry.users };
+			}),
+		];
+		const done = new Map<EntityId, Set<EntityId>>(targets.map((target) => [target.id, new Set<EntityId>()]));
+		const withItems = new Map<EntityId, Set<EntityId>>(targets.map((target) => [target.id, new Set<EntityId>()]));
+		if (targets.length === 0 || enabledTypes.length === 0) {
 			return { done, withItems };
 		}
 
+		const boardIds = new Set([...boards.map((entry) => entry.board.id), ...cards.map((entry) => entry.boardId)]);
 		const elements = (await this.boardNodeRepo.findElementsByBoardIds(
-			boards.map((entry) => entry.board.id),
+			Array.from(boardIds),
 			enabledTypes
 		)) as AnyContentElement[];
 		const now = new Date();
@@ -206,21 +218,21 @@ export class BoardProgressService {
 			this.boardNodeRepo.findPollVotesByParentIds(visibleElements.filter(isPollElement).map((element) => element.id)),
 		]);
 
-		for (const entry of boards) {
+		for (const target of targets) {
 			const progresses = visibleElements
-				.filter((element) => pathSegmentOf(element, 0) === entry.board.id)
-				.map((element) => computeItemProgress(element, this.childrenOf(element, submissions, votes), entry.users))
+				.filter((element) => pathSegmentOf(element, target.segment) === target.id)
+				.map((element) => computeItemProgress(element, this.childrenOf(element, submissions, votes), target.users))
 				.filter((progress): progress is ItemProgress => !!progress);
 
-			const boardDone = done.get(entry.board.id) as Set<EntityId>;
-			const boardWithItems = withItems.get(entry.board.id) as Set<EntityId>;
-			for (const user of entry.users) {
+			const targetDone = done.get(target.id) as Set<EntityId>;
+			const targetWithItems = withItems.get(target.id) as Set<EntityId>;
+			for (const user of target.users) {
 				const own = progresses.filter((progress) => progress.eligibleUserIds.includes(user.userId));
 				if (own.length > 0) {
-					boardWithItems.add(user.userId);
+					targetWithItems.add(user.userId);
 				}
 				if (own.length > 0 && own.every((progress) => progress.doneUserIds.includes(user.userId))) {
-					boardDone.add(user.userId);
+					targetDone.add(user.userId);
 				}
 			}
 		}
@@ -228,12 +240,13 @@ export class BoardProgressService {
 		return { done, withItems };
 	}
 
-	// Whether the board has at least one progress item for the given person - without one,
-	// a learning path lets them mark the board as done by hand.
+	// Whether the board - or the given card of it - has at least one progress item for the given
+	// person. Without one, a learning path lets them mark it as done by hand.
 	public async hasProgressItemsFor(
 		board: ColumnBoard,
 		user: UserWithBoardRoles,
-		enabledTypes: BoardNodeType[]
+		enabledTypes: BoardNodeType[],
+		cardId?: EntityId
 	): Promise<boolean> {
 		if (enabledTypes.length === 0) return false;
 
@@ -241,6 +254,7 @@ export class BoardProgressService {
 		const now = new Date();
 
 		return elements
+			.filter((element) => !cardId || pathSegmentOf(element, 2) === cardId)
 			.filter((element) => !isAssignmentElement(element) || element.isStartedAt(now))
 			.some((element) => computeItemProgress(element, [], [user])?.eligibleUserIds.includes(user.userId));
 	}

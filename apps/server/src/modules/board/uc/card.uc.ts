@@ -185,7 +185,7 @@ export class CardUc {
 
 		if (
 			(isCheckboxElement(element) || isAssignmentElement(element) || isPollElement(element)) &&
-			element.rootId !== targetCard.rootId
+			element.parentId !== targetCard.id
 		) {
 			await this.rememberCompletions(targetCard, boardNodeAuthorizable.users);
 		}
@@ -195,12 +195,12 @@ export class CardUc {
 		return element;
 	}
 
-	// A board with learning path steps keeps what its completions unlocked when a progress item is
-	// added: the people who are done now are remembered before the new item makes them not done.
+	// A board or card with learning path steps keeps what its completions unlocked when a progress
+	// item is added: the people who are done now are remembered before the new item makes them not done.
 	private async rememberCompletions(card: Card, users: UserWithBoardRoles[]): Promise<void> {
 		const board = await this.boardNodeService.findRoot(card, 0);
 		if (isColumnBoard(board)) {
-			await this.learningPathStateService.rememberCompletions(board, users);
+			await this.learningPathStateService.rememberCompletions(board, users, card);
 		}
 	}
 }

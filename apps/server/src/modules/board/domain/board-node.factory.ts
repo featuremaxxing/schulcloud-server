@@ -57,10 +57,31 @@ export class BoardNodeFactory {
 		return folder;
 	}
 
-	public buildLearningPathStep(linkedBoardId: EntityId, positionX: number, positionY: number): LearningPathStep {
+	public buildLearningPathStep(
+		linkedBoardId: EntityId,
+		positionX: number,
+		positionY: number,
+		linkedCardId?: EntityId
+	): LearningPathStep {
 		const step = new LearningPathStep({
 			...this.getBaseProps(),
 			linkedBoardId,
+			linkedCardId,
+			positionX,
+			positionY,
+			prerequisiteStepIds: [],
+			unlockMode: 'all',
+			lockUntilPrerequisitesDone: false,
+		});
+
+		return step;
+	}
+
+	public buildLearningPathText(title: string, text: string, positionX: number, positionY: number): LearningPathStep {
+		const step = new LearningPathStep({
+			...this.getBaseProps(),
+			title,
+			text,
 			positionX,
 			positionY,
 			prerequisiteStepIds: [],
