@@ -36,6 +36,8 @@ import { MoveItemBodyParams } from './dto/request/move-item.body.params';
 import { PassOwnershipBodyParams } from './dto/request/pass-ownership.body.params';
 import { RemoveRoomMembersBodyParams } from './dto/request/remove-room-members.body.params';
 import { RoomPaginationParams } from './dto/request/room-pagination.params';
+import { RoomTagUrlParams } from './dto/request/room-tag.url.params';
+import { RenameRoomTagBodyParams, RoomTagsBodyParams } from './dto/request/room-tags.body.params';
 import { RoomUrlParams } from './dto/request/room.url.params';
 import { UpdateRoomBodyParams } from './dto/request/update-room.body.params';
 import { RoomBoardListResponse } from './dto/response/room-board-list.response';
@@ -46,6 +48,7 @@ import { RoomListResponse } from './dto/response/room-list.response';
 import { RoomMemberListResponse } from './dto/response/room-member-list.response';
 import { RoomRoleResponse } from './dto/response/room-role.response';
 import { RoomStatsListResponse } from './dto/response/room-stats-list.response';
+import { RoomTagsResponse } from './dto/response/room-tags.response';
 import { RoomInvitationLinkMapper } from './mapper/room-invitation-link.mapper';
 import { RoomMapper } from './mapper/room.mapper';
 import { RoomArrangementUc } from './room-arrangement.uc';
@@ -74,9 +77,9 @@ export class RoomController {
 	@ApiResponse({ status: HttpStatus.FORBIDDEN, type: ForbiddenException })
 	@ApiResponse({ status: '5XX', type: ErrorResponse })
 	public async getRooms(@CurrentUser() currentUser: ICurrentUser): Promise<RoomListResponse> {
-		const rooms = await this.roomArrangementUc.getRoomsByUserArrangement(currentUser.userId);
+		const { rooms, tags } = await this.roomArrangementUc.getRoomsByUserArrangement(currentUser.userId);
 
-		const response = RoomMapper.mapToRoomListResponse(rooms);
+		const response = RoomMapper.mapToRoomListResponse(rooms, tags);
 
 		return response;
 	}
@@ -93,6 +96,34 @@ export class RoomController {
 		@Body() bodyParams: MoveItemBodyParams
 	): Promise<void> {
 		await this.roomArrangementUc.moveRoomInUserArrangement(currentUser.userId, bodyParams.id, bodyParams.toPosition);
+	}
+
+	@ApiOperation({ summary: 'Rename a personal room tag. Renaming to the name of another tag merges both.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 400, type: ApiValidationError })
+	@ApiResponse({ status: 401, type: UnauthorizedException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Patch('tags/:tagId')
+	public async renameRoomTag(
+		@CurrentUser() currentUser: ICurrentUser,
+		@Param() urlParams: RoomTagUrlParams,
+		@Body() bodyParams: RenameRoomTagBodyParams
+	): Promise<void> {
+		await this.roomArrangementUc.renameTag(currentUser.userId, urlParams.tagId, bodyParams.name);
+	}
+
+	@ApiOperation({ summary: 'Delete a personal room tag. The rooms are kept.' })
+	@ApiResponse({ status: 204 })
+	@ApiResponse({ status: 401, type: UnauthorizedException })
+	@ApiResponse({ status: 404, type: NotFoundException })
+	@HttpCode(204)
+	@Delete('tags/:tagId')
+	public async deleteRoomTag(
+		@CurrentUser() currentUser: ICurrentUser,
+		@Param() urlParams: RoomTagUrlParams
+	): Promise<void> {
+		await this.roomArrangementUc.deleteTag(currentUser.userId, urlParams.tagId);
 	}
 
 	@RequestTimeout(ROOM_INCOMING_REQUEST_TIMEOUT_ROOM_STATS)
@@ -133,6 +164,30 @@ export class RoomController {
 		const room = await this.roomUc.createRoom(currentUser.userId, createRoomParams);
 
 		const response = RoomMapper.mapToRoomCreatedResponse(room);
+
+		return response;
+	}
+
+	@ApiOperation({ summary: 'Set the personal tags of a room.' })
+	@ApiResponse({ status: HttpStatus.OK, type: RoomTagsResponse })
+	@ApiResponse({ status: HttpStatus.BAD_REQUEST, type: ApiValidationError })
+	@ApiResponse({ status: HttpStatus.UNAUTHORIZED, type: UnauthorizedException })
+	@ApiResponse({ status: HttpStatus.FORBIDDEN, type: ForbiddenException })
+	@ApiResponse({ status: HttpStatus.NOT_FOUND, type: NotFoundException })
+	@Put(':roomId/tags')
+	public async setRoomTags(
+		@CurrentUser() currentUser: ICurrentUser,
+		@Param() urlParams: RoomUrlParams,
+		@Body() bodyParams: RoomTagsBodyParams
+	): Promise<RoomTagsResponse> {
+		const { items, tags } = await this.roomArrangementUc.setRoomTags(
+			currentUser.userId,
+			urlParams.roomId,
+			bodyParams.names
+		);
+		const tagIds = items.find((item) => item.id === urlParams.roomId)?.tagIds ?? [];
+
+		const response = RoomMapper.mapToRoomTagsResponse(tagIds, tags);
 
 		return response;
 	}

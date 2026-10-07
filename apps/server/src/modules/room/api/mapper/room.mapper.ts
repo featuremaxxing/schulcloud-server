@@ -4,6 +4,7 @@ import { type RoomOperation } from '@modules/room-membership/authorization/room.
 import { type PaginationParams } from '@shared/controller/dto';
 import { type Page } from '@shared/domain/domainobject';
 import { type Room } from '../../domain/do/room.do';
+import { type RoomTag } from '../../domain/type';
 import {
 	RoomBoardItemResponse,
 	RoomBoardLockResponse,
@@ -17,6 +18,8 @@ import { RoomItemResponse } from '../dto/response/room-item.response';
 import { RoomListResponse } from '../dto/response/room-list.response';
 import { RoomStatsItemResponse } from '../dto/response/room-stats-item.response';
 import { RoomStatsListResponse } from '../dto/response/room-stats-list.response';
+import { RoomTagResponse } from '../dto/response/room-tag.response';
+import { RoomTagsResponse } from '../dto/response/room-tags.response';
 import { type RoomStats } from '../type/room-stats.type';
 import { type RoomWithAllowedOperationsAndLockedStatus } from '../type/room-with-locked-status';
 
@@ -36,6 +39,7 @@ export class RoomMapper {
 		allowedOperations,
 		isLocked,
 		totalMembers,
+		tagIds,
 	}: RoomWithAllowedOperationsAndLockedStatus): RoomItemResponse {
 		const response = new RoomItemResponse({
 			id: room.id,
@@ -49,18 +53,32 @@ export class RoomMapper {
 			allowedOperations,
 			isLocked,
 			totalMembers,
+			tagIds,
 		});
 
 		return response;
 	}
 
-	public static mapToRoomListResponse(rooms: RoomWithAllowedOperationsAndLockedStatus[]): RoomListResponse {
+	public static mapToRoomListResponse(
+		rooms: RoomWithAllowedOperationsAndLockedStatus[],
+		tags: RoomTag[] = []
+	): RoomListResponse {
 		const roomResponseData: RoomItemResponse[] = rooms.map((room): RoomItemResponse =>
 			this.mapToRoomItemResponse(room)
 		);
-		const response = new RoomListResponse(roomResponseData);
+		const response = new RoomListResponse(roomResponseData, this.mapToRoomTagResponses(tags));
 
 		return response;
+	}
+
+	public static mapToRoomTagsResponse(tagIds: string[], tags: RoomTag[]): RoomTagsResponse {
+		const response = new RoomTagsResponse(tagIds, this.mapToRoomTagResponses(tags));
+
+		return response;
+	}
+
+	private static mapToRoomTagResponses(tags: RoomTag[]): RoomTagResponse[] {
+		return tags.map((tag) => new RoomTagResponse({ id: tag.id, name: tag.name }));
 	}
 
 	public static mapToRoomDetailsResponse(
