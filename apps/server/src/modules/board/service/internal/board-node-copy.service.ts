@@ -31,6 +31,7 @@ import {
 	FileElementFactory,
 	FileAreaFolder,
 	FileAreaLinkElement,
+	MapElement,
 	FileFolderElement,
 	FileFolderElementFactory,
 	getBoardNodeType,
@@ -120,6 +121,9 @@ export class BoardNodeCopyService {
 			case BoardNodeType.FILE_AREA_LINK_ELEMENT:
 				result = this.copyFileAreaLinkElement(boardNode as FileAreaLinkElement);
 				break;
+			case BoardNodeType.MAP_ELEMENT:
+				result = this.copyMapElement(boardNode as MapElement);
+				break;
 			case BoardNodeType.FILE_AREA_FOLDER:
 				result = await this.copyFileAreaFolder(boardNode as FileAreaFolder, context);
 				break;
@@ -204,6 +208,20 @@ export class BoardNodeCopyService {
 		return {
 			copyEntity: copy,
 			type: CopyElementType.FILE_AREA_LINK_ELEMENT,
+			status: CopyStatusEnum.SUCCESS,
+			originalEntity: original,
+		};
+	}
+
+	public copyMapElement(original: MapElement): CopyStatus {
+		const copy = new MapElement({
+			...original.getProps(),
+			...this.buildSpecificProps([]),
+		});
+
+		return {
+			copyEntity: copy,
+			type: CopyElementType.MAP_ELEMENT,
 			status: CopyStatusEnum.SUCCESS,
 			originalEntity: original,
 		};

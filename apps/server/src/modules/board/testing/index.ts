@@ -18,6 +18,7 @@ export * from './file-element.factory';
 export * from './file-area-folder.factory';
 export * from './learning-path-step.factory';
 export * from './file-area-link-element.factory';
+export * from './map-element.factory';
 export * from './file-folder-element.factory';
 export * from './link-element.factory';
 export * from './media-available-line-element.factory';

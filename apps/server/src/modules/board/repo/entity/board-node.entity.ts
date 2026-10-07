@@ -184,6 +184,23 @@ export class BoardNodeEntity extends BaseEntityWithTimestamps implements BoardNo
 	@Property({ type: ObjectIdType, nullable: true })
 	targetId: EntityId | undefined;
 
+	// MapElement
+	// --------------------------------------------------------------------------
+	@Property({ type: 'double', nullable: true })
+	latitude: number | undefined;
+
+	@Property({ type: 'double', nullable: true })
+	longitude: number | undefined;
+
+	@Property({ type: 'integer', nullable: true })
+	zoom: number | undefined;
+
+	@Property({ type: 'double', nullable: true })
+	markerLatitude: number | undefined;
+
+	@Property({ type: 'double', nullable: true })
+	markerLongitude: number | undefined;
+
 	// LearningPathStep
 	// --------------------------------------------------------------------------
 	@Index()

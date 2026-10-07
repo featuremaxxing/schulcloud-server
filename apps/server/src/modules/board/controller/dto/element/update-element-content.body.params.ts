@@ -9,6 +9,7 @@ import {
 	IsEnum,
 	IsInt,
 	IsMongoId,
+	IsNumber,
 	IsOptional,
 	IsString,
 	Max,
@@ -89,6 +90,56 @@ export class FileAreaLinkElementContentBody extends ElementContentBody {
 	@Type(() => FileAreaLinkContentBody)
 	@ApiProperty({ type: FileAreaLinkContentBody })
 	content!: FileAreaLinkContentBody;
+}
+
+export class MapMarkerBody {
+	@IsNumber()
+	@Min(-90)
+	@Max(90)
+	@ApiProperty()
+	latitude!: number;
+
+	@IsNumber()
+	@Min(-180)
+	@Max(180)
+	@ApiProperty()
+	longitude!: number;
+}
+
+export class MapContentBody {
+	@IsNumber()
+	@Min(-90)
+	@Max(90)
+	@ApiProperty({ description: 'Latitude of the center of the map excerpt.' })
+	latitude!: number;
+
+	@IsNumber()
+	@Min(-180)
+	@Max(180)
+	@ApiProperty({ description: 'Longitude of the center of the map excerpt.' })
+	longitude!: number;
+
+	@IsInt()
+	@Min(0)
+	@Max(19)
+	@ApiProperty({ description: 'OpenStreetMap zoom level of the map excerpt.', minimum: 0, maximum: 19 })
+	zoom!: number;
+
+	@IsOptional()
+	@ValidateNested()
+	@Type(() => MapMarkerBody)
+	@ApiPropertyOptional({ type: MapMarkerBody, description: 'Without a marker, an existing one is removed.' })
+	marker?: MapMarkerBody;
+}
+
+export class MapElementContentBody extends ElementContentBody {
+	@ApiProperty({ enum: ContentElementType })
+	type!: ContentElementType.MAP;
+
+	@ValidateNested()
+	@Type(() => MapContentBody)
+	@ApiProperty({ type: MapContentBody })
+	content!: MapContentBody;
 }
 
 export class FileContentBody {
@@ -493,7 +544,8 @@ export type AnyElementContentBody =
 	| H5pContentBody
 	| PollContentBody
 	| CheckboxContentBody
-	| FileAreaLinkContentBody;
+	| FileAreaLinkContentBody
+	| MapContentBody;
 
 export class UpdateElementContentBodyParams {
 	@ValidateNested()
@@ -514,6 +566,7 @@ export class UpdateElementContentBodyParams {
 				{ value: AssignmentElementContentBody, name: ContentElementType.ASSIGNMENT },
 				{ value: AiQuestionElementContentBody, name: ContentElementType.AI_QUESTION },
 				{ value: FileAreaLinkElementContentBody, name: ContentElementType.FILE_AREA_LINK },
+				{ value: MapElementContentBody, name: ContentElementType.MAP },
 			],
 		},
 		keepDiscriminatorProperty: true,
@@ -533,6 +586,7 @@ export class UpdateElementContentBodyParams {
 			{ $ref: getSchemaPath(AssignmentElementContentBody) },
 			{ $ref: getSchemaPath(AiQuestionElementContentBody) },
 			{ $ref: getSchemaPath(FileAreaLinkElementContentBody) },
+			{ $ref: getSchemaPath(MapElementContentBody) },
 		],
 	})
 	data!:
@@ -548,5 +602,6 @@ export class UpdateElementContentBodyParams {
 		| CheckboxElementContentBody
 		| AssignmentElementContentBody
 		| AiQuestionElementContentBody
-		| FileAreaLinkElementContentBody;
+		| FileAreaLinkElementContentBody
+		| MapElementContentBody;
 }
