@@ -22,6 +22,8 @@ import {
 	CheckboxElementResponse,
 	FileAreaLinkElementContentBody,
 	FileAreaLinkElementResponse,
+	MapElementContentBody,
+	MapElementResponse,
 	AssignmentElementContentBody,
 	AssignmentElementResponse,
 	ContentElementUrlParams,
@@ -118,7 +120,8 @@ export class ElementController {
 		CheckboxElementContentBody,
 		AssignmentElementContentBody,
 		AiQuestionElementContentBody,
-		FileAreaLinkElementContentBody
+		FileAreaLinkElementContentBody,
+		MapElementContentBody
 	)
 	@ApiResponse({
 		status: 200,
@@ -137,6 +140,7 @@ export class ElementController {
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 				{ $ref: getSchemaPath(AiQuestionElementResponse) },
 				{ $ref: getSchemaPath(FileAreaLinkElementResponse) },
+				{ $ref: getSchemaPath(MapElementResponse) },
 			],
 		},
 	})

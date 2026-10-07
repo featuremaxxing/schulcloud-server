@@ -10,6 +10,7 @@ import {
 	FileFolderContentBody,
 	H5pContentBody,
 	LinkContentBody,
+	MapContentBody,
 	PollContentBody,
 	RichTextContentBody,
 	VideoConferenceContentBody,
@@ -27,6 +28,7 @@ import {
 import { BoardNodeRepo } from '../../repo';
 import {
 	drawingElementFactory,
+	mapElementFactory,
 	externalToolElementFactory,
 	fileElementFactory,
 	fileFolderElementFactory,
@@ -94,6 +96,48 @@ describe('ContentElementUpdateService', () => {
 		content.requireTeacherConfirmation = true;
 		await service.updateContent(element, content);
 		expect(element.text).toBe('Another task');
+	});
+
+	describe('when the element is a MapElement', () => {
+		const setup = () => {
+			const element = mapElementFactory.build();
+			const content = new MapContentBody();
+			content.latitude = 48.137;
+			content.longitude = 11.575;
+			content.zoom = 14;
+			content.marker = { latitude: 48.1374, longitude: 11.5755 };
+
+			return { element, content };
+		};
+
+		it('should update the excerpt and the marker', async () => {
+			const { element, content } = setup();
+
+			await service.updateContent(element, content);
+
+			expect(element.latitude).toBe(48.137);
+			expect(element.longitude).toBe(11.575);
+			expect(element.zoom).toBe(14);
+			expect(element.marker).toEqual({ latitude: 48.1374, longitude: 11.5755 });
+		});
+
+		it('should remove the marker when the content has none', async () => {
+			const { element, content } = setup();
+			await service.updateContent(element, content);
+
+			content.marker = undefined;
+			await service.updateContent(element, content);
+
+			expect(element.marker).toBeUndefined();
+		});
+
+		it('should persist the element', async () => {
+			const { element, content } = setup();
+
+			await service.updateContent(element, content);
+
+			expect(repo.save).toHaveBeenCalledWith(element);
+		});
 	});
 
 	describe('when the element is a FileElement', () => {

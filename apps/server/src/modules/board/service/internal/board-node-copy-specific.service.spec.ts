@@ -27,6 +27,7 @@ import {
 	FileElement,
 	FileFolderElement,
 	LinkElement,
+	MapElement,
 	PollElement,
 	RichTextElement,
 	VideoConferenceElement,
@@ -45,6 +46,7 @@ import {
 	fileFolderElementFactory,
 	h5pElementFactory,
 	linkElementFactory,
+	mapElementFactory,
 	mediaBoardFactory,
 	mediaExternalToolElementFactory,
 	mediaLineFactory,
@@ -490,6 +492,25 @@ describe(BoardNodeCopyService.name, () => {
 					expect.objectContaining({ title: `(old fileid: ${fileCopyStatus.sourceId})`, status: CopyStatusEnum.FAIL }),
 				]);
 			});
+		});
+	});
+
+	describe('copy map element', () => {
+		it('should copy excerpt and marker into a new node', () => {
+			const mapElement = mapElementFactory.build({ markerLatitude: 52.37, markerLongitude: 9.73 });
+
+			const result = service.copyMapElement(mapElement);
+
+			const copy = result.copyEntity as MapElement;
+			expect(copy).toBeInstanceOf(MapElement);
+			expect(copy.id).not.toBe(mapElement.id);
+			expect(copy.latitude).toBe(mapElement.latitude);
+			expect(copy.longitude).toBe(mapElement.longitude);
+			expect(copy.zoom).toBe(mapElement.zoom);
+			expect(copy.marker).toEqual({ latitude: 52.37, longitude: 9.73 });
+			expect(result.type).toBe(CopyElementType.MAP_ELEMENT);
+			expect(result.status).toBe(CopyStatusEnum.SUCCESS);
+			expect(result.originalEntity).toBe(mapElement);
 		});
 	});
 

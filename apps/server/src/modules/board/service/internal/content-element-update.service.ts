@@ -10,6 +10,7 @@ import {
 	DrawingContentBody,
 	ExternalToolContentBody,
 	FileAreaLinkContentBody,
+	MapContentBody,
 	FileContentBody,
 	FileFolderContentBody,
 	H5pContentBody,
@@ -45,6 +46,7 @@ import {
 	isDrawingElement,
 	isExternalToolElement,
 	isFileAreaLinkElement,
+	isMapElement,
 	isFileElement,
 	isFileFolderElement,
 	isH5pElement,
@@ -120,6 +122,9 @@ export class ContentElementUpdateService {
 			return;
 		} else if (isAssignmentElement(element) && content instanceof AssignmentContentBody) {
 			this.updateAssignmentElement(element, content);
+		} else if (isMapElement(element) && content instanceof MapContentBody) {
+			element.setView({ latitude: content.latitude, longitude: content.longitude, zoom: content.zoom });
+			element.setMarker(content.marker);
 		} else if (isFileAreaLinkElement(element) && content instanceof FileAreaLinkContentBody) {
 			// the target was checked by the use case (same room, readable, folder of the file area)
 			element.setTarget({

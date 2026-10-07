@@ -11,6 +11,7 @@ import { type FileElement, isFileElement } from '../file-element.do';
 import { type FileFolderElement, isFileFolderElement } from '../file-folder-element.do';
 import { type H5pElement, isH5pElement } from '../h5p-element.do';
 import { isLinkElement, type LinkElement } from '../link-element.do';
+import { isMapElement, type MapElement } from '../map-element.do';
 import { isPollElement, type PollElement } from '../poll-element.do';
 import { isRichTextElement, type RichTextElement } from '../rich-text-element.do';
 import { isVideoConferenceElement, type VideoConferenceElement } from '../video-conference-element.do';
@@ -28,6 +29,7 @@ export type AnyContentElement =
 	| FileAreaLinkElement
 	| FileFolderElement
 	| LinkElement
+	| MapElement
 	| RichTextElement
 	| DeletedElement
 	| VideoConferenceElement
@@ -46,6 +48,7 @@ export const isContentElement = (boardNode: AnyBoardNode): boardNode is AnyConte
 		isFileAreaLinkElement(boardNode) ||
 		isFileFolderElement(boardNode) ||
 		isLinkElement(boardNode) ||
+		isMapElement(boardNode) ||
 		isRichTextElement(boardNode) ||
 		isDeletedElement(boardNode) ||
 		isVideoConferenceElement(boardNode) ||

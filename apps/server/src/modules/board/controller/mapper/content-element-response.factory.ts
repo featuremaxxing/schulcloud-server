@@ -11,6 +11,7 @@ import { DrawingElementResponseMapper } from './drawing-element-response.mapper'
 import { ExternalToolElementResponseMapper } from './external-tool-element-response.mapper';
 import { FileElementResponseMapper } from './file-element-response.mapper';
 import { FileAreaLinkElementResponseMapper } from './file-area-link-element-response.mapper';
+import { MapElementResponseMapper } from './map-element-response.mapper';
 import { FileFolderElementResponseMapper } from './file-folder-element-response.mapper';
 import { H5pElementResponseMapper } from './h5p-element-response.mapper';
 import { LinkElementResponseMapper } from './link-element-response.mapper';
@@ -30,6 +31,7 @@ export class ContentElementResponseFactory {
 		VideoConferenceElementResponseMapper.getInstance(),
 		FileFolderElementResponseMapper.getInstance(),
 		FileAreaLinkElementResponseMapper.getInstance(),
+		MapElementResponseMapper.getInstance(),
 		H5pElementResponseMapper.getInstance(),
 		PollElementResponseMapper.getInstance(),
 		AssignmentElementResponseMapper.getInstance(),

@@ -10,6 +10,7 @@ import {
 	DrawingElementResponse,
 	ExternalToolElementResponse,
 	FileAreaLinkElementResponse,
+	MapElementResponse,
 	FileElementResponse,
 	FileFolderElementResponse,
 	H5pElementResponse,
@@ -36,7 +37,8 @@ import { Colors } from '../../../domain';
 	PollElementResponse,
 	AssignmentElementResponse,
 	AiQuestionElementResponse,
-	FileAreaLinkElementResponse
+	FileAreaLinkElementResponse,
+	MapElementResponse
 )
 export class CardResponse {
 	constructor({ id, title, backgroundColor, height, elements, visibilitySettings, timestamps }: CardResponse) {
@@ -82,6 +84,7 @@ export class CardResponse {
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 				{ $ref: getSchemaPath(AiQuestionElementResponse) },
 				{ $ref: getSchemaPath(FileAreaLinkElementResponse) },
+				{ $ref: getSchemaPath(MapElementResponse) },
 			],
 		},
 	})
