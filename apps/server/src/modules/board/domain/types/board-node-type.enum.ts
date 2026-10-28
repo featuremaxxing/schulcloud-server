@@ -9,6 +9,7 @@ export enum BoardNodeType {
 	FILE_AREA_LINK_ELEMENT = 'file-area-link-element',
 	LEARNING_PATH_STEP = 'learning-path-step',
 	LINK_ELEMENT = 'link-element',
+	MAP_ELEMENT = 'map-element',
 	RICH_TEXT_ELEMENT = 'rich-text-element',
 	DRAWING_ELEMENT = 'drawing-element',
 	EXTERNAL_TOOL = 'external-tool',

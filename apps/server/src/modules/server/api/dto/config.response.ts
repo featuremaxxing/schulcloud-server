@@ -133,6 +133,9 @@ export class ConfigResponse {
 	FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED: boolean;
 
 	@ApiProperty()
+	FEATURE_COLUMN_BOARD_MAP_ENABLED: boolean;
+
+	@ApiProperty()
 	FEATURE_BOARD_PROGRESS_ENABLED: boolean;
 
 	@ApiProperty()
@@ -406,6 +409,7 @@ export class ConfigResponse {
 		this.FEATURE_COLUMN_BOARD_H5P_ENABLED = config.featureColumnBoardH5pEnabled;
 		this.FEATURE_COLUMN_BOARD_POLL_ENABLED = config.featureColumnBoardPollEnabled;
 		this.FEATURE_COLUMN_BOARD_CHECKBOX_ENABLED = config.featureColumnBoardCheckboxEnabled;
+		this.FEATURE_COLUMN_BOARD_MAP_ENABLED = config.featureColumnBoardMapEnabled;
 		this.FEATURE_BOARD_PROGRESS_ENABLED = config.featureBoardProgressEnabled;
 		this.FEATURE_BOARD_FILE_AREA_ENABLED = config.featureBoardFileAreaEnabled;
 		this.FEATURE_BOARD_LEARNING_PATH_ENABLED = config.featureBoardLearningPathEnabled;

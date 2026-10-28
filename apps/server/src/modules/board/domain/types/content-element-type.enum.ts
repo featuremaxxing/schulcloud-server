@@ -14,4 +14,5 @@ export enum ContentElementType {
 	ASSIGNMENT = 'assignment',
 	AI_QUESTION = 'aiQuestion',
 	FILE_AREA_LINK = 'fileAreaLink',
+	MAP = 'map',
 }

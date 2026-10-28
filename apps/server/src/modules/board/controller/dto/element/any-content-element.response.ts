@@ -6,6 +6,7 @@ import type { DeletedElementResponse } from './deleted-element.response';
 import type { DrawingElementResponse } from './drawing-element.response';
 import type { ExternalToolElementResponse } from './external-tool-element.response';
 import type { FileAreaLinkElementResponse } from './file-area-link-element.response';
+import type { MapElementResponse } from './map-element.response';
 import type { FileElementResponse } from './file-element.response';
 import type { FileFolderElementResponse } from './file-folder-element.response';
 import type { H5pElementResponse } from './h5p-element.response';
@@ -28,5 +29,6 @@ export type AnyContentElementResponse =
 	| VideoConferenceElementResponse
 	| FileFolderElementResponse
 	| FileAreaLinkElementResponse
+	| MapElementResponse
 	| H5pElementResponse
 	| PollElementResponse;

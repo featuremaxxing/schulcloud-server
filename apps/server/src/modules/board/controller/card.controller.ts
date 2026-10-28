@@ -37,6 +37,7 @@ import {
 	PollElementResponse,
 	CheckboxElementResponse,
 	FileAreaLinkElementResponse,
+	MapElementResponse,
 	MoveCardBodyParams,
 	RenameBodyParams,
 	RichTextElementResponse,
@@ -183,7 +184,8 @@ export class CardController {
 		PollElementResponse,
 		CheckboxElementResponse,
 		AssignmentElementResponse,
-		FileAreaLinkElementResponse
+		FileAreaLinkElementResponse,
+		MapElementResponse
 	)
 	@ApiResponse({
 		status: 201,
@@ -202,6 +204,7 @@ export class CardController {
 				{ $ref: getSchemaPath(CheckboxElementResponse) },
 				{ $ref: getSchemaPath(AssignmentElementResponse) },
 				{ $ref: getSchemaPath(FileAreaLinkElementResponse) },
+				{ $ref: getSchemaPath(MapElementResponse) },
 			],
 		},
 	})

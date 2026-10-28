@@ -52,6 +52,11 @@ export class BoardPublicApiConfig {
 	@IsBoolean()
 	public featureColumnBoardCheckboxEnabled = false;
 
+	@ConfigProperty('FEATURE_COLUMN_BOARD_MAP_ENABLED')
+	@StringToBoolean()
+	@IsBoolean()
+	public featureColumnBoardMapEnabled = false;
+
 	@ConfigProperty('FEATURE_COLUMN_BOARD_ASSIGNMENT_ENABLED')
 	@StringToBoolean()
 	@IsBoolean()

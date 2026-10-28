@@ -88,6 +88,15 @@ export interface FileAreaLinkElementProps extends BoardNodeProps {
 	title: string;
 }
 
+// an excerpt of an OpenStreetMap map, optionally with one marker
+export interface MapElementProps extends BoardNodeProps {
+	latitude: number;
+	longitude: number;
+	zoom: number;
+	markerLatitude?: number;
+	markerLongitude?: number;
+}
+
 export interface FileAreaFolderProps extends BoardNodeProps {
 	title: string;
 }
@@ -287,6 +296,7 @@ export type AnyBoardNodeProps =
 	| FileAreaLinkElementProps
 	| LearningPathStepProps
 	| LinkElementProps
+	| MapElementProps
 	| RichTextElementProps
 	| VideoConferenceElementProps
 	| DeletedElementProps

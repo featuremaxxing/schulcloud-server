@@ -19,6 +19,7 @@ export * from './external-tool-element.do';
 export * from './factory';
 export * from './file-area-folder.do';
 export * from './file-area-link-element.do';
+export * from './map-element.do';
 export * from './file-element.do';
 export * from './file-folder-element.do';
 export * from './h5p-element.do';

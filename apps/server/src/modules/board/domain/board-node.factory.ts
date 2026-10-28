@@ -20,6 +20,7 @@ import { FileFolderElement } from './file-folder-element.do';
 import { H5pElement } from './h5p-element.do';
 import { LearningPathStep } from './learning-path-step.do';
 import { LinkElement } from './link-element.do';
+import { MapElement } from './map-element.do';
 import { PinnedCard } from './pinned-card.do';
 import { ROOT_PATH } from './path-utils';
 import { PollElement } from './poll-element.do';
@@ -132,6 +133,15 @@ export class BoardNodeFactory {
 				element = new FileFolderElement({
 					...this.getBaseProps(),
 					title: '',
+				});
+				break;
+			case ContentElementType.MAP:
+				// overview of Lower Saxony until the teacher picks an excerpt
+				element = new MapElement({
+					...this.getBaseProps(),
+					latitude: 52.636,
+					longitude: 9.845,
+					zoom: 7,
 				});
 				break;
 			case ContentElementType.LINK:
