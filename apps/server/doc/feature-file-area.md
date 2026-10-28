@@ -32,6 +32,51 @@ Stand, Funktionsweise, Grenzen und Gedanken zur Übernahme in die NBC. Stand: 28
 - **Raum kopieren** kopiert Ordner und Dateien mit. Links auf Karten zeigen danach auf die Kopien.
 - **Löschen** entfernt die Dateien in files-storage mit.
 
+## Wo der Code liegt
+
+Die Dateien selbst liegen nicht im Repo, sondern zur Laufzeit in files-storage (S3). Ihr Eltern-Objekt ist ein Ordner oder der Bereich.
+
+### schulcloud-server
+
+Grundpfad: [`apps/server/src/modules/`](../src/modules/)
+
+| Was | Wo |
+|---|---|
+| Ordner (Domain-Objekt) | [`board/domain/file-area-folder.do.ts`](../src/modules/board/domain/file-area-folder.do.ts) |
+| Element „Datei-Bereich“ auf Karten | [`board/domain/file-area-link-element.do.ts`](../src/modules/board/domain/file-area-link-element.do.ts) |
+| REST-Endpunkte | [`board/controller/file-area.controller.ts`](../src/modules/board/controller/file-area.controller.ts), DTOs in [`board/controller/dto/file-area/`](../src/modules/board/controller/dto/file-area/) |
+| Logik (Ordner anlegen, verschieben, `notifyFilesChanged`) | [`board/uc/file-area.uc.ts`](../src/modules/board/uc/file-area.uc.ts) |
+| Live-Updates per Socket | [`board/service/file-area-notifier.service.ts`](../src/modules/board/service/file-area-notifier.service.ts) |
+| Raum kopieren und Löschen | [`board/service/internal/board-node-copy.service.ts`](../src/modules/board/service/internal/board-node-copy.service.ts), [`board-node-delete-hooks.service.ts`](../src/modules/board/service/internal/board-node-delete-hooks.service.ts) |
+| Netzlaufwerk (WebDAV): Controller, Handler, Sperren, macOS-Hilfsdateien, Anmeldung | [`board/webdav/`](../src/modules/board/webdav/), Modul in [`board/board-webdav-api.module.ts`](../src/modules/board/board-webdav-api.module.ts) |
+| App-Passwörter | eigenes Modul [`app-password/`](../src/modules/app-password/) |
+| Feature-Flag `FEATURE_BOARD_FILE_AREA_ENABLED` | [`board/board.config.ts`](../src/modules/board/board.config.ts) |
+| API-Tests | `board/controller/api-test/file-area*.api.spec.ts`, [`board/webdav/api-test/`](../src/modules/board/webdav/api-test/), [`room/api/test/room-copy-file-area.api.spec.ts`](../src/modules/room/api/test/room-copy-file-area.api.spec.ts) |
+
+### nuxt-client
+
+Grundpfad: [`src/modules/`](https://github.com/featuremaxxing/nuxt-client/tree/main/src/modules)
+
+| Was | Wo |
+|---|---|
+| Finder-Ansicht (Spalten, Dateidetails) | [`feature/board-file-area/`](https://github.com/featuremaxxing/nuxt-client/tree/main/src/modules/feature/board-file-area): `FileAreaBoard.vue`, `FileAreaColumn.vue`, `FileAreaFileDetails.vue` |
+| Daten, API und Socket | [`data/board-file-area/`](https://github.com/featuremaxxing/nuxt-client/tree/main/src/modules/data/board-file-area): `file-area-api.ts`, `file-area-state.ts`, `file-area-socket.ts` |
+| Element „Datei-Bereich“ (Baum, Auswahldialog) | [`feature/board-file-area-link-element/`](https://github.com/featuremaxxing/nuxt-client/tree/main/src/modules/feature/board-file-area-link-element) |
+| Kachel im Raum | [`feature/room/RoomFileAreaItem.vue`](https://github.com/featuremaxxing/nuxt-client/blob/main/src/modules/feature/room/RoomFileAreaItem.vue) |
+| Bereichstyp beim Anlegen wählen | [`ui/room-details/SelectBoardLayoutDialog.vue`](https://github.com/featuremaxxing/nuxt-client/blob/main/src/modules/ui/room-details/SelectBoardLayoutDialog.vue) |
+| Seite „Netzlaufwerk“ (App-Passwörter) | [`page/webdav/WebDavAccess.page.vue`](https://github.com/featuremaxxing/nuxt-client/blob/main/src/modules/page/webdav/WebDavAccess.page.vue), [`data/app-password/`](https://github.com/featuremaxxing/nuxt-client/tree/main/src/modules/data/app-password) |
+| Einstieg auf der Board-Seite | [`page/board/ColumnBoard.page.vue`](https://github.com/featuremaxxing/nuxt-client/blob/main/src/modules/page/board/ColumnBoard.page.vue) |
+
+### file-storage
+
+Nur der Move-Endpunkt aus [#4](https://github.com/featuremaxxing/file-storage/pull/4): Beim Verschieben behält eine Datei ihre ID. Grundpfad: [`src/modules/files-storage/`](https://github.com/featuremaxxing/file-storage/tree/main/src/modules/files-storage)
+
+- `api/controller/files-storage.controller.ts`
+- `api/uc/files-storage.uc.ts`
+- `domain/service/files-storage.service.ts`
+- `domain/file-record.do.ts`
+- Test: `domain/service/files-storage-move.service.spec.ts`
+
 ## Grenzen heute
 
 - **Kontingent:** Es gibt kein Speicher-Kontingent pro Raum oder Schule.
